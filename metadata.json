@@ -1,0 +1,6 @@
+{
+  "name": "ItaSuper",
+  "description": "App do cliente ItaSuper - Delivery de supermercado, restaurantes e farmácias.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
