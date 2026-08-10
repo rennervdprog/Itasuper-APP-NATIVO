@@ -36,6 +36,15 @@ data class SelectedAddonItem(
     val priceReplacesBase: Boolean = false
 )
 
+data class PastelBorder(
+    val id: String,
+    val storeId: String,
+    val name: String,
+    val price: Double = 0.0,
+    val isAvailable: Boolean = true,
+    val sortOrder: Int = 0
+)
+
 data class Product(
     val id: String,
     val storeId: String,
@@ -46,7 +55,11 @@ data class Product(
     val category: String,
     val sectionId: String? = null,
     val imageUrl: String = "",
-    val isAvailable: Boolean = true
+    val isAvailable: Boolean = true,
+    val hasStuffedCrust: Boolean = false,
+    val isCombo: Boolean = false,
+    val isPastelFlavor: Boolean = false,
+    val isBeverage: Boolean = false
 )
 
 data class CartItem(

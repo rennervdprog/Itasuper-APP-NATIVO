@@ -20,10 +20,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.data.model.PastelBorder
+
 data class StoreDetailUiState(
     val store: Store? = null,
     val isLoading: Boolean = true,
     val menuSections: List<MenuSection> = emptyList(),
+    val pastelBorders: List<PastelBorder> = emptyList(),
     val selectedSectionName: String = "Todos",
     val searchQuery: String = "",
     val selectedProductForModal: Product? = null,
@@ -32,7 +35,28 @@ data class StoreDetailUiState(
     val modalAddonGroups: List<AddonGroup> = emptyList(),
     val modalAddonItemsMap: Map<String, List<AddonItem>> = emptyMap(),
     val modalSelectedAddonsMap: Map<String, List<AddonItem>> = emptyMap(),
-    val modalError: String? = null
+    val modalError: String? = null,
+    // Custom Builder State (Monte Sua Pizza / Monte Seu Pastel)
+    val showBuilderModal: Boolean = false,
+    val builderType: String = "", // "pizza" or "pastel"
+    // Pastel Wizard State
+    val wizardStep: Int = 0,
+    val wizardTargetFlavors: Int = 2,
+    val wizardSelectedFlavors: List<Product?> = listOf(null, null),
+    val wizardSelectedComplements: List<PastelBorder> = emptyList(),
+    val wizardQuantity: Int = 1,
+    val wizardNotes: String = "",
+    val wizardErrorMessage: String? = null,
+    // Pizza builder state
+    val builderSelectedFlavors: List<Product> = emptyList(),
+    val builderQuantity: Int = 1,
+    val builderNotes: String = "",
+    val builderSelectedSize: String = "Média",
+    val builderStuffedCrust: AddonItem? = null,
+    val builderSelectedComplements: List<AddonItem> = emptyList(),
+    val builderIsCombo: Boolean = false,
+    val builderErrorMessage: String? = null,
+    val snackbarMessage: String? = null
 ) {
     val canAddToCart: Boolean
         get() {
@@ -45,6 +69,50 @@ data class StoreDetailUiState(
             }
             return true
         }
+
+    val wizardUnitPrice: Double
+        get() {
+            val selected = wizardSelectedFlavors.filterNotNull()
+            if (selected.isEmpty()) return 0.0
+
+            val priceMode = store?.settings?.pastelPriceMode ?: "maior"
+
+            val basePrice = when (priceMode.lowercase()) {
+                "media" -> selected.map { it.price }.average()
+                "soma" -> selected.sumOf { it.price }
+                else -> selected.maxOf { it.price } // "maior" default
+            }
+
+            val complementsPrice = wizardSelectedComplements.sumOf { it.price }
+            return basePrice + complementsPrice
+        }
+
+    val wizardTotalPrice: Double
+        get() = wizardUnitPrice * wizardQuantity
+
+    val builderUnitPrice: Double
+        get() {
+            if (builderSelectedFlavors.isEmpty()) return 0.0
+            val priceMode = if (builderType == "pizza") {
+                store?.settings?.pizzaPriceMode ?: "maior"
+            } else {
+                store?.settings?.pastelPriceMode ?: "maior"
+            }
+
+            val basePrice = when (priceMode.lowercase()) {
+                "media" -> builderSelectedFlavors.map { it.price }.average()
+                "soma" -> builderSelectedFlavors.sumOf { it.price }
+                else -> builderSelectedFlavors.maxOf { it.price } // "maior" default
+            }
+
+            val stuffedCrustPrice = builderStuffedCrust?.price ?: 0.0
+            val complementsPrice = builderSelectedComplements.sumOf { it.price }
+
+            return basePrice + stuffedCrustPrice + complementsPrice
+        }
+
+    val builderTotalPrice: Double
+        get() = builderUnitPrice * builderQuantity
 
     val modalUnitPrice: Double
         get() {
@@ -130,6 +198,9 @@ class StoreDetailViewModel : ViewModel() {
             // Fetch menu_sections from Supabase
             val sections = SupabaseClient.fetchMenuSectionsForStore(storeId)
 
+            // Fetch pastel_borders from Supabase
+            val borders = SupabaseClient.fetchPastelBordersForStore(storeId)
+
             // Fetch products from Supabase (already sorted by name & filtered)
             val remoteProducts = SupabaseClient.fetchProductsForStore(storeId)
             _rawProducts.value = remoteProducts
@@ -143,6 +214,7 @@ class StoreDetailViewModel : ViewModel() {
                 store = store,
                 isLoading = false,
                 menuSections = sections,
+                pastelBorders = borders,
                 selectedSectionName = "Todos"
             )
         }
@@ -295,5 +367,335 @@ class StoreDetailViewModel : ViewModel() {
                 quantity = 1
             )
         }
+    }
+
+    fun openBuilder(type: String) {
+        val store = _uiState.value.store
+        val products = _rawProducts.value
+
+        // Check if store is closed
+        if (store == null || !store.isOpen) {
+            _uiState.value = _uiState.value.copy(
+                snackbarMessage = "Loja fechada. No momento esta loja não está aceitando pedidos."
+            )
+            return
+        }
+
+        // Check if store has at least 2 products
+        if (products.size < 2) {
+            _uiState.value = _uiState.value.copy(
+                snackbarMessage = "Cadastre pelo menos 2 sabores de pizza/pastel para usar o meio a meio."
+            )
+            return
+        }
+
+        if (type == "pastel") {
+            val maxFlavors = store.settings.pastelMaxFlavors
+            val initialStep = if (maxFlavors > 2) 0 else 1
+            val targetFlavors = if (maxFlavors > 2) 2 else minOf(2, maxFlavors)
+
+            _uiState.value = _uiState.value.copy(
+                showBuilderModal = true,
+                builderType = "pastel",
+                wizardStep = initialStep,
+                wizardTargetFlavors = targetFlavors,
+                wizardSelectedFlavors = List(targetFlavors) { null },
+                wizardSelectedComplements = emptyList(),
+                wizardQuantity = 1,
+                wizardNotes = "",
+                wizardErrorMessage = null
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                showBuilderModal = true,
+                builderType = type,
+                builderSelectedFlavors = emptyList(),
+                builderQuantity = 1,
+                builderNotes = "",
+                builderSelectedSize = "Média",
+                builderStuffedCrust = null,
+                builderSelectedComplements = emptyList(),
+                builderIsCombo = false,
+                builderErrorMessage = null
+            )
+        }
+    }
+
+    // Pastel Wizard Methods
+    fun setWizardTargetFlavors(target: Int) {
+        _uiState.value = _uiState.value.copy(
+            wizardTargetFlavors = target,
+            wizardSelectedFlavors = List(target) { null },
+            wizardStep = 1,
+            wizardErrorMessage = null
+        )
+    }
+
+    fun selectWizardFlavor(slotIndex: Int, product: Product) {
+        val current = _uiState.value.wizardSelectedFlavors.toMutableList()
+        if (slotIndex in current.indices) {
+            current[slotIndex] = product
+            _uiState.value = _uiState.value.copy(
+                wizardSelectedFlavors = current,
+                wizardErrorMessage = null
+            )
+        }
+    }
+
+    fun nextWizardStep() {
+        val state = _uiState.value
+        val step = state.wizardStep
+        if (step == 0) {
+            _uiState.value = state.copy(wizardStep = 1, wizardErrorMessage = null)
+            return
+        }
+        if (step >= 1 && step <= state.wizardTargetFlavors) {
+            val flavorForStep = state.wizardSelectedFlavors.getOrNull(step - 1)
+            if (flavorForStep == null) {
+                val flavorNum = when (step) {
+                    1 -> "1º"
+                    2 -> "2º"
+                    3 -> "3º"
+                    else -> "${step}º"
+                }
+                _uiState.value = state.copy(wizardErrorMessage = "Por favor, escolha o $flavorNum sabor para continuar.")
+                return
+            }
+            _uiState.value = state.copy(wizardStep = step + 1, wizardErrorMessage = null)
+        }
+    }
+
+    fun prevWizardStep() {
+        val state = _uiState.value
+        val step = state.wizardStep
+        val maxFlavors = state.store?.settings?.pastelMaxFlavors ?: 4
+        if (step == 1 && maxFlavors > 2) {
+            _uiState.value = state.copy(wizardStep = 0, wizardErrorMessage = null)
+        } else if (step > 1) {
+            _uiState.value = state.copy(wizardStep = step - 1, wizardErrorMessage = null)
+        } else {
+            closeBuilderModal()
+        }
+    }
+
+    fun toggleWizardComplement(border: PastelBorder) {
+        val current = _uiState.value.wizardSelectedComplements.toMutableList()
+        val maxComp = _uiState.value.store?.settings?.pastelMaxComplements ?: 3
+
+        if (current.any { it.id == border.id }) {
+            current.removeAll { it.id == border.id }
+        } else {
+            if (current.size < maxComp) {
+                current.add(border)
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    wizardErrorMessage = "Você pode escolher no máximo $maxComp complementos."
+                )
+                return
+            }
+        }
+        _uiState.value = _uiState.value.copy(wizardSelectedComplements = current, wizardErrorMessage = null)
+    }
+
+    fun incrementWizardQuantity() {
+        _uiState.value = _uiState.value.copy(wizardQuantity = _uiState.value.wizardQuantity + 1)
+    }
+
+    fun decrementWizardQuantity() {
+        if (_uiState.value.wizardQuantity > 1) {
+            _uiState.value = _uiState.value.copy(wizardQuantity = _uiState.value.wizardQuantity - 1)
+        }
+    }
+
+    fun updateWizardNotes(notes: String) {
+        _uiState.value = _uiState.value.copy(wizardNotes = notes)
+    }
+
+    fun addPastelWizardToCart() {
+        val state = _uiState.value
+        val store = state.store ?: return
+        val selectedFlavors = state.wizardSelectedFlavors.filterNotNull()
+
+        if (selectedFlavors.size < state.wizardTargetFlavors) {
+            _uiState.value = state.copy(wizardErrorMessage = "Selecione todos os ${state.wizardTargetFlavors} sabores.")
+            return
+        }
+
+        val flavorsText = selectedFlavors.joinToString(" / ") { it.name }
+        val productName = "Pastel Meio a Meio ($flavorsText)"
+
+        val selectedAddons = mutableListOf<SelectedAddonItem>()
+        for (comp in state.wizardSelectedComplements) {
+            selectedAddons.add(
+                SelectedAddonItem(
+                    itemId = comp.id,
+                    itemName = comp.name,
+                    itemPrice = comp.price,
+                    groupId = "pastel_border",
+                    groupName = "Complemento Extra"
+                )
+            )
+        }
+
+        val customProduct = Product(
+            id = "custom_pastel_${System.currentTimeMillis()}",
+            storeId = store.id,
+            name = productName,
+            description = "Sabores: $flavorsText",
+            price = state.wizardUnitPrice,
+            category = "Pastéis"
+        )
+
+        CartRepository.addProduct(
+            product = customProduct,
+            storeName = store.name,
+            quantity = state.wizardQuantity,
+            notes = state.wizardNotes.trim(),
+            selectedAddons = selectedAddons
+        )
+
+        closeBuilderModal()
+    }
+
+    fun closeBuilderModal() {
+        _uiState.value = _uiState.value.copy(showBuilderModal = false)
+    }
+
+    fun clearSnackbar() {
+        _uiState.value = _uiState.value.copy(snackbarMessage = null)
+    }
+
+    fun toggleBuilderFlavor(product: Product) {
+        val current = _uiState.value.builderSelectedFlavors.toMutableList()
+        val type = _uiState.value.builderType
+        val maxFlavors = if (type == "pizza") {
+            _uiState.value.store?.settings?.pizzaMaxFlavors ?: 4
+        } else {
+            _uiState.value.store?.settings?.pastelMaxFlavors ?: 4
+        }
+
+        if (current.any { it.id == product.id }) {
+            current.removeAll { it.id == product.id }
+        } else {
+            if (current.size < maxFlavors) {
+                current.add(product)
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    builderErrorMessage = "Você pode escolher no máximo $maxFlavors sabores."
+                )
+                return
+            }
+        }
+        _uiState.value = _uiState.value.copy(builderSelectedFlavors = current, builderErrorMessage = null)
+    }
+
+    fun incrementBuilderQuantity() {
+        _uiState.value = _uiState.value.copy(builderQuantity = _uiState.value.builderQuantity + 1)
+    }
+
+    fun decrementBuilderQuantity() {
+        if (_uiState.value.builderQuantity > 1) {
+            _uiState.value = _uiState.value.copy(builderQuantity = _uiState.value.builderQuantity - 1)
+        }
+    }
+
+    fun updateBuilderNotes(notes: String) {
+        _uiState.value = _uiState.value.copy(builderNotes = notes)
+    }
+
+    fun setBuilderSize(size: String) {
+        _uiState.value = _uiState.value.copy(builderSelectedSize = size)
+    }
+
+    fun setBuilderStuffedCrust(addon: AddonItem?) {
+        _uiState.value = _uiState.value.copy(builderStuffedCrust = addon)
+    }
+
+    fun toggleBuilderComplement(addon: AddonItem) {
+        val current = _uiState.value.builderSelectedComplements.toMutableList()
+        val maxComp = _uiState.value.store?.settings?.pastelMaxComplements ?: 3
+
+        if (current.any { it.id == addon.id }) {
+            current.removeAll { it.id == addon.id }
+        } else {
+            if (current.size < maxComp) {
+                current.add(addon)
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    builderErrorMessage = "Você pode escolher no máximo $maxComp complementos."
+                )
+                return
+            }
+        }
+        _uiState.value = _uiState.value.copy(builderSelectedComplements = current, builderErrorMessage = null)
+    }
+
+    fun setBuilderIsCombo(isCombo: Boolean) {
+        _uiState.value = _uiState.value.copy(builderIsCombo = isCombo)
+    }
+
+    fun addBuilderToCart() {
+        val state = _uiState.value
+        val store = state.store ?: return
+        val type = state.builderType
+
+        if (state.builderSelectedFlavors.isEmpty()) {
+            _uiState.value = state.copy(builderErrorMessage = "Selecione pelo menos 1 sabor.")
+            return
+        }
+
+        val flavorsText = state.builderSelectedFlavors.joinToString(" / ") { it.name }
+        val titlePrefix = if (type == "pizza") "Pizza Meio a Meio" else "Pastel Meio a Meio"
+        val productName = "$titlePrefix ($flavorsText)"
+
+        val singleSize = if (type == "pizza") store.settings.pizzaSingleSize else store.settings.pastelSingleSize
+        val sizeText = if (!singleSize) "Tamanho: ${state.builderSelectedSize}. " else ""
+
+        val selectedAddons = mutableListOf<SelectedAddonItem>()
+
+        state.builderStuffedCrust?.let { crust ->
+            selectedAddons.add(
+                SelectedAddonItem(
+                    itemId = crust.id,
+                    itemName = crust.name,
+                    itemPrice = crust.price,
+                    groupId = crust.groupId,
+                    groupName = "Borda Recheada"
+                )
+            )
+        }
+
+        for (comp in state.builderSelectedComplements) {
+            selectedAddons.add(
+                SelectedAddonItem(
+                    itemId = comp.id,
+                    itemName = comp.name,
+                    itemPrice = comp.price,
+                    groupId = comp.groupId,
+                    groupName = "Complemento Extra"
+                )
+            )
+        }
+
+        val customProduct = Product(
+            id = "custom_${type}_${System.currentTimeMillis()}",
+            storeId = store.id,
+            name = productName,
+            description = "Sabores: $flavorsText",
+            price = state.builderUnitPrice,
+            category = if (type == "pizza") "Pizzas" else "Pastéis"
+        )
+
+        val fullNotes = (sizeText + state.builderNotes).trim()
+
+        CartRepository.addProduct(
+            product = customProduct,
+            storeName = store.name,
+            quantity = state.builderQuantity,
+            notes = fullNotes,
+            selectedAddons = selectedAddons
+        )
+
+        closeBuilderModal()
     }
 }

@@ -1,9 +1,22 @@
 package com.example.data.model
 
+data class StoreSettings(
+    val pizzaHalfEnabled: Boolean = true,
+    val pastelHalfEnabled: Boolean = true,
+    val pizzaMaxFlavors: Int = 4,
+    val pastelMaxFlavors: Int = 4,
+    val pastelMaxComplements: Int = 3,
+    val pizzaPriceMode: String = "maior",
+    val pastelPriceMode: String = "maior",
+    val pizzaSingleSize: Boolean = false,
+    val pastelSingleSize: Boolean = false
+)
+
 data class Store(
     val id: String,
     val name: String,
     val category: String,
+    val secondaryCategories: List<String> = emptyList(),
     val rating: Double,
     val deliveryTime: String,
     val deliveryFee: String,
@@ -15,7 +28,8 @@ data class Store(
     val minOrder: Double = 10.0,
     val createdAt: String = "",
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    val settings: StoreSettings = StoreSettings()
 )
 
 data class CategoryItem(

@@ -1,6 +1,18 @@
 package com.example.ui.store
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,9 +25,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,7 +46,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocalPizza
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
@@ -41,24 +63,33 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import com.example.data.model.PastelBorder
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,7 +126,17 @@ fun StoreDetailScreen(
     val products by viewModel.filteredProducts.collectAsState()
     val cartState by viewModel.cartState.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearSnackbar()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -204,6 +245,106 @@ fun StoreDetailScreen(
                 // Header Banner & Store Information
                 item {
                     StoreHeaderSection(store = store)
+                }
+
+                // Monte Sua Pizza / Monte Seu Pastel Custom Builder Buttons
+                val hasPizzaCategory = store?.let { s ->
+                    s.category.lowercase().contains("pizza") || s.secondaryCategories.any { it.lowercase().contains("pizza") }
+                } ?: false
+
+                val hasPastelCategory = store?.let { s ->
+                    s.category.lowercase().contains("pastel") || s.category.lowercase().contains("pasteis") ||
+                    s.secondaryCategories.any { it.lowercase().contains("pastel") || it.lowercase().contains("pasteis") }
+                } ?: false
+
+                val showPizzaBuilderButton = hasPizzaCategory && (store?.settings?.pizzaHalfEnabled != false) && products.isNotEmpty()
+                val showPastelBuilderButton = hasPastelCategory && (store?.settings?.pastelHalfEnabled != false) && products.isNotEmpty()
+
+                if (showPizzaBuilderButton || showPastelBuilderButton) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (showPizzaBuilderButton) {
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { viewModel.openBuilder("pizza") }
+                                        .testTag("monte_sua_pizza_button"),
+                                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.1f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.3f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.LocalPizza,
+                                            contentDescription = "Monte Sua Pizza",
+                                            tint = ItaSuperPrimary,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "Monte Sua Pizza",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = ItaSuperPrimary
+                                            )
+                                            Text(
+                                                text = "Meio a Meio",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (showPastelBuilderButton) {
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { viewModel.openBuilder("pastel") }
+                                        .testTag("monte_seu_pastel_button"),
+                                    colors = CardDefaults.cardColors(containerColor = ItaSuperSecondary.copy(alpha = 0.2f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Restaurant,
+                                            contentDescription = "Monte Seu Pastel",
+                                            tint = ItaSuperPrimary,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "Monte Seu Pastel",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = ItaSuperPrimary
+                                            )
+                                            Text(
+                                                text = "Meio a Meio",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Search inside Store Menu
@@ -342,6 +483,53 @@ fun StoreDetailScreen(
                     onNotesChange = { viewModel.updateModalNotes(it) },
                     onAddToCartClick = { viewModel.addSelectedProductToCart() }
                 )
+            }
+        }
+
+        // Modal or Full Screen Dialog for Monte Sua Pizza / Monte Seu Pastel Custom Builder
+        if (uiState.showBuilderModal) {
+            if (uiState.builderType == "pastel") {
+                Dialog(
+                    onDismissRequest = { viewModel.closeBuilderModal() },
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = false
+                    )
+                ) {
+                    PastelWizardFullScreenContent(
+                        uiState = uiState,
+                        allProducts = products,
+                        onClose = { viewModel.closeBuilderModal() },
+                        onSelectTargetFlavors = { viewModel.setWizardTargetFlavors(it) },
+                        onSelectFlavorForStep = { slot, prod -> viewModel.selectWizardFlavor(slot, prod) },
+                        onNextStep = { viewModel.nextWizardStep() },
+                        onPrevStep = { viewModel.prevWizardStep() },
+                        onToggleComplement = { viewModel.toggleWizardComplement(it) },
+                        onNotesChange = { viewModel.updateWizardNotes(it) },
+                        onQuantityIncrement = { viewModel.incrementWizardQuantity() },
+                        onQuantityDecrement = { viewModel.decrementWizardQuantity() },
+                        onAddToCartClick = { viewModel.addPastelWizardToCart() }
+                    )
+                }
+            } else {
+                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+                ModalBottomSheet(
+                    onDismissRequest = { viewModel.closeBuilderModal() },
+                    sheetState = sheetState
+                ) {
+                    CustomBuilderSheetContent(
+                        uiState = uiState,
+                        allProducts = products,
+                        onToggleFlavor = { viewModel.toggleBuilderFlavor(it) },
+                        onSelectSize = { viewModel.setBuilderSize(it) },
+                        onToggleComplement = { viewModel.toggleBuilderComplement(it) },
+                        onNotesChange = { viewModel.updateBuilderNotes(it) },
+                        onQuantityIncrement = { viewModel.incrementBuilderQuantity() },
+                        onQuantityDecrement = { viewModel.decrementBuilderQuantity() },
+                        onAddToCartClick = { viewModel.addBuilderToCart() }
+                    )
+                }
             }
         }
     }
@@ -495,7 +683,7 @@ fun ProductItemCard(
                     fontWeight = FontWeight.Bold
                 )
 
-                if (product.description.isNotBlank()) {
+                if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = product.description,
@@ -602,7 +790,7 @@ fun ProductDetailSheetContent(
             fontWeight = FontWeight.Bold
         )
 
-        if (product.description.isNotBlank()) {
+        if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = product.description,
@@ -805,4 +993,914 @@ fun ProductDetailSheetContent(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomBuilderSheetContent(
+    uiState: StoreDetailUiState,
+    allProducts: List<Product>,
+    onToggleFlavor: (Product) -> Unit,
+    onSelectSize: (String) -> Unit,
+    onToggleComplement: (AddonItem) -> Unit,
+    onNotesChange: (String) -> Unit,
+    onQuantityIncrement: () -> Unit,
+    onQuantityDecrement: () -> Unit,
+    onAddToCartClick: () -> Unit
+) {
+    val store = uiState.store ?: return
+    val type = uiState.builderType
+    val scrollState = rememberScrollState()
+
+    val isPizza = type == "pizza"
+    val title = if (isPizza) "Monte Sua Pizza" else "Monte Seu Pastel"
+    val maxFlavors = if (isPizza) store.settings.pizzaMaxFlavors else store.settings.pastelMaxFlavors
+    val priceMode = if (isPizza) store.settings.pizzaPriceMode else store.settings.pastelPriceMode
+    val singleSize = if (isPizza) store.settings.pizzaSingleSize else store.settings.pastelSingleSize
+
+    val priceModeText = when (priceMode.lowercase()) {
+        "media" -> "Média dos sabores"
+        "soma" -> "Soma dos sabores"
+        else -> "Sabor mais caro"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
+            .padding(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Escolha até $maxFlavors sabores ($priceModeText)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+            Surface(
+                color = ItaSuperPrimary.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = "${uiState.builderSelectedFlavors.size}/$maxFlavors Sabores",
+                    color = ItaSuperPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Size Selection if not singleSize
+        if (!singleSize) {
+            Text(
+                text = "Tamanho",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val sizes = listOf("Broto", "Média", "Grande", "Gigante")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                sizes.forEach { sz ->
+                    val selected = uiState.builderSelectedSize.equals(sz, ignoreCase = true)
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSelectSize(sz) },
+                        label = { Text(sz) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ItaSuperPrimary,
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Sabores Section
+        Text(
+            text = "Sabores Disponíveis (Escolha de 1 a $maxFlavors)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        allProducts.forEach { product ->
+            val isSelected = uiState.builderSelectedFlavors.any { it.id == product.id }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .clickable { onToggleFlavor(product) },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                ),
+                border = if (isSelected) BorderStroke(1.dp, ItaSuperPrimary) else BorderStroke(0.5.dp, Color.LightGray),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onToggleFlavor(product) },
+                            colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = product.name,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            if (product.description.isNotBlank()) {
+                                Text(
+                                    text = product.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = String.format("R$ %.2f", product.price).replace(".", ","),
+                        fontWeight = FontWeight.Bold,
+                        color = ItaSuperPrimary,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Observações
+        OutlinedTextField(
+            value = uiState.builderNotes,
+            onValueChange = onNotesChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("builder_notes_input"),
+            label = { Text("Alguma observação?") },
+            placeholder = { Text("Ex: Sem cebola, massa bem assada...") },
+            maxLines = 3,
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        if (!uiState.builderErrorMessage.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.builderErrorMessage!!,
+                color = Color.Red,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Quantity Selector & Submit
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                IconButton(onClick = onQuantityDecrement, enabled = uiState.builderQuantity > 1) {
+                    Icon(imageVector = Icons.Default.Remove, contentDescription = "Diminuir")
+                }
+                Text(
+                    text = "${uiState.builderQuantity}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                IconButton(onClick = onQuantityIncrement) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Aumentar")
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Button(
+                onClick = onAddToCartClick,
+                enabled = uiState.builderSelectedFlavors.isNotEmpty(),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .testTag("confirm_builder_add_to_cart"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+            ) {
+                Text(
+                    text = "Adicionar • ${String.format("R$ %.2f", uiState.builderTotalPrice).replace(".", ",")}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = Color.White
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PastelWizardFullScreenContent(
+    uiState: StoreDetailUiState,
+    allProducts: List<Product>,
+    onClose: () -> Unit,
+    onSelectTargetFlavors: (Int) -> Unit,
+    onSelectFlavorForStep: (Int, Product) -> Unit,
+    onNextStep: () -> Unit,
+    onPrevStep: () -> Unit,
+    onToggleComplement: (PastelBorder) -> Unit,
+    onNotesChange: (String) -> Unit,
+    onQuantityIncrement: () -> Unit,
+    onQuantityDecrement: () -> Unit,
+    onAddToCartClick: () -> Unit
+) {
+    val store = uiState.store ?: return
+    val scrollState = rememberScrollState()
+    val maxFlavors = store.settings.pastelMaxFlavors
+    val maxComplements = store.settings.pastelMaxComplements
+
+    BackHandler {
+        onPrevStep()
+    }
+
+    // Filter pastel products
+    val filteredPastelProducts = remember(allProducts, uiState.menuSections) {
+        val hasCuratedFlavors = allProducts.any { it.isPastelFlavor }
+        if (hasCuratedFlavors) {
+            allProducts.filter { it.isPastelFlavor && it.isAvailable }
+        } else {
+            val beverageKeywords = listOf("bebida", "drink", "suco", "refrigerante", "água", "agua", "cerveja", "energético", "energetico")
+            val sectionMap = uiState.menuSections.associateBy { it.id }
+
+            allProducts.filter { p ->
+                if (!p.isAvailable) return@filter false
+                if (p.isBeverage) return@filter false
+
+                val secName = p.sectionId?.let { sectionMap[it]?.name } ?: p.category
+                val secNameLower = secName.lowercase()
+                val catLower = p.category.lowercase()
+
+                val isBeverageSection = beverageKeywords.any { kw ->
+                    secNameLower.contains(kw) || catLower.contains(kw)
+                }
+                !isBeverageSection
+            }
+        }
+    }
+
+    // Products grouped by section
+    val productsBySection = remember(filteredPastelProducts, uiState.menuSections) {
+        val sectionMap = uiState.menuSections.associateBy { it.id }
+        val grouped = LinkedHashMap<String, MutableList<Product>>()
+
+        for (p in filteredPastelProducts) {
+            val secName = p.sectionId?.let { sectionMap[it]?.name } ?: p.category
+            val headerName = if (secName.isBlank() || secName.equals("null", ignoreCase = true)) "Pastéis" else secName
+            grouped.getOrPut(headerName) { mutableListOf() }.add(p)
+        }
+        grouped
+    }
+
+    val step = uiState.wizardStep
+    val targetFlavors = uiState.wizardTargetFlavors
+
+    val totalSteps = if (maxFlavors > 2) targetFlavors + 1 else targetFlavors
+    val currentStepNumber = if (maxFlavors > 2) step + 1 else step
+    val progress = if (totalSteps > 0) (currentStepNumber.toFloat() / totalSteps.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        label = "pastel_progress_anim"
+    )
+
+    LaunchedEffect(step) {
+        scrollState.animateScrollTo(0)
+    }
+
+    val stepTitle = when {
+        step == 0 -> "Etapa 1 de $totalSteps: Quantos Sabores?"
+        step in 1..targetFlavors -> {
+            val ordinal = when (step) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${step}º" }
+            val stepIdx = if (maxFlavors > 2) step + 1 else step
+            "Etapa $stepIdx de $totalSteps: Escolha o $ordinal Sabor"
+        }
+        else -> "Etapa $totalSteps de $totalSteps: Complementos & Observações"
+    }
+
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 680.dp)
+                        .fillMaxWidth()
+                ) {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    text = "Monte Seu Pastel",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = stepTitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ItaSuperPrimary
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onPrevStep) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Voltar"
+                                )
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = onClose) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Fechar"
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        windowInsets = WindowInsets(0, 0, 0, 0)
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = ItaSuperPrimary,
+                    trackColor = Color.LightGray.copy(alpha = 0.3f)
+                )
+            }
+        },
+        bottomBar = {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .widthIn(max = 680.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (step == 0) {
+                            Button(
+                                onClick = onNextStep,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                            ) {
+                                Text(
+                                    text = "Avançar para Escolha de Sabores",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else if (step in 1..targetFlavors) {
+                            val flavorIndex = step - 1
+                            val hasSelectionForThisStep = uiState.wizardSelectedFlavors.getOrNull(flavorIndex) != null
+
+                            OutlinedButton(
+                                onClick = onPrevStep,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Anterior", textAlign = TextAlign.Center)
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Button(
+                                onClick = onNextStep,
+                                enabled = hasSelectionForThisStep,
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                            ) {
+                                Text(
+                                    text = if (step == targetFlavors) "Ir para Complementos" else "Próximo Sabor",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            // Final step
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 2.dp, vertical = 2.dp)
+                            ) {
+                                IconButton(onClick = onQuantityDecrement, enabled = uiState.wizardQuantity > 1) {
+                                    Icon(imageVector = Icons.Default.Remove, contentDescription = "Diminuir")
+                                }
+                                Text(
+                                    text = "${uiState.wizardQuantity}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                )
+                                IconButton(onClick = onQuantityIncrement) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = "Aumentar")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Button(
+                                onClick = onAddToCartClick,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 50.dp)
+                                    .testTag("confirm_pastel_wizard_add_to_cart"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                            ) {
+                                Text(
+                                    text = "Adicionar • ${String.format("R$ %.2f", uiState.wizardTotalPrice).replace(".", ",")}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            AnimatedContent(
+                targetState = step,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { width -> width / 3 } + fadeIn(animationSpec = tween(220))) togetherWith
+                                (slideOutHorizontally { width -> -width / 3 } + fadeOut(animationSpec = tween(180)))
+                    } else {
+                        (slideInHorizontally { width -> -width / 3 } + fadeIn(animationSpec = tween(220))) togetherWith
+                                (slideOutHorizontally { width -> width / 3 } + fadeOut(animationSpec = tween(180)))
+                    }.using(SizeTransform(clip = false))
+                },
+                label = "wizard_step_anim"
+            ) { currentStep ->
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 680.dp)
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    // STEP 0: Quantos Sabores?
+                    if (currentStep == 0) {
+                Text(
+                    text = "Quantos sabores você deseja?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Monte seu pastel combinando até $maxFlavors sabores no mesmo pastel.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                val options = (2..minOf(4, maxFlavors)).toList()
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    options.forEach { optCount ->
+                        val selected = targetFlavors == optCount
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectTargetFlavors(optCount) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color.LightGray),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "$optCount Sabores",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        text = when (optCount) {
+                                            2 -> "Meio a Meio (50% cada)"
+                                            3 -> "1/3 para cada sabor"
+                                            else -> "1/4 para cada sabor"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = { onSelectTargetFlavors(optCount) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            // STEP 1..N: Escolha dos Sabores
+            else if (currentStep in 1..targetFlavors) {
+                val flavorIndex = currentStep - 1
+                val ordinalText = when (currentStep) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${currentStep}º" }
+                val fractionStr = when (targetFlavors) {
+                    2 -> "½"
+                    3 -> "⅓"
+                    4 -> "¼"
+                    else -> "1/$targetFlavors"
+                }
+
+                // Top Progress Summary Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Composição Atual:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ItaSuperPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        for (i in 0 until targetFlavors) {
+                            val flavorObj = uiState.wizardSelectedFlavors.getOrNull(i)
+                            val slotOrdinal = when (i + 1) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${i+1}º" }
+                            val isCurrentSlot = i == flavorIndex
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = "$fractionStr Pastel - ${flavorObj?.name ?: "($slotOrdinal sabor a escolher)"}",
+                                    fontWeight = if (isCurrentSlot) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (flavorObj != null) Color.Black else if (isCurrentSlot) ItaSuperPrimary else Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                                if (flavorObj != null) {
+                                    Text(
+                                        text = String.format("R$ %.2f", flavorObj.price).replace(".", ","),
+                                        fontSize = 13.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = ItaSuperPrimary.copy(alpha = 0.2f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val priceModeLabel = when (store.settings.pastelPriceMode.lowercase()) {
+                                "media" -> "Média dos valores"
+                                "soma" -> "Soma dos valores"
+                                else -> "Maior valor entre os escolhidos"
+                            }
+                            Text(
+                                text = "Valor base ($priceModeLabel):",
+                                fontSize = 12.sp,
+                                color = Color.DarkGray
+                            )
+                            Text(
+                                text = String.format("R$ %.2f", uiState.wizardUnitPrice).replace(".", ","),
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperPrimary,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "Escolha o $ordinalText sabor ($fractionStr do pastel)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (filteredPastelProducts.isEmpty()) {
+                    Text(
+                        text = "Nenhum sabor de pastel disponível nesta loja.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    productsBySection.forEach { (sectionHeader, sectionProducts) ->
+                        Text(
+                            text = sectionHeader.uppercase(),
+                            fontWeight = FontWeight.Bold,
+                            color = ItaSuperPrimary,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                        )
+
+                        sectionProducts.forEach { product ->
+                            val isSelected = uiState.wizardSelectedFlavors.getOrNull(flavorIndex)?.id == product.id
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable { onSelectFlavorForStep(flavorIndex, product) },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) ItaSuperPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                                ),
+                                border = BorderStroke(if (isSelected) 2.dp else 0.5.dp, if (isSelected) ItaSuperPrimary else Color.LightGray),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = { onSelectFlavorForStep(flavorIndex, product) },
+                                            colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = product.name,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
+                                                Text(
+                                                    text = product.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.Gray,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = String.format("R$ %.2f", product.price).replace(".", ","),
+                                        fontWeight = FontWeight.Bold,
+                                        color = ItaSuperPrimary,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!uiState.wizardErrorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = uiState.wizardErrorMessage!!,
+                        color = Color.Red,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            // FINAL STEP: Complementos & Notes
+            else {
+                val fractionStr = when (targetFlavors) {
+                    2 -> "½"
+                    3 -> "⅓"
+                    4 -> "¼"
+                    else -> "1/$targetFlavors"
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Sabores Selecionados:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ItaSuperPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        uiState.wizardSelectedFlavors.filterNotNull().forEach { flav ->
+                            Text(
+                                text = "• $fractionStr ${flav.name} (${String.format("R$ %.2f", flav.price).replace(".", ",")})",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "Complementos Extras",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Escolha até $maxComplements complementos para rechear seu pastel",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (uiState.pastelBorders.isEmpty()) {
+                    Text(
+                        text = "Nenhum complemento extra cadastrado.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else {
+                    uiState.pastelBorders.forEach { border ->
+                        val isChecked = uiState.wizardSelectedComplements.any { it.id == border.id }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onToggleComplement(border) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isChecked) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(if (isChecked) 1.5.dp else 0.5.dp, if (isChecked) ItaSuperPrimary else Color.LightGray),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { onToggleComplement(border) },
+                                        colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = border.name,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                                Text(
+                                    text = if (border.price > 0) "+ ${String.format("R$ %.2f", border.price).replace(".", ",")}" else "Grátis",
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                OutlinedTextField(
+                    value = uiState.wizardNotes,
+                    onValueChange = onNotesChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pastel_wizard_notes_input"),
+                    label = { Text("Alguma observação?") },
+                    placeholder = { Text("Ex: Pastel bem frito, sem pimenta...") },
+                    maxLines = 3,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (!uiState.wizardErrorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = uiState.wizardErrorMessage!!,
+                        color = Color.Red,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+}
 }

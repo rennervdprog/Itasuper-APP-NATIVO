@@ -6,6 +6,7 @@ import com.example.data.model.AddonItem
 import com.example.data.model.MenuSection
 import com.example.data.model.Product
 import com.example.data.model.Store
+import com.example.data.model.StoreSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -320,10 +321,49 @@ object SupabaseClient {
                     val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else null
                     val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else null
 
+                    // Secondary Categories
+                    val secCats = mutableListOf<String>()
+                    val secArr = item.optJSONArray("secondary_categories") ?: item.optJSONArray("categories")
+                    if (secArr != null) {
+                        for (j in 0 until secArr.length()) {
+                            secCats.add(secArr.getString(j))
+                        }
+                    } else {
+                        val secStr = item.optString("secondary_categories", item.optString("categories", ""))
+                        if (secStr.isNotBlank()) {
+                            secCats.addAll(secStr.split(",").map { it.trim() })
+                        }
+                    }
+
+                    // Settings JSON column
+                    var settingsObj = item.optJSONObject("settings")
+                    if (settingsObj == null && item.has("settings") && !item.isNull("settings")) {
+                        val sStr = item.optString("settings", "")
+                        if (sStr.isNotBlank() && sStr.startsWith("{")) {
+                            try { settingsObj = JSONObject(sStr) } catch (_: Exception) {}
+                        }
+                    }
+
+                    val pizzaConfig = settingsObj?.optJSONObject("pizza_config")
+                    val pastelConfig = settingsObj?.optJSONObject("pastel_config")
+
+                    val storeSettings = StoreSettings(
+                        pizzaHalfEnabled = settingsObj?.optBoolean("pizza_half_enabled", true) ?: true,
+                        pastelHalfEnabled = settingsObj?.optBoolean("pastel_half_enabled", true) ?: true,
+                        pizzaMaxFlavors = pizzaConfig?.optInt("max_flavors", 4) ?: (settingsObj?.optInt("pizza_max_flavors", 4) ?: 4),
+                        pastelMaxFlavors = pastelConfig?.optInt("max_flavors", 4) ?: (settingsObj?.optInt("pastel_max_flavors", 4) ?: 4),
+                        pastelMaxComplements = pastelConfig?.optInt("max_complements", 3) ?: (settingsObj?.optInt("pastel_max_complements", 3) ?: 3),
+                        pizzaPriceMode = settingsObj?.optString("pizza_price_mode", "maior") ?: "maior",
+                        pastelPriceMode = settingsObj?.optString("pastel_price_mode", "maior") ?: "maior",
+                        pizzaSingleSize = settingsObj?.optBoolean("pizza_single_size", false) ?: false,
+                        pastelSingleSize = settingsObj?.optBoolean("pastel_single_size", false) ?: false
+                    )
+
                     val store = Store(
                         id = id,
                         name = name,
                         category = category,
+                        secondaryCategories = secCats,
                         rating = rating,
                         deliveryTime = "30-40 min",
                         deliveryFee = deliveryFeeText,
@@ -335,7 +375,8 @@ object SupabaseClient {
                         minOrder = 15.0,
                         createdAt = createdAt,
                         latitude = lat,
-                        longitude = lng
+                        longitude = lng,
+                        settings = storeSettings
                     )
                     storeList.add(store)
                 }
@@ -557,13 +598,22 @@ object SupabaseClient {
                     val soldByWeight = item.optBoolean("sold_by_weight", false)
                     if (soldByWeight) continue
 
-                    // Parse metadata for pdv_only and hidden
+                    // Parse metadata for pdv_only, hidden, has_stuffed_crust, is_combo, is_pastel_flavor, is_beverage
                     var isPdvOnly = false
                     var isHidden = false
+                    var hasStuffedCrust = item.optBoolean("has_stuffed_crust", false)
+                    var isCombo = item.optBoolean("is_combo", false)
+                    var isPastelFlavor = item.optBoolean("is_pastel_flavor", false)
+                    var isBeverage = item.optBoolean("is_beverage", false)
+
                     val metadataObj = item.optJSONObject("metadata")
                     if (metadataObj != null) {
                         isPdvOnly = metadataObj.optBoolean("pdv_only", false)
                         isHidden = metadataObj.optBoolean("hidden", false)
+                        if (metadataObj.has("has_stuffed_crust")) hasStuffedCrust = metadataObj.optBoolean("has_stuffed_crust", false)
+                        if (metadataObj.has("is_combo")) isCombo = metadataObj.optBoolean("is_combo", false)
+                        if (metadataObj.has("is_pastel_flavor")) isPastelFlavor = metadataObj.optBoolean("is_pastel_flavor", false)
+                        if (metadataObj.has("is_beverage")) isBeverage = metadataObj.optBoolean("is_beverage", false)
                     } else if (item.has("metadata") && !item.isNull("metadata")) {
                         val metaStr = item.optString("metadata", "")
                         if (metaStr.isNotBlank() && metaStr.startsWith("{")) {
@@ -571,13 +621,18 @@ object SupabaseClient {
                                 val parsed = JSONObject(metaStr)
                                 isPdvOnly = parsed.optBoolean("pdv_only", false)
                                 isHidden = parsed.optBoolean("hidden", false)
+                                if (parsed.has("has_stuffed_crust")) hasStuffedCrust = parsed.optBoolean("has_stuffed_crust", false)
+                                if (parsed.has("is_combo")) isCombo = parsed.optBoolean("is_combo", false)
+                                if (parsed.has("is_pastel_flavor")) isPastelFlavor = parsed.optBoolean("is_pastel_flavor", false)
+                                if (parsed.has("is_beverage")) isBeverage = parsed.optBoolean("is_beverage", false)
                             } catch (_: Exception) {}
                         }
                     }
 
                     if (isPdvOnly || isHidden) continue
 
-                    val description = item.optString("description", "")
+                    val rawDesc = item.optString("description", "")
+                    val description = if (rawDesc.trim() == "null") "" else rawDesc
                     val price = item.optDouble("price", 0.0)
                     val category = item.optString("category", "Geral")
                     val sectionId = if (item.has("section_id") && !item.isNull("section_id")) item.optString("section_id", null) else null
@@ -594,7 +649,11 @@ object SupabaseClient {
                             category = category,
                             sectionId = sectionId,
                             imageUrl = imageUrl,
-                            isAvailable = isAvailable
+                            isAvailable = isAvailable,
+                            hasStuffedCrust = hasStuffedCrust,
+                            isCombo = isCombo,
+                            isPastelFlavor = isPastelFlavor,
+                            isBeverage = isBeverage
                         )
                     )
                 }
@@ -757,6 +816,56 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching addon_items", e)
+            emptyList()
+        }
+    }
+
+    // 5e. FETCH PASTEL BORDERS FOR STORE
+    suspend fun fetchPastelBordersForStore(storeId: String): List<com.example.data.model.PastelBorder> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/pastel_borders?store_id=eq.$storeId&is_available=eq.true&order=sort_order.asc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val bordersList = mutableListOf<com.example.data.model.PastelBorder>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val id = item.optString("id", "")
+                    val name = item.optString("name", "")
+                    val price = item.optDouble("price", 0.0)
+                    val isAvailable = item.optBoolean("is_available", true)
+                    val sortOrder = item.optInt("sort_order", 0)
+                    val sId = item.optString("store_id", storeId)
+
+                    if (id.isNotBlank() && name.isNotBlank()) {
+                        bordersList.add(
+                            com.example.data.model.PastelBorder(
+                                id = id,
+                                storeId = sId,
+                                name = name,
+                                price = price,
+                                isAvailable = isAvailable,
+                                sortOrder = sortOrder
+                            )
+                        )
+                    }
+                }
+                bordersList.sortedBy { it.sortOrder }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching pastel_borders for store $storeId", e)
             emptyList()
         }
     }
