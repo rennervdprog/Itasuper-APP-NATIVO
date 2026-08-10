@@ -19,14 +19,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -35,6 +35,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -45,6 +47,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,9 +59,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +71,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.model.AddonGroup
+import com.example.data.model.AddonItem
 import com.example.data.model.Product
 import com.example.data.model.Store
 import com.example.ui.theme.ItaSuperPrimary
@@ -92,8 +95,6 @@ fun StoreDetailScreen(
     val products by viewModel.filteredProducts.collectAsState()
     val cartState by viewModel.cartState.collectAsState()
 
-    var isFavorite by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -113,15 +114,6 @@ fun StoreDetailScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Voltar"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favoritar",
-                            tint = if (isFavorite) Color.Red else Color.Gray
                         )
                     }
                 },
@@ -216,13 +208,12 @@ fun StoreDetailScreen(
 
                 // Search inside Store Menu
                 item {
-                    PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     OutlinedTextField(
                         value = uiState.searchQuery,
                         onValueChange = { viewModel.onSearchQueryChange(it) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                             .testTag("menu_search_input"),
                         placeholder = { Text("Buscar no cardápio de ${store?.name ?: "esta loja"}...") },
                         leadingIcon = {
@@ -244,30 +235,29 @@ fun StoreDetailScreen(
                     )
                 }
 
-                // Category Tabs
-                if (uiState.categories.isNotEmpty()) {
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(uiState.categories) { cat ->
-                                val isSelected = cat == uiState.selectedCategory
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { viewModel.selectCategory(cat) },
-                                    label = {
-                                        Text(
-                                            text = cat,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ItaSuperPrimary,
-                                        selectedLabelColor = Color.White
+                // Menu Section Chips (Real menu_sections query)
+                val allSectionNames = listOf("Todos") + uiState.menuSections.map { it.name }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(allSectionNames) { secName ->
+                            val isSelected = secName.equals(uiState.selectedSectionName, ignoreCase = true)
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.selectSection(secName) },
+                                label = {
+                                    Text(
+                                        text = secName,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ItaSuperPrimary,
+                                    selectedLabelColor = Color.White
                                 )
-                            }
+                            )
                         }
                     }
                 }
@@ -306,7 +296,7 @@ fun StoreDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = if (uiState.searchQuery.isNotBlank() || uiState.selectedCategory != "Todos") {
+                                text = if (uiState.searchQuery.isNotBlank() || uiState.selectedSectionName != "Todos") {
                                     "Nenhum produto encontrado neste filtro."
                                 } else {
                                     "Esta loja ainda não cadastrou produtos"
@@ -334,7 +324,7 @@ fun StoreDetailScreen(
             }
         }
 
-        // Modal Bottom Sheet for Product Detail
+        // Modal Bottom Sheet for Product Detail & Addons
         if (uiState.selectedProductForModal != null) {
             val product = uiState.selectedProductForModal!!
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -345,8 +335,8 @@ fun StoreDetailScreen(
             ) {
                 ProductDetailSheetContent(
                     product = product,
-                    quantity = uiState.modalQuantity,
-                    notes = uiState.modalNotes,
+                    uiState = uiState,
+                    onToggleAddonItem = { group, item -> viewModel.toggleAddonItem(group, item) },
                     onQuantityIncrement = { viewModel.incrementModalQuantity() },
                     onQuantityDecrement = { viewModel.decrementModalQuantity() },
                     onNotesChange = { viewModel.updateModalNotes(it) },
@@ -433,7 +423,7 @@ fun StoreHeaderSection(store: Store?) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Info Chips Row (Rating, Time, Fee, Min order)
+            // Info Chips Row (Rating, Time, Fee)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -540,7 +530,7 @@ fun ProductItemCard(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Add button / Image
+            // Image and Add button
             Box(
                 contentAlignment = Alignment.BottomEnd
             ) {
@@ -591,16 +581,19 @@ fun ProductItemCard(
 @Composable
 fun ProductDetailSheetContent(
     product: Product,
-    quantity: Int,
-    notes: String,
+    uiState: StoreDetailUiState,
+    onToggleAddonItem: (AddonGroup, AddonItem) -> Unit,
     onQuantityIncrement: () -> Unit,
     onQuantityDecrement: () -> Unit,
     onNotesChange: (String) -> Unit,
     onAddToCartClick: () -> Unit
 ) {
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(scrollState)
             .padding(20.dp)
     ) {
         Text(
@@ -609,13 +602,14 @@ fun ProductDetailSheetContent(
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = product.description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray
-        )
+        if (product.description.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = product.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.DarkGray
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -626,11 +620,118 @@ fun ProductDetailSheetContent(
             color = ItaSuperPrimary
         )
 
+        // Addon Groups Section
+        if (uiState.modalAddonGroups.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            uiState.modalAddonGroups.forEach { group ->
+                val items = uiState.modalAddonItemsMap[group.id] ?: emptyList()
+                val selectedItems = uiState.modalSelectedAddonsMap[group.id] ?: emptyList()
+
+                if (items.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = group.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Surface(
+                                    color = if (group.minSelect > 0) ItaSuperPrimary.copy(alpha = 0.15f) else Color.LightGray.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = if (group.minSelect > 0) "OBRIGATÓRIO" else "OPCIONAL",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (group.minSelect > 0) ItaSuperPrimary else Color.DarkGray,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            val ruleText = if (group.maxSelect == 1) {
+                                "Escolha 1 opção"
+                            } else {
+                                "Escolha até ${group.maxSelect} opções"
+                            }
+                            Text(
+                                text = ruleText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            items.forEach { addonItem ->
+                                val isSelected = selectedItems.contains(addonItem)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onToggleAddonItem(group, addonItem) }
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        if (group.maxSelect == 1) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = { onToggleAddonItem(group, addonItem) },
+                                                colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                            )
+                                        } else {
+                                            Checkbox(
+                                                checked = isSelected,
+                                                onCheckedChange = { onToggleAddonItem(group, addonItem) },
+                                                colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = addonItem.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+
+                                    if (addonItem.price > 0.0) {
+                                        Text(
+                                            text = "+ ${String.format("R$ %.2f", addonItem.price).replace(".", ",")}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ItaSuperPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // Observações
         OutlinedTextField(
-            value = notes,
+            value = uiState.modalNotes,
             onValueChange = onNotesChange,
             modifier = Modifier
                 .fillMaxWidth()
@@ -640,6 +741,16 @@ fun ProductDetailSheetContent(
             maxLines = 3,
             shape = RoundedCornerShape(12.dp)
         )
+
+        if (!uiState.modalError.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.modalError!!,
+                color = Color.Red,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -656,11 +767,11 @@ fun ProductDetailSheetContent(
                     .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                IconButton(onClick = onQuantityDecrement, enabled = quantity > 1) {
+                IconButton(onClick = onQuantityDecrement, enabled = uiState.modalQuantity > 1) {
                     Icon(imageVector = Icons.Default.Remove, contentDescription = "Diminuir")
                 }
                 Text(
-                    text = "$quantity",
+                    text = "${uiState.modalQuantity}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     modifier = Modifier.padding(horizontal = 12.dp)
@@ -673,9 +784,9 @@ fun ProductDetailSheetContent(
             Spacer(modifier = Modifier.width(16.dp))
 
             // Submit Add Button
-            val total = product.price * quantity
             Button(
                 onClick = onAddToCartClick,
+                enabled = uiState.canAddToCart,
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
@@ -684,7 +795,7 @@ fun ProductDetailSheetContent(
                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
             ) {
                 Text(
-                    text = "Adicionar • ${String.format("R$ %.2f", total).replace(".", ",")}",
+                    text = "Adicionar • ${String.format("R$ %.2f", uiState.modalTotalPrice).replace(".", ",")}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = Color.White
@@ -692,6 +803,6 @@ fun ProductDetailSheetContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }

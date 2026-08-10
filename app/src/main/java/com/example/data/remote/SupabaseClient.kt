@@ -1,6 +1,9 @@
 package com.example.data.remote
 
 import android.util.Log
+import com.example.data.model.AddonGroup
+import com.example.data.model.AddonItem
+import com.example.data.model.MenuSection
 import com.example.data.model.Product
 import com.example.data.model.Store
 import kotlinx.coroutines.Dispatchers
@@ -465,10 +468,67 @@ object SupabaseClient {
         }
     }
 
+    // 4c. FETCH MENU SECTIONS FOR STORE
+    suspend fun fetchMenuSectionsForStore(storeId: String): List<MenuSection> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/menu_sections?store_id=eq.$storeId&order=sort_order.asc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            var response = httpClient.newCall(request).execute()
+            var responseText = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/menu_sections?select=*"
+                val fallbackRequest = Request.Builder()
+                    .url(fallbackUrl)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                response = httpClient.newCall(fallbackRequest).execute()
+                responseText = response.body?.string() ?: ""
+            }
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val sectionsList = mutableListOf<MenuSection>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val id = item.optString("id", "")
+                    val name = item.optString("name", "")
+                    val sortOrder = item.optInt("sort_order", 0)
+
+                    if (id.isNotBlank() && name.isNotBlank()) {
+                        sectionsList.add(
+                            MenuSection(
+                                id = id,
+                                storeId = storeId,
+                                name = name,
+                                sortOrder = sortOrder
+                            )
+                        )
+                    }
+                }
+                sectionsList.sortedBy { it.sortOrder }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching menu_sections for store $storeId", e)
+            emptyList()
+        }
+    }
+
     // 5. FETCH PRODUCTS FOR STORE
     suspend fun fetchProductsForStore(storeId: String): List<Product> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/products?store_id=eq.$storeId"
+            val url = "$SUPABASE_URL/rest/v1/products?select=*&store_id=eq.$storeId&order=name.asc"
 
             val request = Request.Builder()
                 .url(url)
@@ -488,10 +548,39 @@ object SupabaseClient {
                 for (i in 0 until jsonArray.length()) {
                     val item = jsonArray.getJSONObject(i)
                     val id = item.optString("id", "")
-                    val name = item.optString("name", "Produto")
+                    val name = item.optString("name", "")
+                    
+                    // Filter out empty/blank name
+                    if (name.isBlank()) continue
+
+                    // Filter out sold_by_weight
+                    val soldByWeight = item.optBoolean("sold_by_weight", false)
+                    if (soldByWeight) continue
+
+                    // Parse metadata for pdv_only and hidden
+                    var isPdvOnly = false
+                    var isHidden = false
+                    val metadataObj = item.optJSONObject("metadata")
+                    if (metadataObj != null) {
+                        isPdvOnly = metadataObj.optBoolean("pdv_only", false)
+                        isHidden = metadataObj.optBoolean("hidden", false)
+                    } else if (item.has("metadata") && !item.isNull("metadata")) {
+                        val metaStr = item.optString("metadata", "")
+                        if (metaStr.isNotBlank() && metaStr.startsWith("{")) {
+                            try {
+                                val parsed = JSONObject(metaStr)
+                                isPdvOnly = parsed.optBoolean("pdv_only", false)
+                                isHidden = parsed.optBoolean("hidden", false)
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    if (isPdvOnly || isHidden) continue
+
                     val description = item.optString("description", "")
                     val price = item.optDouble("price", 0.0)
                     val category = item.optString("category", "Geral")
+                    val sectionId = if (item.has("section_id") && !item.isNull("section_id")) item.optString("section_id", null) else null
                     val imageUrl = item.optString("image_url", "")
                     val isAvailable = item.optBoolean("is_available", true)
 
@@ -503,6 +592,7 @@ object SupabaseClient {
                             description = description,
                             price = price,
                             category = category,
+                            sectionId = sectionId,
                             imageUrl = imageUrl,
                             isAvailable = isAvailable
                         )
@@ -514,6 +604,159 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching products for store $storeId", e)
+            emptyList()
+        }
+    }
+
+    // 5b. FETCH ADDON GROUPS FOR STORE
+    suspend fun fetchAddonGroupsForStore(storeId: String): List<AddonGroup> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/addon_groups?store_id=eq.$storeId&order=sort_order.asc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            var response = httpClient.newCall(request).execute()
+            var responseText = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/addon_groups?select=*"
+                val fallbackRequest = Request.Builder()
+                    .url(fallbackUrl)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                response = httpClient.newCall(fallbackRequest).execute()
+                responseText = response.body?.string() ?: ""
+            }
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val groupsList = mutableListOf<AddonGroup>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val id = item.optString("id", "")
+                    val name = item.optString("name", "Adicionais")
+                    val minSelect = item.optInt("min_select", 0)
+                    val maxSelect = item.optInt("max_select", 1)
+                    val sortOrder = item.optInt("sort_order", 0)
+                    val priceReplacesBase = item.optBoolean("price_replaces_base", false)
+                    val productId = if (item.has("product_id") && !item.isNull("product_id")) item.optString("product_id", null) else null
+                    val sId = if (item.has("store_id") && !item.isNull("store_id")) item.optString("store_id", null) else null
+
+                    if (id.isNotBlank()) {
+                        groupsList.add(
+                            AddonGroup(
+                                id = id,
+                                storeId = sId,
+                                productId = productId,
+                                name = name,
+                                minSelect = minSelect,
+                                maxSelect = maxSelect,
+                                sortOrder = sortOrder,
+                                priceReplacesBase = priceReplacesBase
+                            )
+                        )
+                    }
+                }
+                groupsList.sortedBy { it.sortOrder }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching addon_groups for store $storeId", e)
+            emptyList()
+        }
+    }
+
+    // 5c. FETCH PRODUCT ADDON GROUPS MAP
+    suspend fun fetchProductAddonGroupsMap(): Map<String, List<String>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/product_addon_groups?select=*"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val map = mutableMapOf<String, MutableList<String>>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val productId = item.optString("product_id", "")
+                    val addonGroupId = item.optString("addon_group_id", "")
+                    if (productId.isNotBlank() && addonGroupId.isNotBlank()) {
+                        val list = map.getOrPut(productId) { mutableListOf() }
+                        list.add(addonGroupId)
+                    }
+                }
+                map
+            } else {
+                emptyMap()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching product_addon_groups", e)
+            emptyMap()
+        }
+    }
+
+    // 5d. FETCH ADDON ITEMS FOR STORE
+    suspend fun fetchAddonItemsForStore(): List<AddonItem> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/addon_items?select=*&order=sort_order.asc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val itemsList = mutableListOf<AddonItem>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val id = item.optString("id", "")
+                    val groupId = item.optString("group_id", item.optString("addon_group_id", ""))
+                    val name = item.optString("name", "")
+                    val price = item.optDouble("price", 0.0)
+                    val sortOrder = item.optInt("sort_order", 0)
+                    val isAvailable = item.optBoolean("is_available", true)
+
+                    if (id.isNotBlank() && groupId.isNotBlank() && name.isNotBlank()) {
+                        itemsList.add(
+                            AddonItem(
+                                id = id,
+                                groupId = groupId,
+                                name = name,
+                                price = price,
+                                sortOrder = sortOrder,
+                                isAvailable = isAvailable
+                            )
+                        )
+                    }
+                }
+                itemsList.sortedBy { it.sortOrder }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching addon_items", e)
             emptyList()
         }
     }

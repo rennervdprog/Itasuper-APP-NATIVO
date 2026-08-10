@@ -592,6 +592,17 @@ private fun CartItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (cartItem.selectedAddons.isNotEmpty()) {
+                    val addonsText = cartItem.selectedAddons.joinToString(", ") { it.itemName }
+                    Text(
+                        text = "Adicionais: $addonsText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 if (cartItem.notes.isNotBlank()) {
                     Text(
                         text = "Obs: ${cartItem.notes}",

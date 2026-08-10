@@ -1,4 +1,4 @@
-# Auditoria Técnica Máxima: Tela de Detalhes da Loja (`loja/{storeId}` — StoreDetailScreen.kt)
+# Auditoria Técnica Atualizada: Tela de Detalhes da Loja (`loja/{storeId}` — StoreDetailScreen.kt)
 
 ---
 
@@ -7,14 +7,15 @@
 | Elemento / Componente | Texto Visível / Ícone | Função Chamada no `onClick` |
 | :--- | :--- | :--- |
 | **Botão Voltar (TopBar)** | Ícone `Icons.AutoMirrored.Filled.ArrowBack` | `onClick = onBackClick` -> `navController.popBackStack()` |
-| **Botão Favoritar (TopBar)** | Ícone `Icons.Default.Favorite` / `FavoriteBorder` | `onClick = { isFavorite = !isFavorite }` (Estado Compose `remember`) |
+| **Botão Favoritar Loja** | *Removido* | *Removido da interface (conforme regra de paridade)* |
 | **Botão "Ver Sacola" (Barra Inferior Flutuante)** | "Ver Sacola" + Quantidade e Subtotal | `onClick = onNavigateToCart` -> `navController.navigate("carrinho")` |
 | **Campo de Busca no Cardápio** | Placeholder: "Buscar no cardápio de {nome_da_loja}..." | `onValueChange = { viewModel.onSearchQueryChange(it) }` |
 | **Botão Limpar Busca no Cardápio** | Ícone `Icons.Default.Clear` | `onClick = { viewModel.onSearchQueryChange("") }` |
-| **Chips de Categoria (`FilterChip`)** | Nome da categoria (ex: "Todos", "Lanches", "Bebidas") | `onClick = { viewModel.selectCategory(cat) }` |
+| **Chips de Seção do Cardápio (`FilterChip`)** | Nome da seção (ex: "Todos" + seções reais da tabela `menu_sections`) | `onClick = { viewModel.selectSection(secName) }` |
 | **Card de Produto (`ProductItemCard`)** | Nome, Descrição, Preço e Imagem do Produto | `clickable { onCardClick() }` -> `viewModel.openProductModal(product)` |
-| **Botão "Adicionar Rápido" (`+`) no Card** | Ícone `Icons.Default.Add` em círculo primário | `onClick = onAddClick` -> `viewModel.addDirectProductToCart(product)` |
+| **Botão "Adicionar Rápido" (`+`) no Card** | Ícone `Icons.Default.Add` em círculo primário | `onClick = onAddClick` -> `viewModel.addDirectProductToCart(product)` (Abre modal se tiver adicionais obrigatórios ou adiciona direto) |
 | **Fechar Modal BottomSheet** | Gesto de arrastar para baixo ou toque fora | `onDismissRequest = { viewModel.closeProductModal() }` |
+| **Seleção de Complemento / Addon (`RadioButton` / `Checkbox`)** | Nome do item + Preço adicional (se houver) | `onClick = { onToggleAddonItem(group, addonItem) }` -> `viewModel.toggleAddonItem(group, item)` |
 | **Campo de Observações no Modal** | Label: "Alguma observação?" | `onValueChange = onNotesChange` -> `viewModel.updateModalNotes(it)` |
 | **Botão Diminuir Quantidade no Modal (`-`)** | Ícone `Icons.Default.Remove` | `onClick = onQuantityDecrement` -> `viewModel.decrementModalQuantity()` |
 | **Botão Aumentar Quantidade no Modal (`+`)** | Ícone `Icons.Default.Add` | `onClick = onQuantityIncrement` -> `viewModel.incrementModalQuantity()` |
@@ -22,7 +23,7 @@
 
 ---
 
-## 2. CÓDIGO LITERAL DE CADA FUNÇÃO
+## 2. CÓDIGO LITERAL DAS FUNÇÕES PRINCIPAIS
 
 ### Arquivo: `StoreDetailViewModel.kt`
 
@@ -31,91 +32,110 @@ fun loadStore(storeId: String) {
     _uiState.value = _uiState.value.copy(isLoading = true)
 
     viewModelScope.launch {
-        // Find store in repository or fetch refreshed list
         val storeList = StoreRepository.stores.value
         val store = storeList.find { it.id == storeId } ?: storeList.firstOrNull()
 
-        // Fetch products from Supabase
+        // Fetch menu_sections from Supabase
+        val sections = SupabaseClient.fetchMenuSectionsForStore(storeId)
+
+        // Fetch products from Supabase (already sorted by name & filtered)
         val remoteProducts = SupabaseClient.fetchProductsForStore(storeId)
         _rawProducts.value = remoteProducts
 
-        val categoryList = if (remoteProducts.isNotEmpty()) {
-            val list = mutableListOf("Todos")
-            list.addAll(remoteProducts.map { it.category }.distinct())
-            list
-        } else {
-            emptyList()
-        }
+        // Fetch addon data
+        allAddonGroups = SupabaseClient.fetchAddonGroupsForStore(storeId)
+        productAddonGroupsMap = SupabaseClient.fetchProductAddonGroupsMap()
+        allAddonItems = SupabaseClient.fetchAddonItemsForStore()
 
         _uiState.value = _uiState.value.copy(
             store = store,
             isLoading = false,
-            categories = categoryList,
-            selectedCategory = "Todos"
+            menuSections = sections,
+            selectedSectionName = "Todos"
         )
     }
 }
 
-fun selectCategory(category: String) {
-    _uiState.value = _uiState.value.copy(selectedCategory = category)
-}
+fun toggleAddonItem(group: AddonGroup, item: AddonItem) {
+    val currentSelectedMap = _uiState.value.modalSelectedAddonsMap.toMutableMap()
+    val currentSelected = (currentSelectedMap[group.id] ?: emptyList()).toMutableList()
 
-fun onSearchQueryChange(query: String) {
-    _uiState.value = _uiState.value.copy(searchQuery = query)
-}
-
-fun openProductModal(product: Product) {
-    _uiState.value = _uiState.value.copy(
-        selectedProductForModal = product,
-        modalQuantity = 1,
-        modalNotes = ""
-    )
-}
-
-fun closeProductModal() {
-    _uiState.value = _uiState.value.copy(selectedProductForModal = null)
-}
-
-fun incrementModalQuantity() {
-    _uiState.value = _uiState.value.copy(modalQuantity = _uiState.value.modalQuantity + 1)
-}
-
-fun decrementModalQuantity() {
-    if (_uiState.value.modalQuantity > 1) {
-        _uiState.value = _uiState.value.copy(modalQuantity = _uiState.value.modalQuantity - 1)
+    if (group.maxSelect == 1) {
+        if (currentSelected.contains(item) && group.minSelect == 0) {
+            currentSelected.clear()
+        } else {
+            currentSelected.clear()
+            currentSelected.add(item)
+        }
+    } else {
+        if (currentSelected.contains(item)) {
+            currentSelected.remove(item)
+        } else {
+            if (currentSelected.size < group.maxSelect) {
+                currentSelected.add(item)
+            }
+        }
     }
-}
 
-fun updateModalNotes(notes: String) {
-    _uiState.value = _uiState.value.copy(modalNotes = notes)
+    currentSelectedMap[group.id] = currentSelected
+    _uiState.value = _uiState.value.copy(modalSelectedAddonsMap = currentSelectedMap, modalError = null)
 }
 
 fun addSelectedProductToCart() {
-    val product = _uiState.value.selectedProductForModal ?: return
-    val storeName = _uiState.value.store?.name ?: "Loja"
+    val state = _uiState.value
+    val product = state.selectedProductForModal ?: return
+    
+    // Validate required groups
+    for (group in state.modalAddonGroups) {
+        val selected = state.modalSelectedAddonsMap[group.id] ?: emptyList()
+        if (selected.size < group.minSelect) {
+            _uiState.value = state.copy(
+                modalError = "Selecione pelo menos ${group.minSelect} opção em '${group.name}'"
+            )
+            return
+        }
+    }
+
+    val storeName = state.store?.name ?: "Loja"
+
+    val selectedAddonsList = mutableListOf<SelectedAddonItem>()
+    for (group in state.modalAddonGroups) {
+        val selectedItems = state.modalSelectedAddonsMap[group.id] ?: emptyList()
+        for (item in selectedItems) {
+            selectedAddonsList.add(
+                SelectedAddonItem(
+                    itemId = item.id,
+                    itemName = item.name,
+                    itemPrice = item.price,
+                    groupId = group.id,
+                    groupName = group.name,
+                    priceReplacesBase = group.priceReplacesBase
+                )
+            )
+        }
+    }
+
     CartRepository.addProduct(
         product = product,
         storeName = storeName,
-        quantity = _uiState.value.modalQuantity,
-        notes = _uiState.value.modalNotes
+        quantity = state.modalQuantity,
+        notes = state.modalNotes,
+        selectedAddons = selectedAddonsList
     )
     closeProductModal()
-}
-
-fun addDirectProductToCart(product: Product) {
-    val storeName = _uiState.value.store?.name ?: "Loja"
-    CartRepository.addProduct(
-        product = product,
-        storeName = storeName,
-        quantity = 1
-    )
 }
 ```
 
 ### Arquivo: `CartRepository.kt`
 
 ```kotlin
-fun addProduct(product: Product, storeName: String, quantity: Int = 1, notes: String = "") {
+fun addProduct(
+    product: Product,
+    storeName: String,
+    quantity: Int = 1,
+    notes: String = "",
+    selectedAddons: List<SelectedAddonItem> = emptyList()
+) {
     val current = _cartState.value
     
     // If adding from a different store, reset cart to new store
@@ -123,20 +143,22 @@ fun addProduct(product: Product, storeName: String, quantity: Int = 1, notes: St
         _cartState.value = CartState(
             storeId = product.storeId,
             storeName = storeName,
-            items = listOf(CartItem(product, quantity, notes))
+            items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
         )
         return
     }
 
-    val existingIndex = current.items.indexOfFirst { it.product.id == product.id }
+    val existingIndex = current.items.indexOfFirst { 
+        it.product.id == product.id && it.selectedAddons == selectedAddons && it.notes == notes
+    }
     val updatedItems = current.items.toMutableList()
 
     if (existingIndex >= 0) {
         val existing = updatedItems[existingIndex]
         val newQty = existing.quantity + quantity
-        updatedItems[existingIndex] = existing.copy(quantity = newQty, notes = notes)
+        updatedItems[existingIndex] = existing.copy(quantity = newQty)
     } else {
-        updatedItems.add(CartItem(product, quantity, notes))
+        updatedItems.add(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
     }
 
     _cartState.value = current.copy(
@@ -149,99 +171,76 @@ fun addProduct(product: Product, storeName: String, quantity: Int = 1, notes: St
 
 ---
 
-## 3. TODA QUERY AO SUPABASE NESTA TELA
+## 3. TODAS AS QUERIES AO SUPABASE NESTA TELA
 
-1. **Query de Produtos da Loja (`products`)**:
-   - **Tabela/View Consultada**: `products`
-   - **Colunas Selecionadas**: `*` (todas as colunas da tabela `products`)
-   - **Filtros Aplicados**: `store_id=eq.$storeId` (onde `$storeId` é o ID da loja recebido pela rota)
-   - **Ordenação (order by)**: Nenhuma explicita na URL REST
-   - **Tipo de Operação**: Leitura (GET / select)
-   - **Código Kotlin Exato da Chamada**:
+1. **Seções do Cardápio (`menu_sections`)**:
+   - **Tabela**: `menu_sections`
+   - **Colunas**: `id, name, sort_order`
+   - **Filtro & Ordenação**: `store_id=eq.$storeId&order=sort_order.asc`
+   - **Código Exato**:
      ```kotlin
-     val url = "$SUPABASE_URL/rest/v1/products?store_id=eq.$storeId"
-
-     val request = Request.Builder()
-         .url(url)
-         .addHeader("apikey", SUPABASE_ANON_KEY)
-         .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
-         .addHeader("Content-Type", "application/json")
-         .get()
-         .build()
-
-     val response = httpClient.newCall(request).execute()
+     val url = "$SUPABASE_URL/rest/v1/menu_sections?store_id=eq.$storeId&order=sort_order.asc"
      ```
 
-2. **Obtenção dos Dados da Loja (`stores_public`)**:
-   - **Tabela/View Consultada**: `stores_public` (via `StoreRepository.stores.value`)
-   - **Tipo de Operação**: Leitura (GET / select) de lojas em cache reativo no `StoreRepository`.
+2. **Produtos da Loja (`products`)**:
+   - **Tabela**: `products`
+   - **Colunas Selecionadas**: `.select("*")`
+   - **Filtro & Ordenação**: `store_id=eq.$storeId&order=name.asc`
+   - **Filtros no Cliente**:
+     - `metadata.pdv_only == true` -> ignora
+     - `metadata.hidden == true` -> ignora
+     - `sold_by_weight == true` -> ignora
+     - `name.isBlank()` -> ignora
+   - **Código Exato**:
+     ```kotlin
+     val url = "$SUPABASE_URL/rest/v1/products?select=*&store_id=eq.$storeId&order=name.asc"
+     ```
+
+3. **Grupos de Adicionais (`addon_groups`)**:
+   - **Tabela**: `addon_groups`
+   - **Colunas**: `id, name, min_select, max_select, sort_order, price_replaces_base, product_id, store_id`
+   - **Filtro & Ordenação**: `store_id=eq.$storeId&order=sort_order.asc`
+   - **Código Exato**:
+     ```kotlin
+     val url = "$SUPABASE_URL/rest/v1/addon_groups?store_id=eq.$storeId&order=sort_order.asc"
+     ```
+
+4. **Associação de Grupos a Produtos (`product_addon_groups`)**:
+   - **Tabela**: `product_addon_groups`
+   - **Colunas**: `product_id, addon_group_id`
+   - **Código Exato**:
+     ```kotlin
+     val url = "$SUPABASE_URL/rest/v1/product_addon_groups?select=*"
+     ```
+
+5. **Itens de Adicionais (`addon_items`)**:
+   - **Tabela**: `addon_items`
+   - **Colunas**: `id, group_id (ou addon_group_id), name, price, sort_order, is_available`
+   - **Ordenação**: `order=sort_order.asc`
+   - **Código Exato**:
+     ```kotlin
+     val url = "$SUPABASE_URL/rest/v1/addon_items?select=*&order=sort_order.asc"
+     ```
 
 ---
 
-## 4. VALIDAÇÕES — CÓDIGO LITERAL
+## 4. VALIDAÇÕES E REGRAS DE NEGÓCIO IMPLEMENTADAS
 
-1. **Validação de Quantidade Mínima no Modal (Não permite menor que 1)**:
-   ```kotlin
-   fun decrementModalQuantity() {
-       if (_uiState.value.modalQuantity > 1) {
-           _uiState.value = _uiState.value.copy(modalQuantity = _uiState.value.modalQuantity - 1)
-       }
-   }
-   ```
-
-2. **Validação de Produto Selecionado ao Confirmar Adição no Modal**:
-   ```kotlin
-   fun addSelectedProductToCart() {
-       val product = _uiState.value.selectedProductForModal ?: return
-       // ...
-   }
-   ```
-
-3. **Validação de Conflito de Lojas no Carrinho (Troca automática ao adicionar de loja diferente)**:
-   ```kotlin
-   if (current.storeId != null && current.storeId != product.storeId && current.items.isNotEmpty()) {
-       _cartState.value = CartState(
-           storeId = product.storeId,
-           storeName = storeName,
-           items = listOf(CartItem(product, quantity, notes))
-       )
-       return
-   }
-   ```
-
-4. **Filtro Combinado de Produtos por Categoria e Busca Textual**:
-   ```kotlin
-   val query = state.searchQuery.trim().lowercase()
-   val category = state.selectedCategory
-
-   products.filter { product ->
-       val matchesCategory = if (category == "Todos") true else product.category.equals(category, ignoreCase = true)
-       val matchesQuery = if (query.isBlank()) true else {
-           product.name.lowercase().contains(query) || product.description.lowercase().contains(query)
-       }
-       matchesCategory && matchesQuery
-   }
-   ```
+1. **Validação de Adicionais Obrigatórios (`minSelect`)**:
+   - Verifica se a quantidade de itens selecionados em cada grupo é `>= group.minSelect`. Exibe mensagem de erro no modal caso a condição não seja atendida.
+2. **Limite Máximo de Seleção (`maxSelect`)**:
+   - Se `maxSelect == 1`, funciona como rádio (única escolha).
+   - Se `maxSelect > 1`, funciona como checkbox (múltiplas escolhas até o limite `maxSelect`).
+3. **Substituição do Preço Base (`priceReplacesBase`)**:
+   - Se um grupo selecionado possuir `priceReplacesBase == true`, o valor do item selecionado substitui o preço base do produto no cálculo final do preço unitário.
+4. **Filtragem Rorosa de Produtos Ocultos/PDV/Por Peso**:
+   - Produtos com `metadata.pdv_only = true`, `metadata.hidden = true`, `sold_by_weight = true` ou sem nome são filtrados antes de renderizar no cardápio.
+5. **Remoção do Favoritar Loja**:
+   - O botão de favoritar foi removido da TopBar para manter paridade com a versão web.
 
 ---
 
-## 5. O QUE NÃO EXISTE OU É INCERTO
+## 5. NAVEGAÇÃO E FLUXO DA TELA
 
-1. **Favoritar Loja (`isFavorite`)**: **NÃO PERSISTIDO NO BACKEND**. O estado de favorito nesta tela é mantido apenas em memória local do Composable via `remember { mutableStateOf(false) }` e é perdido ao fechar a tela.
-2. **Opções/Complementos de Produtos (Opções de Pizza, Borda, Molhos, etc.)**: **NÃO IMPLEMENTADO**. Apenas observação em texto livre (`modalNotes`).
-3. **Avaliação Detalhada e Comentários da Loja**: **NÃO IMPLEMENTADO**. Exibe apenas a nota média geral (`rating`) vinda de `stores_public`.
-
----
-
-## 6. NAVEGAÇÃO
-
-1. **Botão de Voltar (ArrowBack)**:
-   - **Rota**: `onBackClick` invoca `navController.popBackStack()`
-   - **Pilha de Navegação**: Remove a tela `loja/{storeId}` do topo da pilha de navegação e retorna à tela anterior (Home ou Busca).
-
-2. **Botão "Ver Sacola" (`view_cart_button`)**:
-   - **Rota**: `onNavigateToCart` invoca `navController.navigate("carrinho")`
-   - **Pilha de Navegação**: Adiciona a tela de carrinho (`carrinho`) no topo da pilha de navegação.
-
-3. **Navegação de Entrada para esta tela**:
-   - **Origem**: `HomeScreen` ou `SearchScreen` via `onNavigateToStore = { storeId -> navController.navigate("loja/$storeId") }`.
+1. **Voltar (`onBackClick`)**: `navController.popBackStack()`
+2. **Ir para Sacola (`onNavigateToCart`)**: `navController.navigate("carrinho")`

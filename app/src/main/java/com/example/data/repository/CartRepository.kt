@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.model.CartItem
 import com.example.data.model.Coupon
 import com.example.data.model.Product
+import com.example.data.model.SelectedAddonItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,7 +59,13 @@ object CartRepository {
         )
     }
 
-    fun addProduct(product: Product, storeName: String, quantity: Int = 1, notes: String = "") {
+    fun addProduct(
+        product: Product,
+        storeName: String,
+        quantity: Int = 1,
+        notes: String = "",
+        selectedAddons: List<SelectedAddonItem> = emptyList()
+    ) {
         val current = _cartState.value
         
         // If adding from a different store, reset cart to new store
@@ -66,20 +73,22 @@ object CartRepository {
             _cartState.value = CartState(
                 storeId = product.storeId,
                 storeName = storeName,
-                items = listOf(CartItem(product, quantity, notes))
+                items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
             )
             return
         }
 
-        val existingIndex = current.items.indexOfFirst { it.product.id == product.id }
+        val existingIndex = current.items.indexOfFirst { 
+            it.product.id == product.id && it.selectedAddons == selectedAddons && it.notes == notes
+        }
         val updatedItems = current.items.toMutableList()
 
         if (existingIndex >= 0) {
             val existing = updatedItems[existingIndex]
             val newQty = existing.quantity + quantity
-            updatedItems[existingIndex] = existing.copy(quantity = newQty, notes = notes)
+            updatedItems[existingIndex] = existing.copy(quantity = newQty)
         } else {
-            updatedItems.add(CartItem(product, quantity, notes))
+            updatedItems.add(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
         }
 
         _cartState.value = current.copy(
