@@ -131,10 +131,29 @@ class HomeViewModel : ViewModel() {
 
     fun saveStreetNumber() {
         val currentNumber = _uiState.value.streetNumber
+        val currentUserSession = UserSessionRepository.userSession.value
+
+        UserSessionRepository.updateProfile(
+            name = currentUserSession.name,
+            whatsapp = currentUserSession.whatsapp,
+            street = currentUserSession.addressStreet,
+            number = currentNumber,
+            neighborhood = currentUserSession.addressNeighborhood,
+            cep = currentUserSession.addressCep,
+            pixKeyType = currentUserSession.pixKeyType,
+            pixKey = currentUserSession.pixKey
+        )
+
+        viewModelScope.launch {
+            if (currentUserSession.userId.isNotBlank()) {
+                SupabaseClient.updateUserProfileNumber(currentUserSession.userId, currentNumber)
+            }
+        }
+
         _uiState.value = _uiState.value.copy(
             streetNumber = currentNumber,
             isEditingNumber = false,
-            snackbarMessage = if (currentNumber.isNotBlank()) "Endereço atualizado com sucesso!" else "Por favor adicione seu endereço"
+            snackbarMessage = if (currentNumber.isNotBlank()) "Endereço atualizado no perfil!" else "Por favor adicione seu endereço"
         )
     }
 
@@ -142,11 +161,11 @@ class HomeViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(
             isRefreshingLocation = true
         )
-        // Refresh stores again on location refresh
+        // Recarrega lista de lojas
         loadStores()
         _uiState.value = _uiState.value.copy(
             isRefreshingLocation = false,
-            snackbarMessage = "Localização atualizada!"
+            snackbarMessage = "Lista de lojas atualizada!"
         )
     }
 

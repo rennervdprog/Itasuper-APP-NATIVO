@@ -178,6 +178,32 @@ object SupabaseClient {
         }
     }
 
+    // 3b. UPDATE PROFILE NUMBER/ADDRESS IN SUPABASE
+    suspend fun updateUserProfileNumber(userId: String, number: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId"
+            val bodyJson = JSONObject().apply {
+                put("number", number)
+                put("address_number", number)
+            }
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful || response.code == 204 || response.code == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating user profile number", e)
+            false
+        }
+    }
+
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
     suspend fun fetchActiveStores(): List<Store> = withContext(Dispatchers.IO) {
         try {
