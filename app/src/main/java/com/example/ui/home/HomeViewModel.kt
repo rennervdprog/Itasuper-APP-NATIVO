@@ -2,9 +2,11 @@ package com.example.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
 import com.example.data.model.LastOrder
 import com.example.data.model.Store
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.StoreRepository
 import com.example.data.repository.UserSessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,18 +15,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class HomeUiState(
-    val streetName: String = "Rodovia Amaral Peixoto",
-    val streetNumber: String = "100",
+    val streetName: String = "",
+    val streetNumber: String = "",
     val isEditingNumber: Boolean = false,
     val selectedCategory: String = "todas",
     val searchQuery: String = "",
     val categories: List<CategoryItem> = StoreRepository.categories,
     val stores: List<Store> = emptyList(),
     val favoriteStores: List<Store> = emptyList(),
+    val banners: List<Banner> = emptyList(),
     val lastOrder: LastOrder? = null,
     val showSupportSheet: Boolean = false,
     val snackbarMessage: String? = null,
-    val isRefreshingLocation: Boolean = false
+    val isRefreshingLocation: Boolean = false,
+    val isLoadingStores: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class HomeViewModel : ViewModel() {
@@ -35,8 +40,8 @@ class HomeViewModel : ViewModel() {
     init {
         val userSession = UserSessionRepository.userSession.value
         _uiState.value = _uiState.value.copy(
-            streetName = userSession.addressStreet.ifBlank { "Rodovia Amaral Peixoto" },
-            streetNumber = userSession.addressNumber.ifBlank { "100" },
+            streetName = userSession.addressStreet,
+            streetNumber = userSession.addressNumber,
             lastOrder = StoreRepository.lastOrder.value
         )
 
@@ -51,9 +56,38 @@ class HomeViewModel : ViewModel() {
             }
         }
 
-        // Refresh stores from Supabase stores_public view
+        // Fetch stores and banners from Supabase
+        loadStores()
+        loadBanners()
+    }
+
+    fun loadStores() {
         viewModelScope.launch {
-            StoreRepository.refreshStoresFromSupabase()
+            _uiState.value = _uiState.value.copy(
+                isLoadingStores = true,
+                errorMessage = null
+            )
+            val success = StoreRepository.refreshStoresFromSupabase()
+            val currentStores = StoreRepository.stores.value
+
+            if (!success || currentStores.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoadingStores = false,
+                    errorMessage = "Não foi possível carregar as lojas, tentar novamente"
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isLoadingStores = false,
+                    errorMessage = null
+                )
+            }
+        }
+    }
+
+    fun loadBanners() {
+        viewModelScope.launch {
+            val remoteBanners = SupabaseClient.fetchBanners()
+            _uiState.value = _uiState.value.copy(banners = remoteBanners)
         }
     }
 
@@ -96,11 +130,11 @@ class HomeViewModel : ViewModel() {
     }
 
     fun saveStreetNumber() {
-        val currentNumber = _uiState.value.streetNumber.ifBlank { "100" }
+        val currentNumber = _uiState.value.streetNumber
         _uiState.value = _uiState.value.copy(
             streetNumber = currentNumber,
             isEditingNumber = false,
-            snackbarMessage = "Endereço atualizado com sucesso!"
+            snackbarMessage = if (currentNumber.isNotBlank()) "Endereço atualizado com sucesso!" else "Por favor adicione seu endereço"
         )
     }
 
@@ -108,10 +142,11 @@ class HomeViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(
             isRefreshingLocation = true
         )
-        // Simulate GPS refresh
+        // Refresh stores again on location refresh
+        loadStores()
         _uiState.value = _uiState.value.copy(
             isRefreshingLocation = false,
-            snackbarMessage = "Localização atualizada via GPS!"
+            snackbarMessage = "Localização atualizada!"
         )
     }
 

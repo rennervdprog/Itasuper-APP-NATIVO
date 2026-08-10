@@ -93,6 +93,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import coil.compose.AsyncImage
+import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
 import com.example.data.model.LastOrder
 import com.example.data.model.Store
@@ -173,7 +177,10 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Bento / Hero Banners Section
-            HomeHeroBentoSection()
+            HomeHeroBentoSection(
+                banners = uiState.banners,
+                onStoreClick = onNavigateToStore
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -208,6 +215,9 @@ fun HomeScreen(
             // Destaques da Região / Grid de Lojas
             HomeStoreListSection(
                 stores = uiState.stores,
+                isLoading = uiState.isLoadingStores,
+                errorMessage = uiState.errorMessage,
+                onRetry = viewModel::loadStores,
                 onStoreClick = onNavigateToStore
             )
 
@@ -249,42 +259,81 @@ private fun HomeHeaderSection(
                     )
                 )
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { viewModel.toggleEditNumber() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = ItaSuperPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${uiState.streetName}, ${uiState.streetNumber}",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    IconButton(
-                        onClick = viewModel::toggleEditNumber,
-                        modifier = Modifier.size(28.dp)
+                Spacer(modifier = Modifier.height(2.dp))
+
+                if (uiState.streetName.isBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { viewModel.toggleEditNumber() }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Editar número",
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
                             tint = ItaSuperPrimary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Adicione seu endereço",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = ItaSuperPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            color = ItaSuperPrimary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "Adicionar",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary
+                                ),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { viewModel.toggleEditNumber() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (uiState.streetNumber.isNotBlank()) "${uiState.streetName}, ${uiState.streetNumber}" else uiState.streetName,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        IconButton(
+                            onClick = viewModel::toggleEditNumber,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Editar número",
+                                tint = ItaSuperPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -446,185 +495,265 @@ private fun HomeSearchSection(
 }
 
 @Composable
-private fun HomeHeroBentoSection() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Main Orange Hero Banner Card (Left)
-        Card(
-            modifier = Modifier
-                .weight(1.5f)
-                .height(160.dp),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+private fun HomeHeroBentoSection(
+    banners: List<Banner>,
+    onStoreClick: (String) -> Unit
+) {
+    if (banners.isNotEmpty()) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(ItaSuperPrimary, ItaSuperPrimary.copy(alpha = 0.85f))
-                        )
-                    )
-                    .padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
+            items(banners) { banner ->
+                Card(
+                    modifier = Modifier
+                        .width(280.dp)
+                        .height(150.dp)
+                        .clickable {
+                            banner.targetStoreId?.let { storeId ->
+                                onStoreClick(storeId)
+                            }
+                        },
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                 ) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (banner.imageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = banner.imageUrl,
+                                contentDescription = banner.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "NOVO POR AQUI",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 10.sp
-                                )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                                        )
+                                    )
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = listOf(ItaSuperPrimary, ItaSuperHighlightText)
+                                        )
+                                    )
                             )
                         }
-                    }
 
-                    Text(
-                        text = "Descubra as lojas da sua região",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            lineHeight = 22.sp
-                        )
-                    )
-
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.clickable { }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.Bottom
                         ) {
                             Text(
-                                text = "Ver mais",
-                                style = MaterialTheme.typography.labelMedium.copy(
+                                text = banner.title,
+                                style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    color = ItaSuperPrimary
+                                    color = Color.White
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (banner.description.isNotBlank()) {
+                                Text(
+                                    text = banner.description,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.White.copy(alpha = 0.85f)
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowForward,
-                                contentDescription = null,
-                                tint = ItaSuperPrimary,
-                                modifier = Modifier.size(14.dp)
-                            )
+                            }
                         }
                     }
                 }
             }
         }
-
-        // Two Small Bento Cards (Right)
-        Column(
+    } else {
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .height(160.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Bento Card 1: Sem taxa
+            // Main Orange Hero Banner Card (Left)
             Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = ItaSuperHighlightBg
-                )
+                    .weight(1.5f)
+                    .height(160.dp),
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.Center
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(ItaSuperPrimary, ItaSuperPrimary.copy(alpha = 0.85f))
+                            )
+                        )
+                        .padding(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AccountBalanceWallet,
-                        contentDescription = null,
-                        tint = ItaSuperHighlightText,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Sem taxa",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperTextPrimary,
-                            fontSize = 13.sp
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "OFERTAS ITASUPER",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Descubra os melhores estabelecimentos de Itaboraí",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                lineHeight = 22.sp
+                            )
                         )
-                    )
-                    Text(
-                        text = "de serviço",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = ItaSuperTextSecondary,
-                            fontSize = 11.sp
-                        )
-                    )
+
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Ver lojas",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = ItaSuperPrimary
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = null,
+                                    tint = ItaSuperPrimary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            // Bento Card 2: Entrega direta
-            Card(
+            // Two Small Bento Cards (Right)
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = ItaSuperSecondary
-                )
+                    .weight(1f)
+                    .height(160.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
+                Card(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.Center
+                        .fillMaxWidth()
+                        .weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = ItaSuperHighlightBg
+                    )
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.LocalShipping,
-                        contentDescription = null,
-                        tint = ItaSuperPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Entrega",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperTextPrimary,
-                            fontSize = 13.sp
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = ItaSuperHighlightText,
+                            modifier = Modifier.size(20.dp)
                         )
-                    )
-                    Text(
-                        text = "direta da loja",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = ItaSuperTextSecondary,
-                            fontSize = 11.sp
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Sem taxa",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperTextPrimary,
+                                fontSize = 13.sp
+                            )
                         )
+                        Text(
+                            text = "de serviço",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = ItaSuperTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = ItaSuperSecondary
                     )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.LocalShipping,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Entrega",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperTextPrimary,
+                                fontSize = 13.sp
+                            )
+                        )
+                        Text(
+                            text = "direta da loja",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = ItaSuperTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -918,6 +1047,9 @@ private fun HomeFavoriteStoresSection(
 @Composable
 private fun HomeStoreListSection(
     stores: List<Store>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRetry: () -> Unit,
     onStoreClick: (String) -> Unit
 ) {
     Column(
@@ -945,7 +1077,58 @@ private fun HomeStoreListSection(
             )
         }
 
-        if (stores.isEmpty()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = ItaSuperPrimary)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Carregando lojas...",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    )
+                }
+            }
+        } else if (errorMessage != null && stores.isEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        ),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Tentar novamente", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        } else if (stores.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

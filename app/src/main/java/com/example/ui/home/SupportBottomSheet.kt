@@ -100,10 +100,10 @@ fun SupportBottomSheet(
             SupportOptionCard(
                 icon = Icons.Default.Chat,
                 title = "Falar pelo WhatsApp",
-                subtitle = "Atendimento rápido das 08h às 22h",
+                subtitle = "Atendimento oficial (21) 97123-4567 • 08h às 22h",
                 iconColor = Color(0xFF25D366),
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/5521999998888?text=Olá,%20preciso%20de%20ajuda%20no%20ItaSuper"))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/5521971234567?text=Olá,%20preciso%20de%20ajuda%20no%20ItaSuper"))
                     context.startActivity(intent)
                     onDismiss()
                 }

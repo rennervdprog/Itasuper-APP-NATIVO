@@ -181,11 +181,10 @@ object SupabaseClient {
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
     suspend fun fetchActiveStores(): List<Store> = withContext(Dispatchers.IO) {
         try {
-            // Query stores_public view ordered by rating desc.
-            // Omit status=eq.active parameter from query string to avoid Postgres enum type mismatch (22P02)
-            val url = "$SUPABASE_URL/rest/v1/stores_public?order=rating.desc"
+            // Primary query to stores_public view as specified
+            var url = "$SUPABASE_URL/rest/v1/stores_public?select=*&status=eq.active&is_open=eq.true&order=rating.desc"
 
-            val request = Request.Builder()
+            var request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
@@ -193,8 +192,21 @@ object SupabaseClient {
                 .get()
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            val responseText = response.body?.string() ?: ""
+            var response = httpClient.newCall(request).execute()
+            var responseText = response.body?.string() ?: ""
+
+            // Fallback if status enum causes Postgres 22P02 error
+            if (!response.isSuccessful) {
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/stores_public?select=*&is_open=eq.true&order=rating.desc"
+                val fallbackRequest = Request.Builder()
+                    .url(fallbackUrl)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                response = httpClient.newCall(fallbackRequest).execute()
+                responseText = response.body?.string() ?: ""
+            }
 
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val jsonArray = JSONArray(responseText)
@@ -244,6 +256,67 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
+            emptyList()
+        }
+    }
+
+    // 4b. FETCH PROMO BANNERS FROM SUPABASE
+    suspend fun fetchBanners(): List<com.example.data.model.Banner> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/banners?select=*&is_active=eq.true"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            var response = httpClient.newCall(request).execute()
+            var responseText = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/banners?select=*"
+                val fallbackRequest = Request.Builder()
+                    .url(fallbackUrl)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                response = httpClient.newCall(fallbackRequest).execute()
+                responseText = response.body?.string() ?: ""
+            }
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val array = JSONArray(responseText)
+                val bannerList = mutableListOf<com.example.data.model.Banner>()
+
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val id = obj.optString("id", "")
+                    val title = obj.optString("title", obj.optString("name", "Oferta Especial"))
+                    val imageUrl = obj.optString("image_url", obj.optString("imageUrl", ""))
+                    val targetStoreId = obj.optString("target_store_id", obj.optString("store_id", null))
+                    val desc = obj.optString("description", "")
+
+                    if (imageUrl.isNotBlank() || title.isNotBlank()) {
+                        bannerList.add(
+                            com.example.data.model.Banner(
+                                id = id,
+                                title = title,
+                                imageUrl = imageUrl,
+                                targetStoreId = if (targetStoreId == "null") null else targetStoreId,
+                                description = desc
+                            )
+                        )
+                    }
+                }
+                bannerList
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching banners", e)
             emptyList()
         }
     }
