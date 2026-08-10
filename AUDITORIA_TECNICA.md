@@ -365,65 +365,39 @@ fun addSelectedProductToCart() {
 
 ---
 
-## TELA 5 (Fase 5): Carrinho / Sacola de Compras & Meus Pedidos (`/pedidos`)
+## TELA 5 (Fase 5): Checkout Web Fiel — 3 Telas Distintas: Carrinho (`/carrinho`), Checkout (`/checkout`) & Meus Pedidos (`/pedidos`)
 
-### CAMPOS E BOTÕES:
-- **Top Bar & Abas de Alternância (TabRow)**:
-  - Aba "Sua Sacola" (com indicador numérico de itens)
-  - Aba "Meus Pedidos" (histórico e acompanhamento)
-- **Aba 'Sua Sacola'**:
-  - Cabeçalho com o nome do estabelecimento parceiro + Botão "Limpar Sacola"
-  - Lista de itens selecionados com thumbnail, nome, observações, preço dinâmico e controle de quantidade (+ / - / Lixeira para remover)
-  - **Seção de Cupom de Desconto**:
-    - Campo `OutlinedTextField` para inserção de código (ex: `ITASUPER10`, `BEMVINDO` ou `PRIMEIRACOMPRA`)
-    - Botão "Aplicar" com feedback visual de sucesso ou erro
-  - **Opções de Forma de Pagamento**:
-    - RadioButtons interativos para PIX, Cartão na Entrega (Débito/Crédito) ou Dinheiro na Entrega (com campo numérico de troco para valor informado)
-  - **Endereço de Entrega**:
-    - Card com o endereço atual configurado do usuário em Itaboraí
-  - **Resumo Financeiro do Pedido**:
-    - Exibe Subtotal, Taxa de entrega fixa da loja/ItaSuper, Valor do desconto aplicado e **Total Geral destacado**
-  - **Botão Principal de Fechamento**:
-    - Botão "Enviar Pedido • R$ XX,XX" com indicador de progresso durante o envio
-- **Aba 'Meus Pedidos' (Histórico e Pedidos Ativos)**:
-  - Cards detalhados de cada pedido realizado com número do pedido (#ITA-XXXX), data/hora, nome da loja, lista de itens, total e badge de status colorido ("Em preparação", "Entregue")
-  - Botão "Pedir de novo" (recarrega os itens na sacola e redireciona)
-- **Modal Bottom Sheet de Sucesso**:
-  - Exibe mensagem de confirmação, número do pedido gerado, resumo e atalho para acompanhar em Meus Pedidos
+### 1. Carrinho (`/carrinho`):
+- **Barra de topo com título "Sua Sacola" e navegação de retorno**
+- **Alternância entre Entrega e Retirada no Estabelecimento**:
+  - Opção "Entrega" calcula taxa dinamicamente baseada na distância em km da loja.
+  - Opção "Retirar na loja" zera a taxa de entrega (R$ 0,00).
+- **Lista de Itens do Carrinho**:
+  - Nome do produto, observações, preço total por item e controle de quantidade (+ / - / Lixeira).
+- **Validação de Cupom Real via Supabase (`coupons_public`)**:
+  - Consulta dinamicamente a tabela `coupons_public` filtrando por `store_id` (da loja atual) e `is_active = true`.
+  - Checa data de expiração (`expires_at`), valor mínimo do pedido (`min_order_value`), primeiro pedido (`first_order_only`) e aplica desconto fixo ou percentual.
+- **Resumo Financeiro & Botão de Avançar**:
+  - Exibe Subtotal, Taxa de Entrega, Desconto e Total.
+  - Botão "Continuar para o Checkout" abre a rota `/checkout`.
 
-### VALIDAÇÕES IMPLEMENTADAS DE VERDADE (com código funcional):
-1. **Aplicação e cálculo dinâmico de cupons de desconto (`OrdersViewModel`)**:
-```kotlin
-fun applyCoupon() {
-    val code = _uiState.value.couponCode.trim().uppercase()
-    if (code == "ITASUPER10" || code == "BEMVINDO") {
-        _uiState.value = _uiState.value.copy(
-            couponApplied = code,
-            discountAmount = 10.0,
-            errorMessage = null
-        )
-    } ...
-}
-```
+### 2. Checkout (`/checkout`):
+- **Barra de topo "Finalizar Pedido"**
+- **Endereço de Entrega & Busca de CEP em Tempo Real (ViaCEP)**:
+  - Campo de CEP com botão de busca que auto-preenche Rua, Bairro e Cidade via API ViaCEP (`viacep.com.br`).
+  - Campos editáveis para Rua, Número, Bairro, Cidade e Complemento (sem travar em cidade fixa).
+- **Seleção de Forma de Pagamento & Validação de Troco**:
+  - Seleção por RadioButton: PIX, Cartão na Entrega, Dinheiro na Entrega.
+  - Para "Dinheiro na Entrega", exige preenchimento do campo de troco com validação obrigatória (deve ser maior ou igual ao total do pedido).
+- **Geração do Pedido com ID Oficial do Supabase**:
+  - Ao clicar em "Confirmar e Enviar Pedido", submete `POST` à tabela `orders` no Supabase enviando o cabeçalho `Prefer: return=representation`.
+  - Captura o `id` oficial gerado pelo próprio Supabase (`#ITA-XXXX` ou UUID) e exibe no modal de confirmação do pedido.
 
-2. **Gerenciamento e encerramento de pedido (`OrdersViewModel` / `OrderRepository`)**:
-```kotlin
-suspend fun placeOrder(...): Order {
-    val orderId = "#ITA-${(1000..9999).random()}"
-    ...
-    SupabaseClient.submitOrder(newOrder)
-    _orders.value = currentList.apply { add(0, newOrder) }
-    CartRepository.clearCart()
-    return newOrder
-}
-```
-
-### INTEGRAÇÃO COM BACKEND:
-- Submete novos pedidos via POST à tabela `/rest/v1/orders` no Supabase através do `SupabaseClient.submitOrder(order)`.
-
-### ESTADO E NAVEGAÇÃO:
-- Navegação fluida com a Bottom Navigation Bar (`"pedidos"`).
-- Botão "Explorar Lojas" redireciona para a Home (`"home"`).
+### 3. Meus Pedidos (`/pedidos`):
+- **Lista do Histórico de Pedidos Realizados**:
+  - Exibe número oficial do pedido, data/hora, nome do estabelecimento parceiro, badge de status ("Em preparação", "Entregue"), lista de itens, endereço, pagamento e valor pago.
+  - Botão "Pedir de novo" para recarregar itens na sacola e abrir o carrinho.
+- **Estado Vazio com Botão "Explorar Lojas"**
 
 ---
 

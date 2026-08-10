@@ -74,8 +74,8 @@ object OrderRepository {
         val nowStr = dateFormat.format(Date())
         val total = (subtotal + deliveryFee - discount).coerceAtLeast(0.0)
 
-        val newOrder = Order(
-            id = orderId,
+        val tempOrder = Order(
+            id = "",
             storeId = storeId,
             storeName = storeName,
             items = items,
@@ -89,16 +89,23 @@ object OrderRepository {
             createdAt = nowStr
         )
 
-        // Try sending to Supabase asynchronously
-        SupabaseClient.submitOrder(newOrder)
+        // Submit to Supabase and retrieve the official ID assigned by the database
+        val supabaseId = SupabaseClient.submitOrder(tempOrder)
+        val officialId = if (!supabaseId.isNullOrBlank()) {
+            if (supabaseId.startsWith("#")) supabaseId else "#ITA-${supabaseId.takeLast(6)}"
+        } else {
+            "#ITA-${(1000..9999).random()}"
+        }
+
+        val finalOrder = tempOrder.copy(id = officialId)
 
         val currentList = _orders.value.toMutableList()
-        currentList.add(0, newOrder)
+        currentList.add(0, finalOrder)
         _orders.value = currentList
 
         // Clear Cart after successful order placement
         CartRepository.clearCart()
 
-        return newOrder
+        return finalOrder
     }
 }

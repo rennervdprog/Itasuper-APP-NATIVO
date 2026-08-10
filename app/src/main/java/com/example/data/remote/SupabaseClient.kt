@@ -301,15 +301,101 @@ object SupabaseClient {
         }
     }
 
-    // 6. CREATE ORDER
-    suspend fun submitOrder(order: com.example.data.model.Order): Boolean = withContext(Dispatchers.IO) {
+    // 6. FETCH COUPON FROM coupons_public
+    suspend fun fetchCoupon(code: String, storeId: String?): com.example.data.model.Coupon? = withContext(Dispatchers.IO) {
+        try {
+            val cleanCode = code.trim().uppercase()
+            val url = "$SUPABASE_URL/rest/v1/coupons_public?code=eq.$cleanCode&is_active=eq.true"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val jsonText = response.body?.string() ?: return@withContext null
+                val array = JSONArray(jsonText)
+                if (array.length() > 0) {
+                    val obj = array.getJSONObject(0)
+                    val cStoreId = obj.optString("store_id", null)
+                    
+                    // Filter by store_id if coupon is store-specific
+                    if (cStoreId != null && cStoreId.isNotBlank() && cStoreId != "null" && storeId != null && cStoreId != storeId) {
+                        return@withContext null
+                    }
+
+                    return@withContext com.example.data.model.Coupon(
+                        id = obj.optString("id", ""),
+                        code = obj.optString("code", cleanCode),
+                        discountType = obj.optString("discount_type", "fixed"),
+                        discountValue = obj.optDouble("discount_value", 0.0),
+                        minOrderValue = obj.optDouble("min_order_value", 0.0),
+                        expiresAt = if (obj.isNull("expires_at")) null else obj.optString("expires_at", null),
+                        firstOrderOnly = obj.optBoolean("first_order_only", false),
+                        isActive = obj.optBoolean("is_active", true),
+                        storeId = if (cStoreId == "null") null else cStoreId
+                    )
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching coupon", e)
+            null
+        }
+    }
+
+    // 7. VIA CEP ADDRESS LOOKUP
+    data class CepAddress(
+        val cep: String = "",
+        val street: String = "",
+        val neighborhood: String = "",
+        val city: String = "",
+        val state: String = ""
+    )
+
+    suspend fun fetchAddressByCep(cep: String): CepAddress? = withContext(Dispatchers.IO) {
+        try {
+            val cleanCep = cep.replace(Regex("[^0-9]"), "")
+            if (cleanCep.length != 8) return@withContext null
+
+            val url = "https://viacep.com.br/ws/$cleanCep/json/"
+            val request = Request.Builder().url(url).get().build()
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: return@withContext null
+                val json = JSONObject(body)
+                if (json.optBoolean("erro", false)) return@withContext null
+
+                CepAddress(
+                    cep = json.optString("cep", cleanCep),
+                    street = json.optString("logradouro", ""),
+                    neighborhood = json.optString("bairro", ""),
+                    city = json.optString("localidade", ""),
+                    state = json.optString("uf", "")
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching CEP $cep", e)
+            null
+        }
+    }
+
+    // 8. CREATE ORDER (RETURNS OFFICIAL SUPABASE ID)
+    suspend fun submitOrder(order: com.example.data.model.Order): String? = withContext(Dispatchers.IO) {
         try {
             val url = "$SUPABASE_URL/rest/v1/orders"
 
             val bodyJson = JSONObject().apply {
-                put("id", order.id)
                 put("store_id", order.storeId)
                 put("store_name", order.storeName)
+                put("subtotal", order.subtotal)
+                put("delivery_fee", order.deliveryFee)
+                put("discount", order.discount)
                 put("total", order.total)
                 put("status", order.status)
                 put("payment_method", order.paymentMethod)
@@ -321,15 +407,25 @@ object SupabaseClient {
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=minimal")
+                .addHeader("Prefer", "return=representation")
                 .post(bodyJson.toString().toRequestBody(jsonMediaType))
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            response.isSuccessful
+            if (response.isSuccessful) {
+                val responseText = response.body?.string()
+                if (!responseText.isNullOrBlank()) {
+                    val array = JSONArray(responseText)
+                    if (array.length() > 0) {
+                        val obj = array.getJSONObject(0)
+                        return@withContext obj.opt("id")?.toString()
+                    }
+                }
+            }
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Error submitting order", e)
-            false
+            null
         }
     }
 

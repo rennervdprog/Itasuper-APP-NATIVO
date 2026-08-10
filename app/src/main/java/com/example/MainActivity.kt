@@ -32,6 +32,9 @@ import com.example.ui.auth.AuthViewModel
 import com.example.ui.home.HomeScreen
 import com.example.ui.home.HomeViewModel
 import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.orders.CartScreen
+import com.example.ui.orders.CheckoutScreen
+import com.example.ui.orders.OrdersHistoryScreen
 import com.example.ui.orders.OrdersScreen
 import com.example.ui.orders.OrdersViewModel
 import com.example.ui.search.SearchScreen
@@ -116,9 +119,40 @@ fun ItaSuperApp() {
             )
         }
 
+        composable("carrinho") {
+            val ordersViewModel: OrdersViewModel = viewModel()
+            CartScreen(
+                viewModel = ordersViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToCheckout = { navController.navigate("checkout") },
+                onNavigateToOrders = { navController.navigate("pedidos") },
+                onNavigateToHome = {
+                    navController.navigate("home") {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+
+        composable("checkout") {
+            val ordersViewModel: OrdersViewModel = viewModel()
+            CheckoutScreen(
+                viewModel = ordersViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToOrders = {
+                    navController.navigate("pedidos") {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
         composable("pedidos") {
             val ordersViewModel: OrdersViewModel = viewModel()
-            OrdersScreen(
+            OrdersHistoryScreen(
                 viewModel = ordersViewModel,
                 onNavigateToRoute = { route ->
                     navController.navigate(route) {
@@ -126,6 +160,9 @@ fun ItaSuperApp() {
                         launchSingleTop = true
                         restoreState = true
                     }
+                },
+                onNavigateToCart = {
+                    navController.navigate("carrinho")
                 },
                 onExploreClick = {
                     navController.navigate("home") {
@@ -170,11 +207,7 @@ fun ItaSuperApp() {
                     navController.popBackStack()
                 },
                 onNavigateToCart = {
-                    navController.navigate("pedidos") {
-                        popUpTo("home") { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                    navController.navigate("carrinho")
                 }
             )
         }
