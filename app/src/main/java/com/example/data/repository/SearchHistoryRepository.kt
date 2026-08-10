@@ -26,8 +26,9 @@ class SearchHistoryRepository(private val context: Context) {
 
         context.searchDataStore.edit { preferences ->
             val current = preferences[RECENT_SEARCHES_KEY] ?: emptySet()
-            // Keep new term at front and cap at max 5 terms
-            val updated = (listOf(cleanTerm) + (current - cleanTerm)).take(5)
+            // Remove previous instances of cleanTerm (case-insensitive deduplication)
+            val filtered = current.filter { !it.equals(cleanTerm, ignoreCase = true) }
+            val updated = (listOf(cleanTerm) + filtered).take(5)
             preferences[RECENT_SEARCHES_KEY] = updated.toSet()
         }
     }

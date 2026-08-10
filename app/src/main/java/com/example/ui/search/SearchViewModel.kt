@@ -96,7 +96,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             .take(8)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Seção "Novidades" (lojas com created_at nos últimos 30 dias ou mais recentes, máx 8)
+    // Seção "Novidades" (lojas com created_at nos últimos 30 dias, máx 8)
     val newStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
         val thirtyDaysAgo = try {
             Instant.now().minus(30, ChronoUnit.DAYS).toString()
@@ -104,14 +104,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             ""
         }
 
-        val filteredByDate = stores.filter { store ->
-            if (store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank()) {
-                store.createdAt >= thirtyDaysAgo
-            } else true
+        stores.filter { store ->
+            store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank() && store.createdAt >= thirtyDaysAgo
         }
-
-        val resultList = if (filteredByDate.size >= 2) filteredByDate else stores
-        resultList.sortedByDescending { it.createdAt }.take(8)
+        .sortedByDescending { it.createdAt }
+        .take(8)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Result List for Search Mode
