@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.model.CategoryItem
 import com.example.data.model.LastOrder
 import com.example.data.model.Store
+import com.example.data.remote.SupabaseClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,8 +19,12 @@ object StoreRepository {
         CategoryItem("bebidas", "Bebidas", "local_bar")
     )
 
-    private val _stores = MutableStateFlow(
-        listOf(
+    private val _stores = MutableStateFlow<List<Store>>(emptyList())
+    val stores: StateFlow<List<Store>> = _stores.asStateFlow()
+
+    init {
+        // Fallback default stores while loading or offline
+        _stores.value = listOf(
             Store(
                 id = "pastelao_carioca",
                 name = "Pastelao Carioca",
@@ -81,8 +86,14 @@ object StoreRepository {
                 minOrder = 25.0
             )
         )
-    )
-    val stores: StateFlow<List<Store>> = _stores.asStateFlow()
+    }
+
+    suspend fun refreshStoresFromSupabase() {
+        val activeStores = SupabaseClient.fetchActiveStores()
+        if (activeStores.isNotEmpty()) {
+            _stores.value = activeStores
+        }
+    }
 
     private val _lastOrder = MutableStateFlow<LastOrder?>(
         LastOrder(

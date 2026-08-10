@@ -20,6 +20,10 @@ object UserSessionRepository {
     )
     val userSession: StateFlow<UserSession> = _userSession.asStateFlow()
 
+    fun setUserId(userId: String) {
+        _userSession.value = _userSession.value.copy(userId = userId)
+    }
+
     fun login(email: String) {
         _userSession.value = _userSession.value.copy(
             isLoggedIn = true,

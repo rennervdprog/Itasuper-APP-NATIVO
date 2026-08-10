@@ -1,11 +1,14 @@
 package com.example.ui.auth
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.remote.SupabaseClient
 import com.example.data.repository.UserSessionRepository
 import com.example.ui.utils.Masks
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 sealed class AuthMode {
     object Login : AuthMode()
@@ -170,13 +173,28 @@ class AuthViewModel : ViewModel() {
             return
         }
 
-        // Perform login
-        UserSessionRepository.login(email)
-        _uiState.value = state.copy(
-            successMessage = "Login realizado!",
-            errorMessage = null
-        )
-        onSuccess()
+        _uiState.value = state.copy(isLoading = true, errorMessage = null)
+
+        viewModelScope.launch {
+            val result = SupabaseClient.signIn(email, password)
+            if (result.isSuccess) {
+                UserSessionRepository.login(email)
+                if (result.userId != null) {
+                    UserSessionRepository.setUserId(result.userId)
+                }
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    successMessage = "Login realizado!",
+                    errorMessage = null
+                )
+                onSuccess()
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = result.errorMessage ?: "Falha ao realizar login"
+                )
+            }
+        }
     }
 
     fun handleRegister(onSuccess: () -> Unit) {
@@ -225,20 +243,46 @@ class AuthViewModel : ViewModel() {
             return
         }
 
-        // Save session
-        val email = if (state.loginEmail.isNotBlank()) state.loginEmail else "cliente@itasuper.com.br"
-        UserSessionRepository.register(
-            name = name,
-            email = email,
-            cpfCnpj = state.regCpfCnpj,
-            whatsapp = state.regWhatsapp,
-            pin = state.regPin
-        )
+        val email = if (state.loginEmail.isNotBlank()) state.loginEmail.trim() else "cliente_${System.currentTimeMillis()}@itasuper.com.br"
 
-        _uiState.value = state.copy(
-            successMessage = "Conta criada!",
-            errorMessage = null
-        )
-        onSuccess()
+        _uiState.value = state.copy(isLoading = true, errorMessage = null)
+
+        viewModelScope.launch {
+            val authResult = SupabaseClient.signUp(email, state.regPassword)
+            if (authResult.isSuccess && authResult.userId != null) {
+                // Insert profile record into Supabase 'profiles' table
+                SupabaseClient.insertProfile(
+                    userId = authResult.userId,
+                    fullName = name,
+                    document = state.regCpfCnpj,
+                    whatsappNumber = state.regWhatsapp,
+                    email = email,
+                    deliveryPin = state.regPin,
+                    accessToken = authResult.accessToken
+                )
+
+                // Save local user session
+                UserSessionRepository.register(
+                    name = name,
+                    email = email,
+                    cpfCnpj = state.regCpfCnpj,
+                    whatsapp = state.regWhatsapp,
+                    pin = state.regPin
+                )
+                UserSessionRepository.setUserId(authResult.userId)
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    successMessage = "Conta criada!",
+                    errorMessage = null
+                )
+                onSuccess()
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = authResult.errorMessage ?: "Erro ao criar conta no servidor"
+                )
+            }
+        }
     }
 }

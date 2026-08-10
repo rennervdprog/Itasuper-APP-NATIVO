@@ -34,6 +34,8 @@ import com.example.ui.home.HomeViewModel
 import com.example.ui.navigation.ItaSuperBottomNavBar
 import com.example.ui.search.SearchScreen
 import com.example.ui.search.SearchViewModel
+import com.example.ui.store.StoreDetailScreen
+import com.example.ui.store.StoreDetailViewModel
 import com.example.ui.theme.ItaSuperTheme
 
 class MainActivity : ComponentActivity() {
@@ -151,11 +153,19 @@ fun ItaSuperApp() {
             arguments = listOf(navArgument("storeId") { type = NavType.StringType })
         ) { backStackEntry ->
             val storeId = backStackEntry.arguments?.getString("storeId") ?: ""
-            PlaceholderNavScreen(
-                title = "Cardápio da Loja: $storeId",
-                currentRoute = "loja",
-                onNavigateToRoute = { route ->
-                    navController.navigate(route)
+            val storeViewModel: StoreDetailViewModel = viewModel()
+            StoreDetailScreen(
+                storeId = storeId,
+                viewModel = storeViewModel,
+                onBackClick = {
+                    navController.popBackStack()
+                },
+                onNavigateToCart = {
+                    navController.navigate("pedidos") {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             )
         }

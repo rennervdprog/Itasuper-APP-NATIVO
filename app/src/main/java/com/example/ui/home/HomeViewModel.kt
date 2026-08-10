@@ -1,6 +1,7 @@
 package com.example.ui.home
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.data.model.CategoryItem
 import com.example.data.model.LastOrder
 import com.example.data.model.Store
@@ -9,6 +10,7 @@ import com.example.data.repository.UserSessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val streetName: String = "Rodovia Amaral Peixoto",
@@ -31,17 +33,28 @@ class HomeViewModel : ViewModel() {
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        // Load initial data
         val userSession = UserSessionRepository.userSession.value
-        val allStores = StoreRepository.stores.value
-        
         _uiState.value = _uiState.value.copy(
             streetName = userSession.addressStreet.ifBlank { "Rodovia Amaral Peixoto" },
             streetNumber = userSession.addressNumber.ifBlank { "100" },
-            stores = allStores,
-            favoriteStores = allStores.take(2), // Pastelao Carioca & Águia Pizzaria
             lastOrder = StoreRepository.lastOrder.value
         )
+
+        // Observe stores flow reactively
+        viewModelScope.launch {
+            StoreRepository.stores.collect { updatedStores ->
+                _uiState.value = _uiState.value.copy(
+                    stores = updatedStores,
+                    favoriteStores = updatedStores.take(2)
+                )
+                filterStores()
+            }
+        }
+
+        // Refresh stores from Supabase stores_public view
+        viewModelScope.launch {
+            StoreRepository.refreshStoresFromSupabase()
+        }
     }
 
     fun onCategorySelect(categoryId: String) {
