@@ -32,6 +32,8 @@ import com.example.ui.auth.AuthViewModel
 import com.example.ui.home.HomeScreen
 import com.example.ui.home.HomeViewModel
 import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.orders.OrdersScreen
+import com.example.ui.orders.OrdersViewModel
 import com.example.ui.search.SearchScreen
 import com.example.ui.search.SearchViewModel
 import com.example.ui.store.StoreDetailScreen
@@ -115,11 +117,18 @@ fun ItaSuperApp() {
         }
 
         composable("pedidos") {
-            PlaceholderNavScreen(
-                title = "Meus Pedidos",
-                currentRoute = "pedidos",
+            val ordersViewModel: OrdersViewModel = viewModel()
+            OrdersScreen(
+                viewModel = ordersViewModel,
                 onNavigateToRoute = { route ->
                     navController.navigate(route) {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onExploreClick = {
+                    navController.navigate("home") {
                         popUpTo("home") { saveState = true }
                         launchSingleTop = true
                         restoreState = true

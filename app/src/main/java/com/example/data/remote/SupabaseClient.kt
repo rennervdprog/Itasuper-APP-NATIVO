@@ -301,6 +301,38 @@ object SupabaseClient {
         }
     }
 
+    // 6. CREATE ORDER
+    suspend fun submitOrder(order: com.example.data.model.Order): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/orders"
+
+            val bodyJson = JSONObject().apply {
+                put("id", order.id)
+                put("store_id", order.storeId)
+                put("store_name", order.storeName)
+                put("total", order.total)
+                put("status", order.status)
+                put("payment_method", order.paymentMethod)
+                put("delivery_address", order.deliveryAddress)
+            }
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful
+        } catch (e: Exception) {
+            Log.e(TAG, "Error submitting order", e)
+            false
+        }
+    }
+
     private fun parseErrorMessage(jsonText: String, defaultMsg: String): String {
         return try {
             val json = JSONObject(jsonText)

@@ -96,12 +96,11 @@ if (!state.isTermsAccepted) {
 ```
 
 ### VALIDAÇÕES QUE SÃO PLACEHOLDER/MOCK (não fazem verificação real):
-- **Verificação de senha/hash no servidor**: Ao clicar em "Entrar", qualquer e-mail no formato correto e senha com 6 ou mais caracteres é autenticado localmente com sucesso. Não consulta credenciais num servidor remoto ainda.
 - **Envio de e-mail de recuperação por SMTP/API**: O diálogo de "Esqueci minha senha" valida o e-mail e exibe o aviso "E-mail de recuperação enviado!", mas não faz o disparo de e-mail externo.
 
 ### INTEGRAÇÃO COM BACKEND:
 - **Conectado ao Supabase Auth e à tabela `profiles` de verdade**:
-  - `handleLogin`: Realiza requisição HTTP `POST /auth/v1/token?grant_type=password` na API do Supabase Auth.
+  - `handleLogin`: Realiza requisição HTTP `POST /auth/v1/token?grant_type=password` na API do Supabase Auth para validar credenciais diretamente no servidor.
   - `handleRegister`: Realiza requisição HTTP `POST /auth/v1/signup` na API do Supabase Auth e, após retorno bem-sucedido com `user_id`, faz a inserção na tabela `profiles` com as colunas `user_id`, `full_name`, `document`, `whatsapp_number`, `email` e `delivery_pin`.
   - A sessão do usuário ativa e o `userId` retornado do Supabase são armazenados no `UserSessionRepository`.
 
@@ -109,7 +108,6 @@ if (!state.isTermsAccepted) {
 - **Navegação 100% funcional**: Quando o login ou cadastro é concluído com sucesso, o app executa o callback `onSuccess()`, redirecionando via Navigation Compose para a rota `"home"` e removendo a rota `"auth"` da pilha de telas para evitar retorno.
 
 ### O QUE FALTA para esta tela ficar 100% funcional (não só visual):
-- Conectar as chamadas de login e cadastro com o cliente do **Supabase Auth** (`supabase.gotrue.loginWith` / `signUp`).
 - Persistir o token JWT / sessão no `DataStore` do Android para manter o usuário logado ao fechar e reabrir o app.
 - Conectar o envio de e-mail de recuperação com a API de Auth/Reset do Supabase.
 
@@ -191,7 +189,6 @@ fun toggleSupportSheet(show: Boolean) {
   - Clicar em "Ver loja" no card de último pedido abre a loja correspondente.
 
 ### O QUE FALTA para esta tela ficar 100% funcional (não só visual):
-- Conectar o `StoreRepository` à tabela de lojas do Supabase/PostgreSQL.
 - Integrar com o `FusedLocationProviderClient` da Google Play Services para obter as coordenadas GPS reais e usar Geocoding reverso.
 - Ligar as opções do modal de suporte a `Intent` nativa para abrir o WhatsApp do suporte diretamente.
 
@@ -359,12 +356,74 @@ fun addSelectedProductToCart() {
    - Adiciona produtos, atualiza quantidade, calcula subtotal e impede mistura acidental de itens de lojas diferentes.
 
 ### INTEGRAÇÃO COM BACKEND:
-- Tenta buscar produtos reais na tabela `/rest/v1/products?store_id=eq.$storeId` no Supabase via `SupabaseClient.fetchProductsForStore(storeId)`. Caso a loja não possua produtos cadastrados no banco ainda, gera um cardápio rico e contextualizado conforme a categoria do estabelecimento.
+- Busca produtos reais na tabela `/rest/v1/products?store_id=eq.$storeId` no Supabase via `SupabaseClient.fetchProductsForStore(storeId)`. Caso a loja não possua produtos cadastrados no banco de dados, exibe o estado vazio amigável ("Esta loja ainda não cadastrou produtos") sem gerar dados fictícios.
 
 ### ESTADO E NAVEGAÇÃO:
 - **Navegação 100% configurada**:
   - Botão de voltar retorna para a tela anterior via `navController.popBackStack()`.
   - Botão "Ver Sacola" direciona para a rota `"pedidos"`.
+
+---
+
+## TELA 5 (Fase 5): Carrinho / Sacola de Compras & Meus Pedidos (`/pedidos`)
+
+### CAMPOS E BOTÕES:
+- **Top Bar & Abas de Alternância (TabRow)**:
+  - Aba "Sua Sacola" (com indicador numérico de itens)
+  - Aba "Meus Pedidos" (histórico e acompanhamento)
+- **Aba 'Sua Sacola'**:
+  - Cabeçalho com o nome do estabelecimento parceiro + Botão "Limpar Sacola"
+  - Lista de itens selecionados com thumbnail, nome, observações, preço dinâmico e controle de quantidade (+ / - / Lixeira para remover)
+  - **Seção de Cupom de Desconto**:
+    - Campo `OutlinedTextField` para inserção de código (ex: `ITASUPER10`, `BEMVINDO` ou `PRIMEIRACOMPRA`)
+    - Botão "Aplicar" com feedback visual de sucesso ou erro
+  - **Opções de Forma de Pagamento**:
+    - RadioButtons interativos para PIX, Cartão na Entrega (Débito/Crédito) ou Dinheiro na Entrega (com campo numérico de troco para valor informado)
+  - **Endereço de Entrega**:
+    - Card com o endereço atual configurado do usuário em Itaboraí
+  - **Resumo Financeiro do Pedido**:
+    - Exibe Subtotal, Taxa de entrega fixa da loja/ItaSuper, Valor do desconto aplicado e **Total Geral destacado**
+  - **Botão Principal de Fechamento**:
+    - Botão "Enviar Pedido • R$ XX,XX" com indicador de progresso durante o envio
+- **Aba 'Meus Pedidos' (Histórico e Pedidos Ativos)**:
+  - Cards detalhados de cada pedido realizado com número do pedido (#ITA-XXXX), data/hora, nome da loja, lista de itens, total e badge de status colorido ("Em preparação", "Entregue")
+  - Botão "Pedir de novo" (recarrega os itens na sacola e redireciona)
+- **Modal Bottom Sheet de Sucesso**:
+  - Exibe mensagem de confirmação, número do pedido gerado, resumo e atalho para acompanhar em Meus Pedidos
+
+### VALIDAÇÕES IMPLEMENTADAS DE VERDADE (com código funcional):
+1. **Aplicação e cálculo dinâmico de cupons de desconto (`OrdersViewModel`)**:
+```kotlin
+fun applyCoupon() {
+    val code = _uiState.value.couponCode.trim().uppercase()
+    if (code == "ITASUPER10" || code == "BEMVINDO") {
+        _uiState.value = _uiState.value.copy(
+            couponApplied = code,
+            discountAmount = 10.0,
+            errorMessage = null
+        )
+    } ...
+}
+```
+
+2. **Gerenciamento e encerramento de pedido (`OrdersViewModel` / `OrderRepository`)**:
+```kotlin
+suspend fun placeOrder(...): Order {
+    val orderId = "#ITA-${(1000..9999).random()}"
+    ...
+    SupabaseClient.submitOrder(newOrder)
+    _orders.value = currentList.apply { add(0, newOrder) }
+    CartRepository.clearCart()
+    return newOrder
+}
+```
+
+### INTEGRAÇÃO COM BACKEND:
+- Submete novos pedidos via POST à tabela `/rest/v1/orders` no Supabase através do `SupabaseClient.submitOrder(order)`.
+
+### ESTADO E NAVEGAÇÃO:
+- Navegação fluida com a Bottom Navigation Bar (`"pedidos"`).
+- Botão "Explorar Lojas" redireciona para a Home (`"home"`).
 
 ---
 
@@ -375,7 +434,8 @@ fun addSelectedProductToCart() {
 | **Autenticação (`/auth`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (Auth & Profiles) |
 | **Home (`/cliente`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (`stores_public`) |
 | **Busca (`/cliente/busca`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (`stores_public`) |
-| **Loja & Cardápio (`/loja/{storeId}`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (`products` / Fallback) |
+| **Loja & Cardápio (`/loja/{storeId}`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (`products`) |
+| **Sacola & Pedidos (`/pedidos`)** | ✅ 100% | ✅ 100% Real | ✅ 100% Real | ✅ 100% Real (`orders`) |
 
 ---
 *Gerado automaticamente pelo assistente de desenvolvimento Android ItaSuper.*

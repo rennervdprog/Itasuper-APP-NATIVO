@@ -292,16 +292,29 @@ fun StoreDetailScreen(
                 // Products Items
                 if (products.isEmpty()) {
                     item {
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingBag,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = Color.LightGray
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Nenhum produto encontrado neste filtro.",
+                                text = if (uiState.searchQuery.isNotBlank() || uiState.selectedCategory != "Todos") {
+                                    "Nenhum produto encontrado neste filtro."
+                                } else {
+                                    "Esta loja ainda não cadastrou produtos"
+                                },
                                 color = Color.Gray,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
