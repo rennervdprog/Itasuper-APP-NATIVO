@@ -204,11 +204,60 @@ object SupabaseClient {
         }
     }
 
+    data class OpeningHour(
+        val storeId: String,
+        val dayOfWeek: Int,
+        val dayOfWeekStr: String = "",
+        val openTime: String,
+        val closeTime: String,
+        val isClosedAllDay: Boolean
+    )
+
+    suspend fun fetchOpeningHours(): List<OpeningHour> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/opening_hours?select=*"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val list = mutableListOf<OpeningHour>()
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val storeId = item.optString("store_id", "")
+                    val dayOfWeekVal = item.optInt("day_of_week", -1)
+                    val dayOfWeekStr = item.optString("day_of_week", "")
+                    val openTime = item.optString("open_time", "08:00")
+                    val closeTime = item.optString("close_time", "22:00")
+                    val isClosedAllDay = item.optBoolean("is_closed_all_day", false)
+                    if (storeId.isNotBlank()) {
+                        list.add(OpeningHour(storeId, dayOfWeekVal, dayOfWeekStr, openTime, closeTime, isClosedAllDay))
+                    }
+                }
+                list
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching opening_hours", e)
+            emptyList()
+        }
+    }
+
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
     suspend fun fetchActiveStores(): List<Store> = withContext(Dispatchers.IO) {
         try {
-            // Primary query to stores_public view as specified
-            var url = "$SUPABASE_URL/rest/v1/stores_public?select=*&status=eq.active&is_open=eq.true&order=rating.desc"
+            val openingHours = fetchOpeningHours()
+
+            // Primary query to stores_public view with status=eq.ativo (not filtering is_open in backend)
+            var url = "$SUPABASE_URL/rest/v1/stores_public?select=*&status=eq.ativo&order=rating.desc"
 
             var request = Request.Builder()
                 .url(url)
@@ -221,9 +270,9 @@ object SupabaseClient {
             var response = httpClient.newCall(request).execute()
             var responseText = response.body?.string() ?: ""
 
-            // Fallback if status enum causes Postgres 22P02 error
+            // Fallback if status enum causes Postgres error
             if (!response.isSuccessful) {
-                val fallbackUrl = "$SUPABASE_URL/rest/v1/stores_public?select=*&is_open=eq.true&order=rating.desc"
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/stores_public?select=*&order=rating.desc"
                 val fallbackRequest = Request.Builder()
                     .url(fallbackUrl)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -241,9 +290,11 @@ object SupabaseClient {
                 for (i in 0 until jsonArray.length()) {
                     val item = jsonArray.getJSONObject(i)
                     
-                    val status = item.optString("status", "active")
-                    // Filter out inactive or blocked stores if status column is present
-                    if (status.equals("inactive", ignoreCase = true) || status.equals("blocked", ignoreCase = true) || status.equals("disabled", ignoreCase = true)) {
+                    val status = item.optString("status", "ativo")
+                    // Filter out inactive or blocked stores
+                    if (status.equals("inativo", ignoreCase = true) || status.equals("bloqueado", ignoreCase = true) ||
+                        status.equals("desativado", ignoreCase = true) || status.equals("inactive", ignoreCase = true) ||
+                        status.equals("blocked", ignoreCase = true) || status.equals("disabled", ignoreCase = true)) {
                         continue
                     }
 
@@ -251,13 +302,20 @@ object SupabaseClient {
                     val name = item.optString("name", "Loja ItaSuper")
                     val category = item.optString("category", "Geral")
                     val rating = item.optDouble("rating", 5.0).let { if (it.isNaN()) 5.0 else it }
-                    val imageUrl = item.optString("image_url", "")
+                    val imageUrl = item.optString("logo_url", item.optString("image_url", item.optString("banner_url", "")))
+                    val bannerUrl = item.optString("banner_url", imageUrl)
                     val isForceClosed = item.optBoolean("force_closed", false)
-                    val isOpen = item.optBoolean("is_open", true) && !isForceClosed
+                    val defaultIsOpen = item.optBoolean("is_open", true)
+
+                    val computedIsOpen = checkIsStoreOpenNow(id, isForceClosed, defaultIsOpen, openingHours)
 
                     val ownFee = item.optDouble("own_delivery_fee", 0.0)
                     val isFree = ownFee <= 0.0
                     val deliveryFeeText = if (isFree) "Grátis" else String.format("R$ %.2f", ownFee).replace(".", ",")
+
+                    val createdAt = item.optString("created_at", "")
+                    val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else null
+                    val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else null
 
                     val store = Store(
                         id = id,
@@ -267,11 +325,14 @@ object SupabaseClient {
                         deliveryTime = "30-40 min",
                         deliveryFee = deliveryFeeText,
                         isFreeDelivery = isFree,
-                        isOpen = isOpen,
+                        isOpen = computedIsOpen,
                         distanceKm = 1.2,
                         logoUrl = imageUrl,
-                        bannerUrl = imageUrl,
-                        minOrder = 15.0
+                        bannerUrl = bannerUrl,
+                        minOrder = 15.0,
+                        createdAt = createdAt,
+                        latitude = lat,
+                        longitude = lng
                     )
                     storeList.add(store)
                 }
@@ -283,6 +344,63 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
             emptyList()
+        }
+    }
+
+    private fun checkIsStoreOpenNow(
+        storeId: String,
+        isForceClosed: Boolean,
+        defaultIsOpen: Boolean,
+        openingHours: List<OpeningHour>
+    ): Boolean {
+        if (isForceClosed) return false
+
+        val storeHours = openingHours.filter { it.storeId == storeId }
+        if (storeHours.isEmpty()) return defaultIsOpen
+
+        val calendar = java.util.Calendar.getInstance()
+        val sysDay = calendar.get(java.util.Calendar.DAY_OF_WEEK)
+        val currentMinutes = calendar.get(java.util.Calendar.HOUR_OF_DAY) * 60 + calendar.get(java.util.Calendar.MINUTE)
+
+        val todayHour = storeHours.find { hour ->
+            when {
+                hour.dayOfWeek == sysDay -> true
+                hour.dayOfWeek == (sysDay - 1) -> true
+                hour.dayOfWeekStr.equals("domingo", true) && sysDay == java.util.Calendar.SUNDAY -> true
+                hour.dayOfWeekStr.equals("segunda", true) && sysDay == java.util.Calendar.MONDAY -> true
+                hour.dayOfWeekStr.equals("terca", true) && sysDay == java.util.Calendar.TUESDAY -> true
+                hour.dayOfWeekStr.equals("terça", true) && sysDay == java.util.Calendar.TUESDAY -> true
+                hour.dayOfWeekStr.equals("quarta", true) && sysDay == java.util.Calendar.WEDNESDAY -> true
+                hour.dayOfWeekStr.equals("quinta", true) && sysDay == java.util.Calendar.THURSDAY -> true
+                hour.dayOfWeekStr.equals("sexta", true) && sysDay == java.util.Calendar.FRIDAY -> true
+                hour.dayOfWeekStr.equals("sabado", true) && sysDay == java.util.Calendar.SATURDAY -> true
+                hour.dayOfWeekStr.equals("sábado", true) && sysDay == java.util.Calendar.SATURDAY -> true
+                else -> false
+            }
+        } ?: storeHours.firstOrNull()
+
+        if (todayHour == null) return defaultIsOpen
+        if (todayHour.isClosedAllDay) return false
+
+        fun parseMinutes(timeStr: String): Int {
+            val parts = timeStr.split(":")
+            if (parts.size >= 2) {
+                val h = parts[0].toIntOrNull() ?: 0
+                val m = parts[1].toIntOrNull() ?: 0
+                return h * 60 + m
+            }
+            return 0
+        }
+
+        val openMin = parseMinutes(todayHour.openTime)
+        val closeMin = parseMinutes(todayHour.closeTime)
+
+        if (openMin == closeMin && openMin == 0) return true
+
+        return if (closeMin > openMin) {
+            currentMinutes in openMin..closeMin
+        } else {
+            currentMinutes >= openMin || currentMinutes <= closeMin
         }
     }
 

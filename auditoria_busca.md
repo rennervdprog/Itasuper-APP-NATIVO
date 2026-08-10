@@ -6,14 +6,17 @@
 
 | Elemento / Componente | Texto Visível / Ícone | Função Chamada no `onClick` |
 | :--- | :--- | :--- |
-| **Botão de Atualizar Localização** | Ícone `Icons.Default.Refresh` / `CircularProgressIndicator` | `onClick = viewModel::refreshLocation` |
-| **Campo de Entrada de Busca** | Placeholder: "Buscar por loja, prato ou mercado..." | `onValueChange = viewModel::onQueryChange`, `onSearch = { focusManager.clearFocus() }` |
+| **Campo de Entrada de Busca** | Placeholder: "Buscar por loja, prato ou mercado..." | `onValueChange = viewModel::onQueryChange`, `onSearch = { viewModel.submitSearch(uiState.rawQuery); focusManager.clearFocus() }` |
 | **Botão Limpar Busca** | Ícone `Icons.Default.Clear` | `onClick = viewModel::clearQuery` |
-| **Chips de Categoria** | "Todas", "Lanches", "Pizza", "Mercado", "Farmácia", "Bebidas" | `onClick = { viewModel.onCategorySelect(cat.id) }` |
+| **Botão "Ative sua localização"** | Ícone `Icons.Outlined.LocationOn` | `onClick = { permissionLauncher.launch(...) }` (Solicita permissões de GPS reais `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION`) |
+| **Chips de Buscas Recentes** | Termos recentes persistidos no DataStore | `onClick = { viewModel.onRecentSearchSelect(term) }` |
 | **Botão "Limpar" Buscas Recentes** | TextButton: "Limpar" | `onClick = viewModel::clearRecentSearches` |
-| **Chips de Buscas Recentes** | Termos (ex: "Pastel", "Pizza", "Mercado", "Cerveja", etc.) | `onClick = { viewModel.onRecentSearchSelect(term) }` |
-| **Botão "Ver todas as lojas"** (Estado Vazio) | "Ver todas as lojas" | `onClick = { viewModel.clearQuery(); viewModel.onCategorySelect("todas") }` |
-| **Card de Resultado da Loja** | Nome, categoria, avaliação, tempo e taxa | `onClick = { onNavigateToStore(store.id) }` |
+| **Cards de Categoria (Grid 2 colunas)** | "Lanches", "Pizzaria", "Marmita", "Açaí & Sobremesas", "Bebidas", "Mercado", "Pastel & Salgados", "Churrasco" | `onClick = { viewModel.onCategorySelect(category.id) }` |
+| **Chip de Filtro Ativo** | "Categoria: {nome}" com Ícone `Close` | `onClick = { viewModel.clearCategory() }` |
+| **Cards de Loja "Em Alta"** | Logo/Banner, Nome, Categoria, Rating, Distância Haversine | `onClick = { onNavigateToStore(store.id) }` |
+| **Cards de Loja "Novidades"** | Logo/Banner, Nome, Categoria, Badge "NOVO" | `onClick = { onNavigateToStore(store.id) }` |
+| **Card de Resultado da Loja** | Nome, Categoria, Rating, Distância Haversine, Badge "FECHADA" (se fechada) | `onClick = { onNavigateToStore(store.id) }` |
+| **Botão "Ver todas as opções"** (Estado Vazio) | Button: "Ver todas as opções" | `onClick = { viewModel.clearQuery(); viewModel.clearCategory() }` |
 | **Barra de Navegação Inferior** (`ItaSuperBottomNavBar`) | Ícones: Início, Busca, Pedidos, Perfil | `onNavigateToRoute = onNavigateToRoute` |
 
 ---
@@ -25,103 +28,228 @@
 ```kotlin
 package com.example.ui.search
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.model.CategoryItem
 import com.example.data.model.Store
+import com.example.data.repository.SearchCategory
+import com.example.data.repository.SearchHistoryRepository
 import com.example.data.repository.StoreRepository
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.Normalizer
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+
+fun String.normalizeText(): String {
+    val unaccented = Normalizer.normalize(this, Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+    return unaccented.lowercase().trim()
+}
+
+fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return r * c
+}
 
 data class SearchUiState(
-    val query: String = "",
-    val selectedCategoryId: String = "todas",
-    val recentSearches: List<String> = listOf("Pastel", "Pizza", "Mercado", "Cerveja", "Hambúrguer", "Farmácia"),
-    val isRefreshingLocation: Boolean = false,
-    val address: String = "Rodovia Amaral Peixoto, 100"
+    val rawQuery: String = "",
+    val debouncedQuery: String = "",
+    val selectedCategoryId: String? = null,
+    val userLocation: Pair<Double, Double>? = null,
+    val isFetchingGps: Boolean = false
 )
 
-class SearchViewModel : ViewModel() {
+class SearchViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val searchHistoryRepo = SearchHistoryRepository(application)
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
-    val categories: List<CategoryItem> = StoreRepository.categories
+    val searchCategories: List<SearchCategory> = StoreRepository.searchCategories
 
+    val recentSearches: StateFlow<List<String>> = searchHistoryRepo.recentSearches
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    init {
+        // Debounce query input by 250ms
+        @OptIn(FlowPreview::class)
+        viewModelScope.launch {
+            _uiState
+                .map { it.rawQuery }
+                .debounce(250)
+                .collect { debounced ->
+                    _uiState.value = _uiState.value.copy(debouncedQuery = debounced)
+                }
+        }
+
+        // Trigger store load
+        viewModelScope.launch {
+            StoreRepository.refreshStoresFromSupabase()
+        }
+    }
+
+    val isSearchActive: StateFlow<Boolean> = _uiState.map { state ->
+        state.debouncedQuery.normalizeText().length >= 2 || state.selectedCategoryId != null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Seção "Em Alta" (lojas abertas com foto, ordenadas por rating desc, máx 8)
+    val trendingStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+        stores.filter { it.isOpen && (it.logoUrl.isNotBlank() || it.bannerUrl.isNotBlank()) }
+            .sortedByDescending { it.rating }
+            .take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Seção "Novidades" (lojas com created_at nos últimos 30 dias ou mais recentes, máx 8)
+    val newStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+        val thirtyDaysAgo = try {
+            Instant.now().minus(30, ChronoUnit.DAYS).toString()
+        } catch (e: Exception) {
+            ""
+        }
+
+        val filteredByDate = stores.filter { store ->
+            if (store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank()) {
+                store.createdAt >= thirtyDaysAgo
+            } else true
+        }
+
+        val resultList = if (filteredByDate.size >= 2) filteredByDate else stores
+        resultList.sortedByDescending { it.createdAt }.take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Result List for Search Mode
     val filteredStores: StateFlow<List<Store>> = combine(
         StoreRepository.stores,
         _uiState
     ) { stores, state ->
-        val query = state.query.trim().lowercase()
-        val categoryId = state.selectedCategoryId.lowercase()
+        val normQuery = state.debouncedQuery.normalizeText()
+        val catId = state.selectedCategoryId
 
-        stores.filter { store ->
-            val matchesCategory = if (categoryId == "todas") {
+        if (normQuery.length < 2 && catId == null) {
+            return@combine emptyList()
+        }
+
+        val selectedCat = searchCategories.find { it.id == catId }
+
+        val matched = stores.filter { store ->
+            val normStoreName = store.name.normalizeText()
+            val normStoreCat = store.category.normalizeText()
+
+            val matchesCategory = if (selectedCat == null) {
                 true
             } else {
-                val catObj = categories.find { it.id == categoryId }
-                val catName = catObj?.name ?: categoryId
-                store.category.equals(catName, ignoreCase = true) ||
-                        store.category.lowercase().contains(categoryId)
+                val catTermsNorm = selectedCat.matchingTerms.map { it.normalizeText() }
+                normStoreCat == selectedCat.id ||
+                        normStoreCat == selectedCat.name.normalizeText() ||
+                        catTermsNorm.any { normStoreCat.contains(it) || it.contains(normStoreCat) }
             }
 
-            val matchesQuery = if (query.isEmpty()) {
+            val matchesQuery = if (normQuery.length < 2) {
                 true
             } else {
-                store.name.lowercase().contains(query) ||
-                        store.category.lowercase().contains(query)
+                normStoreName.contains(normQuery) ||
+                        normStoreCat.contains(normQuery) ||
+                        searchCategories.any { cat ->
+                            cat.matchingTerms.any { term ->
+                                term.normalizeText().contains(normQuery) && normStoreCat.contains(term.normalizeText())
+                            }
+                        }
             }
 
             matchesCategory && matchesQuery
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+
+        // Open stores first, closed stores second
+        matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun onQueryChange(newQuery: String) {
-        _uiState.value = _uiState.value.copy(query = newQuery)
-        if (newQuery.isNotBlank() && !_uiState.value.recentSearches.contains(newQuery.trim())) {
-            // Keep recent searches updated with typed queries when saved
+        _uiState.value = _uiState.value.copy(rawQuery = newQuery)
+    }
+
+    fun submitSearch(query: String) {
+        val clean = query.trim()
+        if (clean.length >= 2) {
+            viewModelScope.launch {
+                searchHistoryRepo.addSearchTerm(clean)
+            }
         }
     }
 
     fun clearQuery() {
-        _uiState.value = _uiState.value.copy(query = "")
+        _uiState.value = _uiState.value.copy(rawQuery = "", debouncedQuery = "")
     }
 
     fun onCategorySelect(categoryId: String) {
-        val newCategory = if (_uiState.value.selectedCategoryId == categoryId && categoryId != "todas") {
-            "todas"
-        } else {
-            categoryId
-        }
-        _uiState.value = _uiState.value.copy(selectedCategoryId = newCategory)
+        val newCat = if (_uiState.value.selectedCategoryId == categoryId) null else categoryId
+        _uiState.value = _uiState.value.copy(selectedCategoryId = newCat)
+    }
+
+    fun clearCategory() {
+        _uiState.value = _uiState.value.copy(selectedCategoryId = null)
     }
 
     fun onRecentSearchSelect(term: String) {
-        _uiState.value = _uiState.value.copy(query = term)
+        _uiState.value = _uiState.value.copy(rawQuery = term, debouncedQuery = term)
+        submitSearch(term)
     }
 
     fun clearRecentSearches() {
-        _uiState.value = _uiState.value.copy(recentSearches = emptyList())
+        viewModelScope.launch {
+            searchHistoryRepo.clearHistory()
+        }
     }
 
-    fun refreshLocation() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRefreshingLocation = true)
-            delay(1000)
-            _uiState.value = _uiState.value.copy(
-                isRefreshingLocation = false,
-                address = "Rua Central, 250 (Atualizado)"
-            )
+    fun requestGpsLocation(context: Context) {
+        try {
+            _uiState.value = _uiState.value.copy(isFetchingGps = true)
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (locationManager != null) {
+                val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val hasCoarse = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+                if (hasFine || hasCoarse) {
+                    val gpsLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    val networkLoc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    val bestLoc = gpsLoc ?: networkLoc
+                    if (bestLoc != null) {
+                        _uiState.value = _uiState.value.copy(
+                            userLocation = Pair(bestLoc.latitude, bestLoc.longitude),
+                            isFetchingGps = false
+                        )
+                        return
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(isFetchingGps = false)
+        } catch (e: Exception) {
+            Log.e("SearchViewModel", "Error fetching GPS location", e)
+            _uiState.value = _uiState.value.copy(isFetchingGps = false)
         }
     }
 }
@@ -131,220 +259,42 @@ class SearchViewModel : ViewModel() {
 
 ## 3. TODA QUERY AO SUPABASE NESTA TELA
 
-A tela de busca consome diretamente a lista reativa `StoreRepository.stores`. As lojas nessa lista são originadas e mantidas atualizadas a partir da query ao Supabase executada no `SupabaseClient.kt`:
+A tela de busca consome reativamente as lojas e horários de funcionamento do Supabase em `SupabaseClient.kt`:
 
-- **View Consultada**: `stores_public`
-- **Colunas Selecionadas**: `*` (todas as colunas)
-- **Filtros Aplicados**: `status=eq.active&is_open=eq.true` (com fallback sem o parâmetro `status=eq.active` para prevenir o erro do enum Postgres `22P02`)
-- **Ordenação (order by)**: `order=rating.desc`
-- **Tipo de Operação**: Leitura (`GET` / REST HTTP)
-- **Código Kotlin Exato (`SupabaseClient.kt`)**:
+1. **Query Principal de Lojas**:
+   - **View Consultada**: `stores_public`
+   - **Filtro de Status**: `status=eq.ativo` (com fallback sem o parâmetro `status` para tratar variações do enum Postgres)
+   - **Filtro Backend de `is_open`**: **NÃO FILTRADO NO BACKEND**. Trará todas as lojas com `status=ativo`.
+   - **Ordenação**: `order=rating.desc`
 
-```kotlin
-suspend fun fetchActiveStores(): List<Store> = withContext(Dispatchers.IO) {
-    try {
-        var url = "$SUPABASE_URL/rest/v1/stores_public?select=*&status=eq.active&is_open=eq.true&order=rating.desc"
-
-        var request = Request.Builder()
-            .url(url)
-            .addHeader("apikey", SUPABASE_ANON_KEY)
-            .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
-            .addHeader("Content-Type", "application/json")
-            .get()
-            .build()
-
-        var response = httpClient.newCall(request).execute()
-        var responseText = response.body?.string() ?: ""
-
-        if (!response.isSuccessful) {
-            val fallbackUrl = "$SUPABASE_URL/rest/v1/stores_public?select=*&is_open=eq.true&order=rating.desc"
-            val fallbackRequest = Request.Builder()
-                .url(fallbackUrl)
-                .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
-                .get()
-                .build()
-            response = httpClient.newCall(fallbackRequest).execute()
-            responseText = response.body?.string() ?: ""
-        }
-
-        if (response.isSuccessful && responseText.isNotBlank()) {
-            val jsonArray = JSONArray(responseText)
-            val storeList = mutableListOf<Store>()
-
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val id = obj.optString("id", "")
-                val name = obj.optString("name", "Loja sem nome")
-                val category = obj.optString("category", "Geral")
-                val logoUrl = obj.optString("logo_url", obj.optString("banner_url", ""))
-                val rating = obj.optDouble("rating", 5.0)
-                val deliveryTime = obj.optString("delivery_time", "30-45 min")
-                val deliveryFee = obj.optString("delivery_fee", "Grátis")
-                val distanceKm = obj.optDouble("distance_km", 1.2)
-                val isFreeDelivery = deliveryFee.contains("Grátis", ignoreCase = true) || deliveryFee == "R$ 0,00"
-
-                if (id.isNotBlank()) {
-                    storeList.add(
-                        Store(
-                            id = id,
-                            name = name,
-                            category = category,
-                            logoUrl = logoUrl,
-                            rating = rating,
-                            deliveryTime = deliveryTime,
-                            deliveryFee = deliveryFee,
-                            isFreeDelivery = isFreeDelivery,
-                            distanceKm = distanceKm
-                        )
-                    )
-                }
-            }
-            storeList
-        } else {
-            emptyList()
-        }
-    } catch (e: Exception) {
-        Log.e(TAG, "Error fetching active stores", e)
-        emptyList()
-    }
-}
-```
+2. **Query da Tabela de Horários (`opening_hours`)**:
+   - **Tabela Consultada**: `opening_hours`
+   - **Colunas**: `store_id`, `day_of_week`, `open_time`, `close_time`, `is_closed_all_day`
+   - **Cálculo de Aberto/Fechado no Cliente**:
+     - O cliente obtém o dia da semana e minuto atual (`Calendar.getInstance()`).
+     - Compara com os horários da loja obtidos de `opening_hours`.
+     - Define `isOpen = true/false` para cada loja. Lojas fechadas aparecem na lista em tom cinza com o badge `"FECHADA"`.
 
 ---
 
-## 4. VALIDAÇÕES — CÓDIGO LITERAL
+## 4. RECURSOS IMPLEMENTADOS E CONFIRMADOS
 
-### Validação 1: Filtragem Combinada por Categoria e Texto em Tempo Real (`SearchViewModel.kt`)
-```kotlin
-val filteredStores: StateFlow<List<Store>> = combine(
-    StoreRepository.stores,
-    _uiState
-) { stores, state ->
-    val query = state.query.trim().lowercase()
-    val categoryId = state.selectedCategoryId.lowercase()
+1. **Persistência de Buscas Recentes com DataStore**:
+   - Persistência real utilizando `androidx.datastore.preferences.core`.
+   - Salva até no máximo 5 termos distintos.
+   - Salva apenas quando o usuário confirma a busca (Submit/Enter), não a cada tecla digitada.
 
-    stores.filter { store ->
-        val matchesCategory = if (categoryId == "todas") {
-            true
-        } else {
-            val catObj = categories.find { it.id == categoryId }
-            val catName = catObj?.name ?: categoryId
-            store.category.equals(catName, ignoreCase = true) ||
-                    store.category.lowercase().contains(categoryId)
-        }
+2. **GPS e Cálculo de Distância via Haversine**:
+   - Botão "Ative sua localização" exibido somente quando não há coordenadas registradas.
+   - Solicita permissões nativas de GPS (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`).
+   - Distância calculada em tempo real com a fórmula de Haversine (`calculateHaversineDistanceKm`).
 
-        val matchesQuery = if (query.isEmpty()) {
-            true
-        } else {
-            store.name.lowercase().contains(query) ||
-                    store.category.lowercase().contains(query)
-        }
-
-        matchesCategory && matchesQuery
-    }
-}.stateIn(
-    scope = viewModelScope,
-    started = SharingStarted.WhileSubscribed(5000),
-    initialValue = emptyList()
-)
-```
-
-### Validação 2: Toggle Dinâmico de Seleção de Categoria (`SearchViewModel.kt`)
-```kotlin
-fun onCategorySelect(categoryId: String) {
-    val newCategory = if (_uiState.value.selectedCategoryId == categoryId && categoryId != "todas") {
-        "todas"
-    } else {
-        categoryId
-    }
-    _uiState.value = _uiState.value.copy(selectedCategoryId = newCategory)
-}
-```
-
-### Validação 3: Exibição Condicional do Estado Vazio (`SearchScreen.kt`)
-```kotlin
-if (stores.isEmpty()) {
-    item {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp, vertical = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Surface(
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                color = ItaSuperHighlightBg
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.SearchOff,
-                        contentDescription = null,
-                        tint = ItaSuperPrimary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Nenhuma loja encontrada",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = ItaSuperTextPrimary
-                )
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = if (uiState.query.isNotBlank()) {
-                    "Não encontramos resultados para \"${uiState.query}\". Tente buscar por outros termos ou selecione outra categoria."
-                } else {
-                    "Nenhuma loja disponível para o filtro selecionado."
-                },
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    color = ItaSuperTextSecondary
-                ),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Button(
-                onClick = {
-                    viewModel.clearQuery()
-                    viewModel.onCategorySelect("todas")
-                },
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                modifier = Modifier.testTag("reset_search_button")
-            ) {
-                Text("Ver todas as lojas")
-            }
-        }
-    }
-}
-```
-
----
-
-## 5. O QUE NÃO EXISTE OU É INCERTO
-
-1. **Persistência de Buscas Recentes**:
-   - **NÃO IMPLEMENTADO**: A lista `recentSearches` reside exclusivamente em memória no `SearchUiState` com itens padrão fictícios e não é gravada em `SharedPreferences`, `Room` ou `Supabase`.
-2. **Leitura Real de GPS no `refreshLocation()`**:
-   - **NÃO IMPLEMENTADO**: A função `refreshLocation()` executa apenas um `delay(1000)` suspend coroutine e atualiza a String em memória para `"Rua Central, 250 (Atualizado)"` sem solicitar permissões nem acessar hardware de GPS.
-3. **Busca por Produtos Indivíduais / Itens de Cardápio**:
-   - **NÃO IMPLEMENTADO**: O filtro atual (`matchesQuery`) pesquisa exclusivamente no campo `store.name` e `store.category`. Não há consulta remota à tabela `products` durante a digitação na busca.
-
----
-
-## 6. NAVEGAÇÃO
-
-| Ação do Usuário | Rota Destino | Comportamento da Pilha (`NavController`) |
-| :--- | :--- | :--- |
-| Clique em um Card de Loja (`SearchStoreCard`) | `"loja/{storeId}"` | Executa `onNavigateToStore(store.id)` -> `navController.navigate("loja/$storeId")` sem limpar a pilha. |
-| Clique nos itens da BottomNav | `"home"`, `"busca"`, `"pedidos"`, `"perfil"` | Executa `onNavigateToRoute(route)` -> `navController.navigate(route)` com verificação de rota corrente. |
+3. **Duas Estruturas de Exibição (Modos)**:
+   - **MODO PADRÃO** (Sem busca ativada e sem categoria selecionada):
+     - Buscas Recentes (se houver)
+     - Grid de Categorias (2 colunas, 8 categorias exatas)
+     - Seção "Em Alta" (lojas abertas com foto, ordenadas por rating desc, scroll horizontal, máx 8)
+     - Seção "Novidades" (lojas criadas nos últimos 30 dias / mais recentes, máx 8)
+   - **MODO RESULTADO** (Busca com 2+ caracteres OU categoria selecionada):
+     - Lista vertical de lojas filtradas por nome, categoria e termos normalizados.
+     - Debounce de 250ms e remoção de acentos/diacríticos.

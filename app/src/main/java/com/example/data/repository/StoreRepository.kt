@@ -8,16 +8,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class SearchCategory(
+    val id: String,
+    val name: String,
+    val iconName: String,
+    val matchingTerms: List<String>
+)
+
 object StoreRepository {
 
-    val categories = listOf(
-        CategoryItem("todas", "Todas", "apps"),
-        CategoryItem("lanches", "Lanches", "fastfood"),
-        CategoryItem("pizza", "Pizza", "local_pizza"),
-        CategoryItem("mercado", "Mercado", "shopping_cart"),
-        CategoryItem("farmacia", "Farmácia", "medical_services"),
-        CategoryItem("bebidas", "Bebidas", "local_bar")
+    val searchCategories = listOf(
+        SearchCategory("lanches", "Lanches", "fastfood", listOf("lanchonete", "hamburgueria", "lanches", "lanche", "burger")),
+        SearchCategory("pizzaria", "Pizzaria", "local_pizza", listOf("pizzaria", "pizza")),
+        SearchCategory("marmita", "Marmita", "restaurant", listOf("marmitaria", "restaurante", "comida caseira", "marmita")),
+        SearchCategory("acai", "Açaí & Sobremesas", "icecream", listOf("acai", "açaí", "sorveteria", "doceria", "confeitaria", "sobremesa")),
+        SearchCategory("bebidas", "Bebidas", "local_bar", listOf("adega", "bebidas", "bebida", "cerveja")),
+        SearchCategory("mercado", "Mercado", "shopping_cart", listOf("mercado", "supermercado", "hortifruti", "conveniencia")),
+        SearchCategory("pastel", "Pastel & Salgados", "bakery_dining", listOf("pastel", "pasteis", "salgados", "salgado")),
+        SearchCategory("churrasco", "Churrasco", "kebab_dining", listOf("churrascaria", "carnes", "churrasco", "carne"))
     )
+
+    val categories = searchCategories.map { CategoryItem(it.id, it.name, it.iconName) }
 
     private val _stores = MutableStateFlow<List<Store>>(emptyList())
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()

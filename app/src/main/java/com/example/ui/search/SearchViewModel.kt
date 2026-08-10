@@ -1,102 +1,227 @@
 package com.example.ui.search
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.model.CategoryItem
 import com.example.data.model.Store
+import com.example.data.repository.SearchCategory
+import com.example.data.repository.SearchHistoryRepository
 import com.example.data.repository.StoreRepository
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.Normalizer
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+
+fun String.normalizeText(): String {
+    val unaccented = Normalizer.normalize(this, Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+    return unaccented.lowercase().trim()
+}
+
+fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return r * c
+}
 
 data class SearchUiState(
-    val query: String = "",
-    val selectedCategoryId: String = "todas",
-    val recentSearches: List<String> = listOf("Pastel", "Pizza", "Mercado", "Cerveja", "Hambúrguer", "Farmácia"),
-    val isRefreshingLocation: Boolean = false,
-    val address: String = "Rodovia Amaral Peixoto, 100"
+    val rawQuery: String = "",
+    val debouncedQuery: String = "",
+    val selectedCategoryId: String? = null,
+    val userLocation: Pair<Double, Double>? = null,
+    val isFetchingGps: Boolean = false
 )
 
-class SearchViewModel : ViewModel() {
+class SearchViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val searchHistoryRepo = SearchHistoryRepository(application)
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
-    val categories: List<CategoryItem> = StoreRepository.categories
+    val searchCategories: List<SearchCategory> = StoreRepository.searchCategories
 
+    val recentSearches: StateFlow<List<String>> = searchHistoryRepo.recentSearches
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    init {
+        // Debounce query input by 250ms
+        @OptIn(FlowPreview::class)
+        viewModelScope.launch {
+            _uiState
+                .map { it.rawQuery }
+                .debounce(250)
+                .collect { debounced ->
+                    _uiState.value = _uiState.value.copy(debouncedQuery = debounced)
+                }
+        }
+
+        // Trigger store load
+        viewModelScope.launch {
+            StoreRepository.refreshStoresFromSupabase()
+        }
+    }
+
+    val isSearchActive: StateFlow<Boolean> = _uiState.map { state ->
+        state.debouncedQuery.normalizeText().length >= 2 || state.selectedCategoryId != null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Seção "Em Alta" (lojas abertas com foto, ordenadas por rating desc, máx 8)
+    val trendingStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+        stores.filter { it.isOpen && (it.logoUrl.isNotBlank() || it.bannerUrl.isNotBlank()) }
+            .sortedByDescending { it.rating }
+            .take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Seção "Novidades" (lojas com created_at nos últimos 30 dias ou mais recentes, máx 8)
+    val newStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+        val thirtyDaysAgo = try {
+            Instant.now().minus(30, ChronoUnit.DAYS).toString()
+        } catch (e: Exception) {
+            ""
+        }
+
+        val filteredByDate = stores.filter { store ->
+            if (store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank()) {
+                store.createdAt >= thirtyDaysAgo
+            } else true
+        }
+
+        val resultList = if (filteredByDate.size >= 2) filteredByDate else stores
+        resultList.sortedByDescending { it.createdAt }.take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Result List for Search Mode
     val filteredStores: StateFlow<List<Store>> = combine(
         StoreRepository.stores,
         _uiState
     ) { stores, state ->
-        val query = state.query.trim().lowercase()
-        val categoryId = state.selectedCategoryId.lowercase()
+        val normQuery = state.debouncedQuery.normalizeText()
+        val catId = state.selectedCategoryId
 
-        stores.filter { store ->
-            val matchesCategory = if (categoryId == "todas") {
+        if (normQuery.length < 2 && catId == null) {
+            return@combine emptyList()
+        }
+
+        val selectedCat = searchCategories.find { it.id == catId }
+
+        val matched = stores.filter { store ->
+            val normStoreName = store.name.normalizeText()
+            val normStoreCat = store.category.normalizeText()
+
+            val matchesCategory = if (selectedCat == null) {
                 true
             } else {
-                val catObj = categories.find { it.id == categoryId }
-                val catName = catObj?.name ?: categoryId
-                store.category.equals(catName, ignoreCase = true) ||
-                        store.category.lowercase().contains(categoryId)
+                val catTermsNorm = selectedCat.matchingTerms.map { it.normalizeText() }
+                normStoreCat == selectedCat.id ||
+                        normStoreCat == selectedCat.name.normalizeText() ||
+                        catTermsNorm.any { normStoreCat.contains(it) || it.contains(normStoreCat) }
             }
 
-            val matchesQuery = if (query.isEmpty()) {
+            val matchesQuery = if (normQuery.length < 2) {
                 true
             } else {
-                store.name.lowercase().contains(query) ||
-                        store.category.lowercase().contains(query)
+                normStoreName.contains(normQuery) ||
+                        normStoreCat.contains(normQuery) ||
+                        searchCategories.any { cat ->
+                            cat.matchingTerms.any { term ->
+                                term.normalizeText().contains(normQuery) && normStoreCat.contains(term.normalizeText())
+                            }
+                        }
             }
 
             matchesCategory && matchesQuery
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+
+        // Open stores first, closed stores second
+        matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun onQueryChange(newQuery: String) {
-        _uiState.value = _uiState.value.copy(query = newQuery)
-        if (newQuery.isNotBlank() && !_uiState.value.recentSearches.contains(newQuery.trim())) {
-            // Keep recent searches updated with typed queries when saved
+        _uiState.value = _uiState.value.copy(rawQuery = newQuery)
+    }
+
+    fun submitSearch(query: String) {
+        val clean = query.trim()
+        if (clean.length >= 2) {
+            viewModelScope.launch {
+                searchHistoryRepo.addSearchTerm(clean)
+            }
         }
     }
 
     fun clearQuery() {
-        _uiState.value = _uiState.value.copy(query = "")
+        _uiState.value = _uiState.value.copy(rawQuery = "", debouncedQuery = "")
     }
 
     fun onCategorySelect(categoryId: String) {
-        val newCategory = if (_uiState.value.selectedCategoryId == categoryId && categoryId != "todas") {
-            "todas"
-        } else {
-            categoryId
-        }
-        _uiState.value = _uiState.value.copy(selectedCategoryId = newCategory)
+        val newCat = if (_uiState.value.selectedCategoryId == categoryId) null else categoryId
+        _uiState.value = _uiState.value.copy(selectedCategoryId = newCat)
+    }
+
+    fun clearCategory() {
+        _uiState.value = _uiState.value.copy(selectedCategoryId = null)
     }
 
     fun onRecentSearchSelect(term: String) {
-        _uiState.value = _uiState.value.copy(query = term)
+        _uiState.value = _uiState.value.copy(rawQuery = term, debouncedQuery = term)
+        submitSearch(term)
     }
 
     fun clearRecentSearches() {
-        _uiState.value = _uiState.value.copy(recentSearches = emptyList())
+        viewModelScope.launch {
+            searchHistoryRepo.clearHistory()
+        }
     }
 
-    fun refreshLocation() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRefreshingLocation = true)
-            delay(1000)
-            _uiState.value = _uiState.value.copy(
-                isRefreshingLocation = false,
-                address = "Rua Central, 250 (Atualizado)"
-            )
+    fun requestGpsLocation(context: Context) {
+        try {
+            _uiState.value = _uiState.value.copy(isFetchingGps = true)
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (locationManager != null) {
+                val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val hasCoarse = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+                if (hasFine || hasCoarse) {
+                    val gpsLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    val networkLoc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    val bestLoc = gpsLoc ?: networkLoc
+                    if (bestLoc != null) {
+                        _uiState.value = _uiState.value.copy(
+                            userLocation = Pair(bestLoc.latitude, bestLoc.longitude),
+                            isFetchingGps = false
+                        )
+                        return
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(isFetchingGps = false)
+        } catch (e: Exception) {
+            Log.e("SearchViewModel", "Error fetching GPS location", e)
+            _uiState.value = _uiState.value.copy(isFetchingGps = false)
         }
     }
 }

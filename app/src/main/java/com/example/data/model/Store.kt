@@ -12,7 +12,10 @@ data class Store(
     val distanceKm: Double = 1.2,
     val logoUrl: String = "",
     val bannerUrl: String = "",
-    val minOrder: Double = 10.0
+    val minOrder: Double = 10.0,
+    val createdAt: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 data class CategoryItem(
