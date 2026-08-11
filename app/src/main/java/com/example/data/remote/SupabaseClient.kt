@@ -62,7 +62,7 @@ object SupabaseClient {
 
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val json = JSONObject(responseText)
-                val accessToken = json.optString("access_token", null)
+                val accessToken = json.optNullableString("access_token")
                 val userObj = json.optJSONObject("user")
                 val userId = userObj?.optString("id") ?: json.optString("id")
                 val userEmail = userObj?.optString("email") ?: email
@@ -111,7 +111,7 @@ object SupabaseClient {
 
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val json = JSONObject(responseText)
-                val accessToken = json.optString("access_token", null)
+                val accessToken = json.optNullableString("access_token")
                 val userObj = json.optJSONObject("user")
                 val userId = userObj?.optString("id") ?: json.optString("id")
                 val userEmail = userObj?.optString("email") ?: email
@@ -341,7 +341,10 @@ object SupabaseClient {
                     val secArr = item.optJSONArray("secondary_categories") ?: item.optJSONArray("categories")
                     if (secArr != null) {
                         for (j in 0 until secArr.length()) {
-                            secCats.add(secArr.getString(j))
+                            val catVal = secArr.optString(j, "")
+                            if (catVal.isNotBlank() && catVal != "null") {
+                                secCats.add(catVal)
+                            }
                         }
                     } else {
                         val secStr = item.optString("secondary_categories", item.optString("categories", ""))
@@ -504,7 +507,7 @@ object SupabaseClient {
                     val id = obj.optString("id", "")
                     val title = obj.optString("title", obj.optString("name", "Oferta Especial"))
                     val imageUrl = obj.optString("image_url", obj.optString("imageUrl", ""))
-                    val targetStoreId = obj.optString("target_store_id", obj.optString("store_id", null))
+                    val targetStoreId = obj.optNullableString("target_store_id") ?: obj.optNullableString("store_id")
                     val desc = obj.optString("description", "")
 
                     if (imageUrl.isNotBlank() || title.isNotBlank()) {
@@ -655,7 +658,7 @@ object SupabaseClient {
                     val description = if (rawDesc.trim() == "null") "" else rawDesc
                     val price = item.optDouble("price", 0.0)
                     val category = item.optString("category", "Geral")
-                    val sectionId = if (item.has("section_id") && !item.isNull("section_id")) item.optString("section_id", null) else null
+                    val sectionId = item.optNullableString("section_id")
                     val imageUrl = item.optString("image_url", "")
                     val isAvailable = item.optBoolean("is_available", true)
 
@@ -725,8 +728,8 @@ object SupabaseClient {
                     val maxSelect = item.optInt("max_select", 1)
                     val sortOrder = item.optInt("sort_order", 0)
                     val priceReplacesBase = item.optBoolean("price_replaces_base", false)
-                    val productId = if (item.has("product_id") && !item.isNull("product_id")) item.optString("product_id", null) else null
-                    val sId = if (item.has("store_id") && !item.isNull("store_id")) item.optString("store_id", null) else null
+                    val productId = item.optNullableString("product_id")
+                    val sId = item.optNullableString("store_id")
 
                     if (id.isNotBlank()) {
                         groupsList.add(
@@ -909,7 +912,7 @@ object SupabaseClient {
                 val array = JSONArray(jsonText)
                 if (array.length() > 0) {
                     val obj = array.getJSONObject(0)
-                    val cStoreId = obj.optString("store_id", null)
+                    val cStoreId = obj.optNullableString("store_id")
                     
                     // Filter by store_id if coupon is store-specific
                     if (cStoreId != null && cStoreId.isNotBlank() && cStoreId != "null" && storeId != null && cStoreId != storeId) {
@@ -922,10 +925,10 @@ object SupabaseClient {
                         discountType = obj.optString("discount_type", "fixed"),
                         discountValue = obj.optDouble("discount_value", 0.0),
                         minOrderValue = obj.optDouble("min_order_value", 0.0),
-                        expiresAt = if (obj.isNull("expires_at")) null else obj.optString("expires_at", null),
+                        expiresAt = obj.optNullableString("expires_at"),
                         firstOrderOnly = obj.optBoolean("first_order_only", false),
                         isActive = obj.optBoolean("is_active", true),
-                        storeId = if (cStoreId == "null") null else cStoreId
+                        storeId = cStoreId
                     )
                 }
             }
@@ -1077,5 +1080,13 @@ object SupabaseClient {
         } catch (e: Exception) {
             defaultMsg
         }
+    }
+
+    private fun JSONObject.optNullableString(key: String): String? {
+        if (this.has(key) && !this.isNull(key)) {
+            val str = this.optString(key, "")
+            if (str.isNotBlank() && str != "null") return str
+        }
+        return null
     }
 }

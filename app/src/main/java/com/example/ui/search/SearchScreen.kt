@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -264,7 +265,7 @@ fun SearchScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     contentPadding = PaddingValues(bottom = 8.dp)
                                 ) {
-                                    items(recentSearches) { term ->
+                                    itemsIndexed(recentSearches, key = { idx, term -> "recent_${idx}_$term" }) { _, term ->
                                         SuggestionChip(
                                             onClick = { viewModel.onRecentSearchSelect(term) },
                                             label = { Text(term) },
@@ -352,7 +353,7 @@ fun SearchScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     contentPadding = PaddingValues(horizontal = 16.dp)
                                 ) {
-                                    items(trendingStores) { store ->
+                                    itemsIndexed(trendingStores, key = { idx, store -> "trending_${idx}_${store.id}" }) { _, store ->
                                         TrendingStoreHorizontalCard(
                                             store = store,
                                             userLocation = uiState.userLocation,
@@ -385,7 +386,7 @@ fun SearchScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     contentPadding = PaddingValues(horizontal = 16.dp)
                                 ) {
-                                    items(newStores) { store ->
+                                    itemsIndexed(newStores, key = { idx, store -> "new_${idx}_${store.id}" }) { _, store ->
                                         NewStoreHorizontalCard(
                                             store = store,
                                             userLocation = uiState.userLocation,
@@ -492,7 +493,7 @@ fun SearchScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            items(filteredStores) { store ->
+                            itemsIndexed(filteredStores, key = { idx, store -> "search_${idx}_${store.id}" }) { _, store ->
                                 StoreSearchResultCard(
                                     store = store,
                                     userLocation = uiState.userLocation,
