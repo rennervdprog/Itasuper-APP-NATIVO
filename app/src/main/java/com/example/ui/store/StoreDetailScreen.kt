@@ -54,6 +54,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -557,9 +558,9 @@ fun StoreDetailScreen(
                         }
                     }
                 } else {
-                    groupedProducts.forEach { (secName, secProducts) ->
+                    groupedProducts.entries.forEachIndexed { secIndex, (secName, secProducts) ->
                         // Section Header showing Section Name and Item Count
-                        item(key = "section_header_$secName") {
+                        item(key = "section_header_${secIndex}_$secName") {
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -597,7 +598,7 @@ fun StoreDetailScreen(
                             }
                         }
 
-                        items(secProducts, key = { it.id }) { product ->
+                        itemsIndexed(secProducts, key = { pIndex, prod -> "prod_${secIndex}_${pIndex}_${prod.id}" }) { _, product ->
                             ProductItemCard(
                                 product = product,
                                 onCardClick = { viewModel.openProductModal(product) },
