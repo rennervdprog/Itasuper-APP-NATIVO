@@ -79,6 +79,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,6 +115,9 @@ import com.example.ui.theme.ItaSuperTextSecondary
 import com.example.ui.theme.ItaSuperWarning
 
 import com.example.data.model.DiscoverProduct
+import com.example.ui.permissions.LocationAndPermissionsDialog
+import com.example.ui.permissions.PermissionUtils
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.SoraFontFamily
 
 @Composable
@@ -122,8 +127,20 @@ fun HomeScreen(
     onNavigateToOrders: () -> Unit,
     onNavigateToRoute: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showPermissionsDialog by remember { mutableStateOf(false) }
+
+    LocationAndPermissionsDialog(
+        showDialog = showPermissionsDialog,
+        onDismiss = { showPermissionsDialog = false },
+        onPermissionsGranted = { locGranted, _ ->
+            if (locGranted) {
+                viewModel.fetchGpsLocation(context)
+            }
+        }
+    )
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
@@ -169,7 +186,8 @@ fun HomeScreen(
             HomeHeaderSection(
                 uiState = uiState,
                 viewModel = viewModel,
-                onNavigateToOrders = onNavigateToOrders
+                onNavigateToOrders = onNavigateToOrders,
+                onRequestPermissions = { showPermissionsDialog = true }
             )
 
             // 1. Busca
@@ -253,8 +271,10 @@ fun HomeScreen(
 private fun HomeHeaderSection(
     uiState: HomeUiState,
     viewModel: HomeViewModel,
-    onNavigateToOrders: () -> Unit
+    onNavigateToOrders: () -> Unit,
+    onRequestPermissions: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -280,7 +300,13 @@ private fun HomeHeaderSection(
                 if (uiState.streetName.isBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { viewModel.toggleEditNumber() }
+                        modifier = Modifier.clickable {
+                            if (!PermissionUtils.hasLocationPermission(context)) {
+                                onRequestPermissions()
+                            } else {
+                                viewModel.toggleEditNumber()
+                            }
+                        }
                     ) {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
@@ -303,7 +329,7 @@ private fun HomeHeaderSection(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = "Adicionar",
+                                text = "Permissões",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = ItaSuperPrimary
@@ -357,7 +383,13 @@ private fun HomeHeaderSection(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // GPS Refresh
                 IconButton(
-                    onClick = viewModel::refreshLocation,
+                    onClick = {
+                        if (!PermissionUtils.hasLocationPermission(context)) {
+                            onRequestPermissions()
+                        } else {
+                            viewModel.fetchGpsLocation(context)
+                        }
+                    },
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)

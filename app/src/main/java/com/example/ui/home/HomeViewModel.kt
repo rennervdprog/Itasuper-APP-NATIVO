@@ -1,5 +1,6 @@
 package com.example.ui.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.Banner
@@ -210,6 +211,47 @@ class HomeViewModel : ViewModel() {
             isRefreshingLocation = false,
             snackbarMessage = "Lista de lojas atualizada!"
         )
+    }
+
+    fun fetchGpsLocation(context: Context) {
+        try {
+            _uiState.value = _uiState.value.copy(isRefreshingLocation = true)
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            if (locationManager != null) {
+                val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                if (hasFine || hasCoarse) {
+                    val gpsLoc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    val networkLoc = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    val bestLoc = gpsLoc ?: networkLoc
+                    if (bestLoc != null) {
+                        _uiState.value = _uiState.value.copy(
+                            streetName = "Sua Localização GPS",
+                            streetNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}",
+                            isRefreshingLocation = false,
+                            snackbarMessage = "Localização GPS atualizada com sucesso!"
+                        )
+                        loadStores()
+                        return
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(
+                isRefreshingLocation = false,
+                snackbarMessage = "Não foi possível obter GPS. Usando endereço cadastrado."
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("HomeViewModel", "Error fetching GPS", e)
+            _uiState.value = _uiState.value.copy(
+                isRefreshingLocation = false,
+                snackbarMessage = "Endereço cadastrado ativo."
+            )
+        }
     }
 
     fun openSupportSheet() {
