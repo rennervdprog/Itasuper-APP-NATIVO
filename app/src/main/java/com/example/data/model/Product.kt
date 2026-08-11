@@ -1,5 +1,14 @@
 package com.example.data.model
 
+data class DiscoverProduct(
+    val id: String,
+    val storeId: String,
+    val storeName: String,
+    val name: String,
+    val price: Double,
+    val imageUrl: String
+)
+
 data class MenuSection(
     val id: String,
     val storeId: String,

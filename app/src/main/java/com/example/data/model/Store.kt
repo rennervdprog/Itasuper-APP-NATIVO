@@ -29,7 +29,21 @@ data class Store(
     val createdAt: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val settings: StoreSettings = StoreSettings()
+    val settings: StoreSettings = StoreSettings(),
+    val deliveryMode: String = "direto",
+    val ownDeliveryFee: Double = 0.0,
+    val address: String = "Av. 22 de Maio, Centro, Itaboraí - RJ",
+    val whatsapp: String = "5521999999999",
+    val openingHours: List<StoreOpeningHour> = emptyList()
+)
+
+data class StoreOpeningHour(
+    val storeId: String,
+    val dayOfWeek: Int,
+    val dayOfWeekStr: String = "",
+    val openTime: String,
+    val closeTime: String,
+    val isClosedAllDay: Boolean = false
 )
 
 data class CategoryItem(

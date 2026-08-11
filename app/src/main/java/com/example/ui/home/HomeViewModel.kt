@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import com.example.data.model.DiscoverProduct
+
 data class HomeUiState(
     val streetName: String = "",
     val streetNumber: String = "",
@@ -24,6 +26,9 @@ data class HomeUiState(
     val stores: List<Store> = emptyList(),
     val favoriteStores: List<Store> = emptyList(),
     val banners: List<Banner> = emptyList(),
+    val discoverProducts: List<DiscoverProduct> = emptyList(),
+    val isFreeFeeFilterActive: Boolean = false,
+    val isDirectDeliveryFilterActive: Boolean = false,
     val lastOrder: LastOrder? = null,
     val showSupportSheet: Boolean = false,
     val snackbarMessage: String? = null,
@@ -53,6 +58,7 @@ class HomeViewModel : ViewModel() {
                     favoriteStores = updatedStores.take(2)
                 )
                 filterStores()
+                loadDiscoverProducts(updatedStores)
             }
         }
 
@@ -80,6 +86,7 @@ class HomeViewModel : ViewModel() {
                     isLoadingStores = false,
                     errorMessage = null
                 )
+                loadDiscoverProducts(currentStores)
             }
         }
     }
@@ -89,6 +96,32 @@ class HomeViewModel : ViewModel() {
             val remoteBanners = SupabaseClient.fetchBanners()
             _uiState.value = _uiState.value.copy(banners = remoteBanners)
         }
+    }
+
+    private fun loadDiscoverProducts(stores: List<Store>) {
+        viewModelScope.launch {
+            val openStores = stores.filter { it.isOpen }
+            val products = SupabaseClient.fetchDiscoverProducts(openStores.ifEmpty { stores })
+            _uiState.value = _uiState.value.copy(discoverProducts = products)
+        }
+    }
+
+    fun toggleFreeFeeFilter() {
+        val nextState = !_uiState.value.isFreeFeeFilterActive
+        _uiState.value = _uiState.value.copy(
+            isFreeFeeFilterActive = nextState,
+            snackbarMessage = if (nextState) "Filtro: Sem taxa ativado" else "Filtro: Sem taxa removido"
+        )
+        filterStores()
+    }
+
+    fun toggleDirectDeliveryFilter() {
+        val nextState = !_uiState.value.isDirectDeliveryFilterActive
+        _uiState.value = _uiState.value.copy(
+            isDirectDeliveryFilterActive = nextState,
+            snackbarMessage = if (nextState) "Filtro: Entrega direta ativado" else "Filtro: Entrega direta removido"
+        )
+        filterStores()
     }
 
     fun onCategorySelect(categoryId: String) {
@@ -105,6 +138,8 @@ class HomeViewModel : ViewModel() {
         val currentCategory = _uiState.value.selectedCategory
         val query = _uiState.value.searchQuery.trim().lowercase()
         val allStores = StoreRepository.stores.value
+        val freeFeeOnly = _uiState.value.isFreeFeeFilterActive
+        val directDeliveryOnly = _uiState.value.isDirectDeliveryFilterActive
 
         val filtered = allStores.filter { store ->
             val matchCategory = if (currentCategory == "todas") true else {
@@ -113,7 +148,15 @@ class HomeViewModel : ViewModel() {
             val matchQuery = if (query.isEmpty()) true else {
                 store.name.lowercase().contains(query) || store.category.lowercase().contains(query)
             }
-            matchCategory && matchQuery
+            val matchFreeFee = if (freeFeeOnly) {
+                store.isFreeDelivery || store.ownDeliveryFee <= 0.0 || store.deliveryFee.equals("Grátis", ignoreCase = true)
+            } else true
+
+            val matchDirectDelivery = if (directDeliveryOnly) {
+                store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
+            } else true
+
+            matchCategory && matchQuery && matchFreeFee && matchDirectDelivery
         }
 
         _uiState.value = _uiState.value.copy(stores = filtered)

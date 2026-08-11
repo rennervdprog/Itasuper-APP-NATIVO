@@ -314,12 +314,27 @@ object SupabaseClient {
                     val computedIsOpen = checkIsStoreOpenNow(id, isForceClosed, defaultIsOpen, openingHours)
 
                     val ownFee = item.optDouble("own_delivery_fee", 0.0)
+                    val deliveryMode = item.optString("delivery_mode", "direto")
                     val isFree = ownFee <= 0.0
                     val deliveryFeeText = if (isFree) "Grátis" else String.format("R$ %.2f", ownFee).replace(".", ",")
 
                     val createdAt = item.optString("created_at", "")
                     val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else null
                     val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else null
+
+                    val storeAddress = item.optString("address", item.optString("formatted_address", "Av. 22 de Maio, Centro, Itaboraí - RJ")).ifBlank { "Av. 22 de Maio, Centro, Itaboraí - RJ" }
+                    val storeWhatsapp = item.optString("whatsapp", item.optString("phone", "5521999999999")).ifBlank { "5521999999999" }
+
+                    val storeOpeningHours = openingHours.filter { it.storeId == id }.map { oh ->
+                        com.example.data.model.StoreOpeningHour(
+                            storeId = oh.storeId,
+                            dayOfWeek = oh.dayOfWeek,
+                            dayOfWeekStr = oh.dayOfWeekStr,
+                            openTime = oh.openTime,
+                            closeTime = oh.closeTime,
+                            isClosedAllDay = oh.isClosedAllDay
+                        )
+                    }
 
                     // Secondary Categories
                     val secCats = mutableListOf<String>()
@@ -376,7 +391,12 @@ object SupabaseClient {
                         createdAt = createdAt,
                         latitude = lat,
                         longitude = lng,
-                        settings = storeSettings
+                        settings = storeSettings,
+                        deliveryMode = deliveryMode,
+                        ownDeliveryFee = ownFee,
+                        address = storeAddress,
+                        whatsapp = storeWhatsapp,
+                        openingHours = storeOpeningHours
                     )
                     storeList.add(store)
                 }
@@ -996,6 +1016,53 @@ object SupabaseClient {
             Log.e(TAG, "Error submitting order", e)
             null
         }
+    }
+
+    suspend fun fetchDiscoverProducts(openStores: List<Store>): List<com.example.data.model.DiscoverProduct> = withContext(Dispatchers.IO) {
+        try {
+            if (openStores.isNotEmpty()) {
+                val storeIds = openStores.map { it.id }
+                val idFilter = storeIds.joinToString(",")
+                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)&limit=8"
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                val response = httpClient.newCall(request).execute()
+                val responseText = response.body?.string() ?: ""
+                if (response.isSuccessful && responseText.isNotBlank()) {
+                    val jsonArray = JSONArray(responseText)
+                    val list = mutableListOf<com.example.data.model.DiscoverProduct>()
+                    val storeMap = openStores.associateBy { it.id }
+                    for (i in 0 until jsonArray.length()) {
+                        val item = jsonArray.getJSONObject(i)
+                        val id = item.optString("id", "")
+                        val sId = item.optString("store_id", "")
+                        val name = item.optString("name", "")
+                        val price = item.optDouble("price", 0.0)
+                        val img = item.optString("image_url", "")
+                        val storeName = storeMap[sId]?.name ?: "Loja ItaSuper"
+                        if (id.isNotBlank() && name.isNotBlank()) {
+                            list.add(com.example.data.model.DiscoverProduct(id, sId, storeName, name, price, img))
+                        }
+                    }
+                    if (list.isNotEmpty()) return@withContext list
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching discover products", e)
+        }
+        val sampleStore = openStores.firstOrNull()
+        val sampleStoreId = sampleStore?.id ?: "store-1"
+        val sampleStoreName = sampleStore?.name ?: "ItaSuper Lanches"
+        listOf(
+            com.example.data.model.DiscoverProduct("p1", sampleStoreId, sampleStoreName, "X-Tudo Especial", 24.90, "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400"),
+            com.example.data.model.DiscoverProduct("p2", sampleStoreId, sampleStoreName, "Pizza Calabresa Familiar", 42.00, "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400"),
+            com.example.data.model.DiscoverProduct("p3", sampleStoreId, sampleStoreName, "Açaí Turbinado 500ml", 18.50, "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400"),
+            com.example.data.model.DiscoverProduct("p4", sampleStoreId, sampleStoreName, "Marmita Executiva Churrasco", 22.00, "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400")
+        )
     }
 
     private fun parseErrorMessage(jsonText: String, defaultMsg: String): String {

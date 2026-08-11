@@ -6,9 +6,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
+import com.example.R
+import androidx.compose.ui.text.font.Font
+
 // Font Families (Sora for headings/accents, Manrope for body)
-val SoraFontFamily = FontFamily.SansSerif
-val ManropeFontFamily = FontFamily.SansSerif
+val SoraFontFamily = FontFamily(
+    Font(R.font.sora, weight = FontWeight.SemiBold),
+    Font(R.font.sora, weight = FontWeight.Bold)
+)
+
+val ManropeFontFamily = FontFamily(
+    Font(R.font.manrope, weight = FontWeight.Normal),
+    Font(R.font.manrope, weight = FontWeight.Medium)
+)
 
 val Typography = Typography(
     displayLarge = TextStyle(
