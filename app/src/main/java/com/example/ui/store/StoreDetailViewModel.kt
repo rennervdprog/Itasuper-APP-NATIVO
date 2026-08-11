@@ -27,6 +27,7 @@ data class StoreDetailUiState(
     val isLoading: Boolean = true,
     val menuSections: List<MenuSection> = emptyList(),
     val pastelBorders: List<PastelBorder> = emptyList(),
+    val pizzaBorders: List<PastelBorder> = emptyList(),
     val selectedSectionName: String = "Todos",
     val searchQuery: String = "",
     val selectedProductForModal: Product? = null,
@@ -201,6 +202,9 @@ class StoreDetailViewModel : ViewModel() {
             // Fetch pastel_borders from Supabase
             val borders = SupabaseClient.fetchPastelBordersForStore(storeId)
 
+            // Fetch pizza_borders from Supabase (borda recheada, catupiry, cheddar, etc.)
+            val pizzaBordersList = SupabaseClient.fetchPizzaBordersForStore(storeId)
+
             // Fetch products from Supabase (already sorted by name & filtered)
             val remoteProducts = SupabaseClient.fetchProductsForStore(storeId)
             _rawProducts.value = remoteProducts
@@ -215,6 +219,7 @@ class StoreDetailViewModel : ViewModel() {
                 isLoading = false,
                 menuSections = sections,
                 pastelBorders = borders,
+                pizzaBorders = pizzaBordersList,
                 selectedSectionName = "Todos"
             )
         }

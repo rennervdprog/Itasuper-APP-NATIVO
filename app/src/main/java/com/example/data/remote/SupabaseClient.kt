@@ -893,6 +893,56 @@ object SupabaseClient {
         }
     }
 
+    // 5f. FETCH PIZZA BORDERS FOR STORE (borda recheada, catupiry, cheddar, etc.)
+    suspend fun fetchPizzaBordersForStore(storeId: String): List<com.example.data.model.PastelBorder> = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/pizza_borders?store_id=eq.$storeId&is_available=eq.true&order=sort_order.asc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val jsonArray = JSONArray(responseText)
+                val bordersList = mutableListOf<com.example.data.model.PastelBorder>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val id = item.optString("id", "")
+                    val name = item.optString("name", "")
+                    val price = item.optDouble("price", 0.0)
+                    val isAvailable = item.optBoolean("is_available", true)
+                    val sortOrder = item.optInt("sort_order", 0)
+                    val sId = item.optString("store_id", storeId)
+
+                    if (id.isNotBlank() && name.isNotBlank()) {
+                        bordersList.add(
+                            com.example.data.model.PastelBorder(
+                                id = id,
+                                storeId = sId,
+                                name = name,
+                                price = price,
+                                isAvailable = isAvailable,
+                                sortOrder = sortOrder
+                            )
+                        )
+                    }
+                }
+                bordersList.sortedBy { it.sortOrder }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching pizza_borders for store $storeId", e)
+            emptyList()
+        }
+    }
+
     // 6. FETCH COUPON FROM coupons_public
     suspend fun fetchCoupon(code: String, storeId: String?): com.example.data.model.Coupon? = withContext(Dispatchers.IO) {
         try {

@@ -10,8 +10,18 @@ import com.example.R
 import androidx.compose.ui.text.font.Font
 
 // Font Families
-val SoraFontFamily: FontFamily = FontFamily.SansSerif
-val ManropeFontFamily: FontFamily = FontFamily.SansSerif
+val SoraFontFamily: FontFamily = FontFamily(
+    Font(R.font.sora, FontWeight.Normal),
+    Font(R.font.sora, FontWeight.Medium),
+    Font(R.font.sora, FontWeight.SemiBold),
+    Font(R.font.sora, FontWeight.Bold)
+)
+val ManropeFontFamily: FontFamily = FontFamily(
+    Font(R.font.manrope, FontWeight.Normal),
+    Font(R.font.manrope, FontWeight.Medium),
+    Font(R.font.manrope, FontWeight.SemiBold),
+    Font(R.font.manrope, FontWeight.Bold)
+)
 
 val Typography = Typography(
     displayLarge = TextStyle(

@@ -2354,14 +2354,16 @@ fun PastelWizardFullScreenContent(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Escolha até $maxComplements complementos para rechear seu pastel",
+                    text = if (isPizza) "Escolha até $maxComplements complementos para sua pizza" else "Escolha até $maxComplements complementos para rechear seu pastel",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (uiState.pastelBorders.isEmpty()) {
+                val activeBorders = if (isPizza) uiState.pizzaBorders else uiState.pastelBorders
+
+                if (activeBorders.isEmpty()) {
                     Text(
                         text = "Nenhum complemento extra cadastrado.",
                         style = MaterialTheme.typography.bodySmall,
@@ -2369,7 +2371,7 @@ fun PastelWizardFullScreenContent(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 } else {
-                    uiState.pastelBorders.forEach { border ->
+                    activeBorders.forEach { border ->
                         val isChecked = uiState.wizardSelectedComplements.any { it.id == border.id }
                         Card(
                             modifier = Modifier
