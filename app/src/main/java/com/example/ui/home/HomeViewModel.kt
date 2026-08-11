@@ -230,11 +230,30 @@ class HomeViewModel : ViewModel() {
                     val networkLoc = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
                     val bestLoc = gpsLoc ?: networkLoc
                     if (bestLoc != null) {
+                        // Converte lat/lng em endereço legível (rua + bairro) via Geocoder nativo do Android
+                        var resolvedStreet = "Sua Localização GPS"
+                        var resolvedNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}"
+                        try {
+                            val geocoder = android.location.Geocoder(context, java.util.Locale("pt", "BR"))
+                            @Suppress("DEPRECATION")
+                            val addresses = geocoder.getFromLocation(bestLoc.latitude, bestLoc.longitude, 1)
+                            val addr = addresses?.firstOrNull()
+                            if (addr != null) {
+                                val thoroughfare = addr.thoroughfare ?: addr.subLocality ?: addr.locality
+                                if (!thoroughfare.isNullOrBlank()) {
+                                    resolvedStreet = thoroughfare
+                                    resolvedNumber = addr.subThoroughfare ?: (addr.subLocality ?: addr.locality ?: "")
+                                }
+                            }
+                        } catch (geoEx: Exception) {
+                            android.util.Log.e("HomeViewModel", "Geocoder failed, mantendo coordenadas cruas", geoEx)
+                        }
+
                         _uiState.value = _uiState.value.copy(
-                            streetName = "Sua Localização GPS",
-                            streetNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}",
+                            streetName = resolvedStreet,
+                            streetNumber = resolvedNumber,
                             isRefreshingLocation = false,
-                            snackbarMessage = "Localização GPS atualizada com sucesso!"
+                            snackbarMessage = "Localização atualizada com sucesso!"
                         )
                         loadStores()
                         return

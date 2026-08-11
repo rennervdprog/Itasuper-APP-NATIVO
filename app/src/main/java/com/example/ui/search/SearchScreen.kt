@@ -509,53 +509,69 @@ fun SearchScreen(
 }
 
 @Composable
+private val categoryGradients: Map<String, List<Color>> = mapOf(
+    "lanches" to listOf(Color(0xFFF97316), Color(0xFFF59E0B)),
+    "pizzaria" to listOf(Color(0xFFF43F5E), Color(0xFFDC2626)),
+    "marmita" to listOf(Color(0xFFD97706), Color(0xFFEAB308)),
+    "acai" to listOf(Color(0xFF7C3AED), Color(0xFFC026D3)),
+    "bebidas" to listOf(Color(0xFFEF4444), Color(0xFFF97316)),
+    "mercado" to listOf(Color(0xFF059669), Color(0xFF15803D)),
+    "pastel" to listOf(Color(0xFFEAB308), Color(0xFFD97706)),
+    "churrasco" to listOf(Color(0xFF44403C), Color(0xFF262626))
+)
+
+private val categoryEmojis: Map<String, String> = mapOf(
+    "lanches" to "\uD83C\uDF54",
+    "pizzaria" to "\uD83C\uDF55",
+    "marmita" to "\uD83C\uDF71",
+    "acai" to "\uD83C\uDF68",
+    "bebidas" to "\uD83C\uDF79",
+    "mercado" to "\uD83D\uDED2",
+    "pastel" to "\uD83E\uDD5F",
+    "churrasco" to "\uD83E\uDD69"
+)
+
+@Composable
 private fun CategoryGridCard(
     category: SearchCategory,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val gradientColors = categoryGradients[category.id] ?: listOf(ItaSuperPrimary, ItaSuperPrimary)
+    val emoji = categoryEmojis[category.id] ?: "\uD83C\uDF7D\uFE0F"
+
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) ItaSuperHighlightBg else Color.White,
-        border = BorderStroke(
-            width = if (isSelected) 1.5.dp else 1.dp,
-            color = if (isSelected) ItaSuperPrimary else Color(0xFFEEEEEE)
-        ),
-        shadowElevation = 1.dp,
-        modifier = modifier
+        color = Color.Transparent,
+        border = if (isSelected) BorderStroke(2.5.dp, Color.White) else null,
+        shadowElevation = 3.dp,
+        modifier = modifier.height(96.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.linearGradient(gradientColors)
+                )
+                .padding(12.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = if (isSelected) ItaSuperPrimary else ItaSuperHighlightBg,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = getCategoryIcon(category.iconName),
-                        contentDescription = null,
-                        tint = if (isSelected) Color.White else ItaSuperPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
+            Text(
+                text = emoji,
+                fontSize = 28.sp,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
             Text(
                 text = category.name,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) ItaSuperPrimary else ItaSuperTextPrimary,
-                    fontSize = 13.sp
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 15.sp
                 ),
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart)
             )
         }
     }
