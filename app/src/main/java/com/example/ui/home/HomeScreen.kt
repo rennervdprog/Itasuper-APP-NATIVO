@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1120,7 +1121,7 @@ private fun HomeCategoryChipsSection(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(categories) { cat ->
+        itemsIndexed(categories, key = { idx, cat -> "cat_${idx}_${cat.id}" }) { _, cat ->
             val isSelected = cat.id == selectedCategory
 
             Surface(
@@ -1354,7 +1355,7 @@ private fun HomeFavoriteStoresSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(favoriteStores) { store ->
+            itemsIndexed(favoriteStores, key = { idx, store -> "fav_${idx}_${store.id}" }) { _, store ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier

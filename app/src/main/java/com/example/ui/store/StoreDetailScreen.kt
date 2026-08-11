@@ -508,7 +508,7 @@ fun StoreDetailScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(allSectionNames) { secName ->
+                        itemsIndexed(allSectionNames, key = { idx, secName -> "sec_chip_${idx}_$secName" }) { _, secName ->
                             val isSelected = secName.equals(uiState.selectedSectionName, ignoreCase = true)
                             FilterChip(
                                 selected = isSelected,
