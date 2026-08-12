@@ -2,25 +2,37 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
-
 import com.example.R
-import androidx.compose.ui.text.font.Font
+
+// Google Fonts Provider: baixa as fontes reais (Sora e Manrope) via Google Play
+// Services em tempo de execução, em vez de embutir arquivos .ttf no projeto.
+// Isso evita problemas de corrupção de arquivo binário e mantém o app leve.
+private val googleFontProvider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs
+)
+
+private val soraGoogleFont = GoogleFont(name = "Sora")
+private val manropeGoogleFont = GoogleFont(name = "Manrope")
 
 // Font Families
 val SoraFontFamily: FontFamily = FontFamily(
-    Font(R.font.sora, FontWeight.Normal),
-    Font(R.font.sora, FontWeight.Medium),
-    Font(R.font.sora, FontWeight.SemiBold),
-    Font(R.font.sora, FontWeight.Bold)
+    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
+    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
+    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold)
 )
 val ManropeFontFamily: FontFamily = FontFamily(
-    Font(R.font.manrope, FontWeight.Normal),
-    Font(R.font.manrope, FontWeight.Medium),
-    Font(R.font.manrope, FontWeight.SemiBold),
-    Font(R.font.manrope, FontWeight.Bold)
+    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
+    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
+    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold)
 )
 
 val Typography = Typography(
