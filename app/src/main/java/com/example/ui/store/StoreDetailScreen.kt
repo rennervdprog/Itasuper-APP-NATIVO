@@ -105,7 +105,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -2075,377 +2074,377 @@ fun PastelWizardFullScreenContent(
                 ) {
                     // STEP 0: Quantos Sabores?
                     if (currentStep == 0) {
-                Text(
-                    text = "Quantos sabores você deseja?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Monte seu pastel combinando até $maxFlavors sabores no mesmo pastel.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                val options = (2..minOf(4, maxFlavors)).toList()
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    options.forEach { optCount ->
-                        val selected = targetFlavors == optCount
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectTargetFlavors(optCount) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color.LightGray),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "$optCount Sabores",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    Text(
-                                        text = when (optCount) {
-                                            2 -> "Meio a Meio (50% cada)"
-                                            3 -> "1/3 para cada sabor"
-                                            else -> "1/4 para cada sabor"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.Gray
-                                    )
-                                }
-                                RadioButton(
-                                    selected = selected,
-                                    onClick = { onSelectTargetFlavors(optCount) },
-                                    colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            // STEP 1..N: Escolha dos Sabores
-            else if (currentStep in 1..targetFlavors) {
-                val flavorIndex = currentStep - 1
-                val ordinalText = when (currentStep) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${currentStep}º" }
-                val fractionStr = when (targetFlavors) {
-                    2 -> "½"
-                    3 -> "⅓"
-                    4 -> "¼"
-                    else -> "1/$targetFlavors"
-                }
-
-                // Top Progress Summary Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "Composição Atual:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperPrimary
+                            text = "Quantos sabores você deseja?",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        for (i in 0 until targetFlavors) {
-                            val flavorObj = uiState.wizardSelectedFlavors.getOrNull(i)
-                            val slotOrdinal = when (i + 1) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${i+1}º" }
-                            val isCurrentSlot = i == flavorIndex
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = "$fractionStr Pastel - ${flavorObj?.name ?: "($slotOrdinal sabor a escolher)"}",
-                                    fontWeight = if (isCurrentSlot) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (flavorObj != null) Color.Black else if (isCurrentSlot) ItaSuperPrimary else Color.Gray,
-                                    fontSize = 14.sp
-                                )
-                                if (flavorObj != null) {
-                                    Text(
-                                        text = String.format("R$ %.2f", flavorObj.price).replace(".", ","),
-                                        fontSize = 13.sp,
-                                        color = Color.Gray
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(color = ItaSuperPrimary.copy(alpha = 0.2f))
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val priceModeLabel = when (store.settings.pastelPriceMode.lowercase()) {
-                                "media" -> "Média dos valores"
-                                "soma" -> "Soma dos valores"
-                                else -> "Maior valor entre os escolhidos"
-                            }
-                            Text(
-                                text = "Valor base ($priceModeLabel):",
-                                fontSize = 12.sp,
-                                color = Color.DarkGray
-                            )
-                            Text(
-                                text = String.format("R$ %.2f", uiState.wizardUnitPrice).replace(".", ","),
-                                fontWeight = FontWeight.Bold,
-                                color = ItaSuperPrimary,
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Text(
-                    text = "Escolha o $ordinalText sabor ($fractionStr do pastel)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (filteredPastelProducts.isEmpty()) {
-                    Text(
-                        text = "Nenhum sabor de pastel disponível nesta loja.",
-                        color = Color.Gray,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                } else {
-                    productsBySection.forEach { (sectionHeader, sectionProducts) ->
                         Text(
-                            text = sectionHeader.uppercase(),
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperPrimary,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                            text = "Monte seu pastel combinando até $maxFlavors sabores no mesmo pastel.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray
                         )
 
-                        sectionProducts.forEach { product ->
-                            val isSelected = uiState.wizardSelectedFlavors.getOrNull(flavorIndex)?.id == product.id
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clickable { onSelectFlavorForStep(flavorIndex, product) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) ItaSuperPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
-                                ),
-                                border = BorderStroke(if (isSelected) 2.dp else 0.5.dp, if (isSelected) ItaSuperPrimary else Color.LightGray),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Row(
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        val options = (2..minOf(4, maxFlavors)).toList()
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            options.forEach { optCount ->
+                                val selected = targetFlavors == optCount
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .clickable { onSelectTargetFlavors(optCount) },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+                                    ),
+                                    border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color.LightGray),
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(20.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        RadioButton(
-                                            selected = isSelected,
-                                            onClick = { onSelectFlavorForStep(flavorIndex, product) },
-                                            colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
                                         Column {
                                             Text(
-                                                text = product.name,
+                                                text = "$optCount Sabores",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                            Text(
+                                                text = when (optCount) {
+                                                    2 -> "Meio a Meio (50% cada)"
+                                                    3 -> "1/3 para cada sabor"
+                                                    else -> "1/4 para cada sabor"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                        RadioButton(
+                                            selected = selected,
+                                            onClick = { onSelectTargetFlavors(optCount) },
+                                            colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // STEP 1..N: Escolha dos Sabores
+                    else if (currentStep in 1..targetFlavors) {
+                        val flavorIndex = currentStep - 1
+                        val ordinalText = when (currentStep) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${currentStep}º" }
+                        val fractionStr = when (targetFlavors) {
+                            2 -> "½"
+                            3 -> "⅓"
+                            4 -> "¼"
+                            else -> "1/$targetFlavors"
+                        }
+
+                        // Top Progress Summary Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "Composição Atual:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                for (i in 0 until targetFlavors) {
+                                    val flavorObj = uiState.wizardSelectedFlavors.getOrNull(i)
+                                    val slotOrdinal = when (i + 1) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "${i+1}º" }
+                                    val isCurrentSlot = i == flavorIndex
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = "$fractionStr Pastel - ${flavorObj?.name ?: "($slotOrdinal sabor a escolher)"}",
+                                            fontWeight = if (isCurrentSlot) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (flavorObj != null) Color.Black else if (isCurrentSlot) ItaSuperPrimary else Color.Gray,
+                                            fontSize = 14.sp
+                                        )
+                                        if (flavorObj != null) {
+                                            Text(
+                                                text = String.format("R$ %.2f", flavorObj.price).replace(".", ","),
+                                                fontSize = 13.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = ItaSuperPrimary.copy(alpha = 0.2f))
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val priceModeLabel = when (store.settings.pastelPriceMode.lowercase()) {
+                                        "media" -> "Média dos valores"
+                                        "soma" -> "Soma dos valores"
+                                        else -> "Maior valor entre os escolhidos"
+                                    }
+                                    Text(
+                                        text = "Valor base ($priceModeLabel):",
+                                        fontSize = 12.sp,
+                                        color = Color.DarkGray
+                                    )
+                                    Text(
+                                        text = String.format("R$ %.2f", uiState.wizardUnitPrice).replace(".", ","),
+                                        fontWeight = FontWeight.Bold,
+                                        color = ItaSuperPrimary,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Text(
+                            text = "Escolha o $ordinalText sabor ($fractionStr do pastel)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (filteredPastelProducts.isEmpty()) {
+                            Text(
+                                text = "Nenhum sabor de pastel disponível nesta loja.",
+                                color = Color.Gray,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        } else {
+                            productsBySection.forEach { (sectionHeader, sectionProducts) ->
+                                Text(
+                                    text = sectionHeader.uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                                )
+
+                                sectionProducts.forEach { product ->
+                                    val isSelected = uiState.wizardSelectedFlavors.getOrNull(flavorIndex)?.id == product.id
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .clickable { onSelectFlavorForStep(flavorIndex, product) },
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isSelected) ItaSuperPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                                        ),
+                                        border = BorderStroke(if (isSelected) 2.dp else 0.5.dp, if (isSelected) ItaSuperPrimary else Color.LightGray),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                RadioButton(
+                                                    selected = isSelected,
+                                                    onClick = { onSelectFlavorForStep(flavorIndex, product) },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Column {
+                                                    Text(
+                                                        text = product.name,
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                    if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
+                                                        Text(
+                                                            text = product.description,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = Color.Gray,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Text(
+                                                text = String.format("R$ %.2f", product.price).replace(".", ","),
+                                                fontWeight = FontWeight.Bold,
+                                                color = ItaSuperPrimary,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!uiState.wizardErrorMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = uiState.wizardErrorMessage!!,
+                                color = Color.Red,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    // FINAL STEP: Complementos & Notes
+                    else {
+                        val fractionStr = when (targetFlavors) {
+                            2 -> "½"
+                            3 -> "⅓"
+                            4 -> "¼"
+                            else -> "1/$targetFlavors"
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "Sabores Selecionados:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                uiState.wizardSelectedFlavors.filterNotNull().forEach { flav ->
+                                    Text(
+                                        text = "• $fractionStr ${flav.name} (${String.format("R$ %.2f", flav.price).replace(".", ",")})",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Text(
+                            text = "Complementos Extras",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (uiState.builderType == "pizza") "Escolha até $maxComplements complementos para sua pizza" else "Escolha até $maxComplements complementos para rechear seu pastel",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val activeBorders = if (uiState.builderType == "pizza") uiState.pizzaBorders else uiState.pastelBorders
+
+                        if (activeBorders.isEmpty()) {
+                            Text(
+                                text = "Nenhum complemento extra cadastrado.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            activeBorders.forEach { border ->
+                                val isChecked = uiState.wizardSelectedComplements.any { it.id == border.id }
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable { onToggleComplement(border) },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isChecked) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                                    ),
+                                    border = BorderStroke(if (isChecked) 1.5.dp else 0.5.dp, if (isChecked) ItaSuperPrimary else Color.LightGray),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = { onToggleComplement(border) },
+                                                colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = border.name,
                                                 fontWeight = FontWeight.Bold,
                                                 style = MaterialTheme.typography.bodyLarge
                                             )
-                                            if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
-                                                Text(
-                                                    text = product.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = Color.Gray,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
                                         }
+                                        Text(
+                                            text = if (border.price > 0) "+ ${String.format("R$ %.2f", border.price).replace(".", ",")}" else "Grátis",
+                                            fontWeight = FontWeight.Bold,
+                                            color = ItaSuperPrimary,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
-                                    Text(
-                                        text = String.format("R$ %.2f", product.price).replace(".", ","),
-                                        fontWeight = FontWeight.Bold,
-                                        color = ItaSuperPrimary,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
                                 }
                             }
                         }
-                    }
-                }
 
-                if (!uiState.wizardErrorMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = uiState.wizardErrorMessage!!,
-                        color = Color.Red,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-            // FINAL STEP: Complementos & Notes
-            else {
-                val fractionStr = when (targetFlavors) {
-                    2 -> "½"
-                    3 -> "⅓"
-                    4 -> "¼"
-                    else -> "1/$targetFlavors"
-                }
+                        Spacer(modifier = Modifier.height(20.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "Sabores Selecionados:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperPrimary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        uiState.wizardSelectedFlavors.filterNotNull().forEach { flav ->
-                            Text(
-                                text = "• $fractionStr ${flav.name} (${String.format("R$ %.2f", flav.price).replace(".", ",")})",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Text(
-                    text = "Complementos Extras",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (isPizza) "Escolha até $maxComplements complementos para sua pizza" else "Escolha até $maxComplements complementos para rechear seu pastel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                val activeBorders = if (isPizza) uiState.pizzaBorders else uiState.pastelBorders
-
-                if (activeBorders.isEmpty()) {
-                    Text(
-                        text = "Nenhum complemento extra cadastrado.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                } else {
-                    activeBorders.forEach { border ->
-                        val isChecked = uiState.wizardSelectedComplements.any { it.id == border.id }
-                        Card(
+                        OutlinedTextField(
+                            value = uiState.wizardNotes,
+                            onValueChange = onNotesChange,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { onToggleComplement(border) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isChecked) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(if (isChecked) 1.5.dp else 0.5.dp, if (isChecked) ItaSuperPrimary else Color.LightGray),
+                                .testTag("pastel_wizard_notes_input"),
+                            label = { Text("Alguma observação?") },
+                            placeholder = { Text("Ex: Pastel bem frito, sem pimenta...") },
+                            maxLines = 3,
                             shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Checkbox(
-                                        checked = isChecked,
-                                        onCheckedChange = { onToggleComplement(border) },
-                                        colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = border.name,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                                Text(
-                                    text = if (border.price > 0) "+ ${String.format("R$ %.2f", border.price).replace(".", ",")}" else "Grátis",
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperPrimary,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                        )
+
+                        if (!uiState.wizardErrorMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = uiState.wizardErrorMessage!!,
+                                color = Color.Red,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                OutlinedTextField(
-                    value = uiState.wizardNotes,
-                    onValueChange = onNotesChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pastel_wizard_notes_input"),
-                    label = { Text("Alguma observação?") },
-                    placeholder = { Text("Ex: Pastel bem frito, sem pimenta...") },
-                    maxLines = 3,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                if (!uiState.wizardErrorMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = uiState.wizardErrorMessage!!,
-                        color = Color.Red,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
-}
-}
 }

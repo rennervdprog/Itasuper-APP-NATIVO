@@ -508,7 +508,8 @@ fun SearchScreen(
     }
 }
 
-@Composable
+// ⚠️ IMPORTANTE: NENHUMA ANOTAÇÃO (@Composable, @Stable, etc.) DEVE SER COLOCADA NESTAS PROPRIEDADES.
+// Elas são dados estáticos e não precisam de anotação. Se houver alguma, remova.
 private val categoryGradients: Map<String, List<Color>> = mapOf(
     "lanches" to listOf(Color(0xFFF97316), Color(0xFFF59E0B)),
     "pizzaria" to listOf(Color(0xFFF43F5E), Color(0xFFDC2626)),
