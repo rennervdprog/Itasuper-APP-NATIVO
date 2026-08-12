@@ -2,43 +2,17 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
-import com.example.R
 
-// Google Fonts Provider: baixa as fontes reais (Sora e Manrope) via Google Play
-// Services em tempo de execução, em vez de embutir arquivos .ttf no projeto.
-// Isso evita problemas de corrupção de arquivo binário e mantém o app leve.
-// A API de Downloadable Fonts ainda é experimental nesta versão do Compose.
-@OptIn(ExperimentalTextApi::class)
-private val googleFontProvider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
-
-private val soraGoogleFont = GoogleFont(name = "Sora")
-private val manropeGoogleFont = GoogleFont(name = "Manrope")
-
-// Font Families
-@OptIn(ExperimentalTextApi::class)
-val SoraFontFamily: FontFamily = FontFamily(
-    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
-    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
-    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
-    Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold)
-)
-@OptIn(ExperimentalTextApi::class)
-val ManropeFontFamily: FontFamily = FontFamily(
-    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
-    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
-    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
-    Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold)
-)
+// Fontes do sistema (SansSerif), sem dependência externa. Fontes customizadas
+// (Sora/Manrope) via Google Fonts Provider e via .ttf embutido geraram erros
+// de build repetidos neste ambiente — voltamos ao que é garantido funcionar.
+// Pode ser revisitado depois, com mais calma, testando localmente antes de
+// subir pro GitHub Actions.
+val SoraFontFamily: FontFamily = FontFamily.SansSerif
+val ManropeFontFamily: FontFamily = FontFamily.SansSerif
 
 val Typography = Typography(
     displayLarge = TextStyle(
