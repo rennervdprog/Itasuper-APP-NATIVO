@@ -1097,8 +1097,9 @@ object SupabaseClient {
                         val price = item.optDouble("price", 0.0)
                         val img = item.optString("image_url", "")
                         val storeName = storeMap[sId]?.name ?: "Loja ItaSuper"
+                        val storeCategory = storeMap[sId]?.category ?: ""
                         if (id.isNotBlank() && name.isNotBlank()) {
-                            list.add(com.example.data.model.DiscoverProduct(id, sId, storeName, name, price, img))
+                            list.add(com.example.data.model.DiscoverProduct(id, sId, storeName, storeCategory, name, price, img))
                         }
                     }
                     if (list.isNotEmpty()) return@withContext list
@@ -1107,15 +1108,9 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching discover products", e)
         }
-        val sampleStore = openStores.firstOrNull()
-        val sampleStoreId = sampleStore?.id ?: "store-1"
-        val sampleStoreName = sampleStore?.name ?: "ItaSuper Lanches"
-        listOf(
-            com.example.data.model.DiscoverProduct("p1", sampleStoreId, sampleStoreName, "X-Tudo Especial", 24.90, "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400"),
-            com.example.data.model.DiscoverProduct("p2", sampleStoreId, sampleStoreName, "Pizza Calabresa Familiar", 42.00, "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400"),
-            com.example.data.model.DiscoverProduct("p3", sampleStoreId, sampleStoreName, "Açaí Turbinado 500ml", 18.50, "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400"),
-            com.example.data.model.DiscoverProduct("p4", sampleStoreId, sampleStoreName, "Marmita Executiva Churrasco", 22.00, "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400")
-        )
+        // Sem fallback fictício: se não houver produtos reais de lojas abertas,
+        // a seção "Descubra" simplesmente não é exibida (lista vazia).
+        emptyList()
     }
 
     private fun parseErrorMessage(jsonText: String, defaultMsg: String): String {

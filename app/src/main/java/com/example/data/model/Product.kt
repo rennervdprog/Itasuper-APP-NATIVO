@@ -4,6 +4,7 @@ data class DiscoverProduct(
     val id: String,
     val storeId: String,
     val storeName: String,
+    val storeCategory: String = "",
     val name: String,
     val price: Double,
     val imageUrl: String

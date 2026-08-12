@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1033,21 +1034,35 @@ private fun HomeDiscoverProductsSection(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 12.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Fastfood,
-                contentDescription = null,
-                tint = ItaSuperPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Fastfood,
+                    contentDescription = null,
+                    tint = ItaSuperPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Descubra",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = SoraFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                )
+            }
             Text(
-                text = "Descubra",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = SoraFontFamily,
+                text = "SELECIONADO PRA VOCÊ",
+                style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    color = ItaSuperTextSecondary,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp
                 )
             )
         }
@@ -1066,17 +1081,18 @@ private fun HomeDiscoverProductsSection(
                                 .weight(1f)
                                 .clickable { onProductClick(product.storeId) }
                                 .testTag("discover_product_${product.id}"),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = RoundedCornerShape(24.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surface
                             ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
                             Column {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(105.dp)
+                                        .aspectRatio(1f)
                                         .background(ItaSuperHighlightBg)
                                 ) {
                                     if (product.imageUrl.isNotBlank()) {
@@ -1096,6 +1112,58 @@ private fun HomeDiscoverProductsSection(
                                                 .align(Alignment.Center)
                                         )
                                     }
+
+                                    // Badge "Aberta" com bolinha verde (produtos já vêm só de lojas abertas)
+                                    Surface(
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .align(Alignment.TopStart),
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        shape = RoundedCornerShape(50)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(Color(0xFF10B981), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Aberta",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ItaSuperTextPrimary,
+                                                    fontSize = 10.sp
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    // Badge de categoria da loja
+                                    if (product.storeCategory.isNotBlank()) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .padding(8.dp)
+                                                .align(Alignment.TopEnd),
+                                            color = Color.Black.copy(alpha = 0.75f),
+                                            shape = RoundedCornerShape(50)
+                                        ) {
+                                            Text(
+                                                text = product.storeCategory.replace("_", " ").uppercase(),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    fontSize = 9.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Column(
@@ -1104,31 +1172,48 @@ private fun HomeDiscoverProductsSection(
                                     Text(
                                         text = product.name,
                                         style = MaterialTheme.typography.titleSmall.copy(
+                                            fontFamily = SoraFontFamily,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
+                                            fontSize = 13.sp,
+                                            lineHeight = 16.sp
                                         ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = product.storeName,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 11.sp
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        minLines = 2
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = String.format("R$ %.2f", product.price).replace('.', ','),
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = ItaSuperPrimary,
-                                            fontSize = 14.sp
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = product.storeName,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = ItaSuperTextSecondary,
+                                                fontSize = 10.sp
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                    )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Surface(
+                                            color = ItaSuperPrimary,
+                                            shape = RoundedCornerShape(50)
+                                        ) {
+                                            Text(
+                                                text = String.format("R$ %.2f", product.price).replace('.', ','),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = SoraFontFamily,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    fontSize = 11.sp
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
