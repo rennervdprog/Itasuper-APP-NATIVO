@@ -2,6 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -12,6 +13,8 @@ import com.example.R
 // Google Fonts Provider: baixa as fontes reais (Sora e Manrope) via Google Play
 // Services em tempo de execução, em vez de embutir arquivos .ttf no projeto.
 // Isso evita problemas de corrupção de arquivo binário e mantém o app leve.
+// A API de Downloadable Fonts ainda é experimental nesta versão do Compose.
+@OptIn(ExperimentalTextApi::class)
 private val googleFontProvider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
@@ -22,12 +25,14 @@ private val soraGoogleFont = GoogleFont(name = "Sora")
 private val manropeGoogleFont = GoogleFont(name = "Manrope")
 
 // Font Families
+@OptIn(ExperimentalTextApi::class)
 val SoraFontFamily: FontFamily = FontFamily(
     Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
     Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
     Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
     Font(googleFont = soraGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold)
 )
+@OptIn(ExperimentalTextApi::class)
 val ManropeFontFamily: FontFamily = FontFamily(
     Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
     Font(googleFont = manropeGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
