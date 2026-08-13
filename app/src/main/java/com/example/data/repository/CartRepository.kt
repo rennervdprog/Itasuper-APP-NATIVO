@@ -25,11 +25,23 @@ data class CartState(
     val deliveryFee: Double
         get() {
             if (deliveryType == "RETIRADA" || items.isEmpty() || storeId == null) return 0.0
-            val store = StoreRepository.getStoreById(storeId)
-            if (store?.isFreeDelivery == true) return 0.0
-            val dist = store?.distanceKm ?: 1.5
-            val calculated = 2.50 + (dist * 1.20)
-            return (Math.round(calculated * 100.0) / 100.0).coerceAtLeast(3.0)
+            val store = StoreRepository.getStoreById(storeId) ?: return 0.0
+            val mode = store.deliveryMode.lowercase()
+            if (mode == "pickup") return 0.0
+
+            val isAutonomy = store.planType.equals("autonomy", true) || store.autonomyLifetimeFree
+            val splitFull = if (isAutonomy) 0.0 else (store.platformDeliverySplitOverride ?: 0.99)
+            val platformAddToCustomer = when (store.platformFeeSplit.lowercase()) {
+                "meio_a_meio" -> Math.round((splitFull / 2.0) * 100.0) / 100.0
+                "lojista" -> 0.0
+                else -> splitFull
+            }
+            val total = when (mode) {
+                "platform" -> store.platformDeliveryFee
+                "own", "direto" -> store.ownDeliveryFee + platformAddToCustomer
+                else -> store.platformDeliveryFee
+            }
+            return (Math.round(total * 100.0) / 100.0).coerceAtLeast(0.0)
         }
 
     val total: Double

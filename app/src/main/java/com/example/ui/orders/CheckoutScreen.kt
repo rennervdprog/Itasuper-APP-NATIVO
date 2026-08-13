@@ -58,6 +58,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Order
+import com.example.data.repository.StoreRepository
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
@@ -314,52 +315,68 @@ fun CheckoutScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        val paymentOptions = listOf("PIX", "Cartão na Entrega", "Dinheiro na Entrega")
+                        val store = cart.storeId?.let { StoreRepository.getStoreById(it) }
+                        val paymentOptions = buildList {
+                            val settings = store?.settings
+                            if (settings?.acceptPixOnline == true) add("PIX Online")
+                            if (settings?.acceptPixMachine == true) add("PIX na Maquininha")
+                            if (store?.pixDirectEnabled == true && store.pixDirectKey.isNotBlank()) add("PIX Direto")
+                            if (settings?.acceptCard == true) add("Cartão")
+                            if (settings?.acceptCash == true) add("Dinheiro")
+                        }
 
-                        paymentOptions.forEach { method ->
-                            val isSelected = uiState.paymentMethod == method
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .selectable(
+                        if (paymentOptions.isEmpty()) {
+                            Text(
+                                text = "A loja não possui uma forma de pagamento disponível no momento.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        } else {
+                            paymentOptions.forEach { method ->
+                                val isSelected = uiState.paymentMethod == method
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .selectable(
+                                            selected = isSelected,
+                                            onClick = { viewModel.setPaymentMethod(method) }
+                                        )
+                                        .background(
+                                            if (isSelected) ItaSuperHighlightBg.copy(alpha = 0.5f) else Color.Transparent
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
                                         selected = isSelected,
-                                        onClick = { viewModel.setPaymentMethod(method) }
+                                        onClick = { viewModel.setPaymentMethod(method) },
+                                        colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
                                     )
-                                    .background(
-                                        if (isSelected) ItaSuperHighlightBg.copy(alpha = 0.5f) else Color.Transparent
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = when {
+                                            method.contains("PIX", ignoreCase = true) -> Icons.Default.Pix
+                                            method.contains("Cartão", ignoreCase = true) -> Icons.Default.CreditCard
+                                            else -> Icons.Default.AttachMoney
+                                        },
+                                        contentDescription = null,
+                                        tint = if (isSelected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = { viewModel.setPaymentMethod(method) },
-                                    colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = when {
-                                        method.contains("PIX") -> Icons.Default.Pix
-                                        method.contains("Cartão") -> Icons.Default.CreditCard
-                                        else -> Icons.Default.AttachMoney
-                                    },
-                                    contentDescription = null,
-                                    tint = if (isSelected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = method,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = method,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
                             }
                         }
 
                         // Cash Change mandatory input
-                        if (uiState.paymentMethod == "Dinheiro na Entrega") {
+                        if (uiState.paymentMethod == "Dinheiro") {
                             Spacer(modifier = Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = uiState.changeForAmount,

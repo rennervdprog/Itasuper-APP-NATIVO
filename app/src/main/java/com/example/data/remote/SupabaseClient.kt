@@ -25,6 +25,20 @@ data class SupabaseAuthResponse(
     val errorMessage: String? = null
 )
 
+data class OrderSubmissionResponse(
+    val isSuccess: Boolean,
+    val orderId: String? = null,
+    val createdAt: String? = null,
+    val errorMessage: String? = null
+)
+
+data class PixPaymentResponse(
+    val isSuccess: Boolean,
+    val pixCode: String? = null,
+    val qrCodeBase64: String? = null,
+    val errorMessage: String? = null
+)
+
 object SupabaseClient {
 
     private const val TAG = "SupabaseClient"
@@ -365,11 +379,33 @@ object SupabaseClient {
 
                     val ownFee = item.optDouble("own_delivery_fee", 0.0)
                     val platformFee = item.optDouble("delivery_fee", 0.0)
-                    val deliveryMode = item.optString("delivery_mode", "")
+                    val deliveryMode = item.optString("delivery_mode", "platform")
+                    val platformFeeSplit = item.optString("platform_fee_split", "cliente")
+                    val planType = item.optString("plan_type", "")
+                    val autonomyLifetimeFree = item.optBoolean("autonomy_lifetime_free", false)
+                    val pixDirectEnabled = item.optBoolean("pix_direto_enabled", false)
+                    val pixDirectKey = item.optString("pix_direto_key", "").trim()
+                    val pixDirectKeyType = item.optString("pix_direto_key_type", "").trim()
+                    val pixDirectBeneficiary = item.optString("pix_direto_beneficiary", "").trim()
+                    val pixDirectInstructions = item.optString("pix_direto_instructions", "").trim()
+                    val splitOverrideRaw = item.opt("platform_delivery_split_override")
+                    val platformDeliverySplitOverride = when (splitOverrideRaw) {
+                        is Number -> splitOverrideRaw.toDouble()
+                        is String -> splitOverrideRaw.toDoubleOrNull()
+                        else -> null
+                    }
+                    val isAutonomy = planType.equals("autonomy", true) || autonomyLifetimeFree
+                    val platformSplit = if (isAutonomy) 0.0 else (platformDeliverySplitOverride ?: 0.99)
+                    val platformAddToCustomer = when (platformFeeSplit.lowercase()) {
+                        "meio_a_meio" -> kotlin.math.round((platformSplit / 2.0) * 100.0) / 100.0
+                        "lojista" -> 0.0
+                        else -> platformSplit
+                    }
                     val rawFee = when (deliveryMode.lowercase()) {
-                        "platform" -> platformFee
                         "pickup" -> 0.0
-                        else -> if (ownFee > 0.0) ownFee else platformFee
+                        "platform" -> platformFee
+                        "own", "direto" -> ownFee + platformAddToCustomer
+                        else -> platformFee
                     }
                     val isFree = deliveryMode.equals("pickup", true) || rawFee <= 0.0
                     val deliveryFeeText = when {
@@ -481,6 +517,15 @@ object SupabaseClient {
                         deliveryMode = deliveryMode,
                         ownDeliveryFee = ownFee,
                         platformDeliveryFee = platformFee,
+                        platformFeeSplit = platformFeeSplit,
+                        planType = planType,
+                        platformDeliverySplitOverride = platformDeliverySplitOverride,
+                        autonomyLifetimeFree = autonomyLifetimeFree,
+                        pixDirectEnabled = pixDirectEnabled,
+                        pixDirectKey = pixDirectKey,
+                        pixDirectKeyType = pixDirectKeyType,
+                        pixDirectBeneficiary = pixDirectBeneficiary,
+                        pixDirectInstructions = pixDirectInstructions,
                         addressStreet = addressStreet,
                         addressNumber = addressNumber,
                         addressNeighborhood = addressNeighborhood,
@@ -1177,47 +1222,335 @@ object SupabaseClient {
         }
     }
 
-    // 8. CREATE ORDER (RETURNS OFFICIAL SUPABASE ID)
-    suspend fun submitOrder(order: com.example.data.model.Order): String? = withContext(Dispatchers.IO) {
+    /** Gera o PIX online do pedido pela mesma Edge Function usada pelo Capacitor. */
+    suspend fun generatePixForOrder(
+        order: com.example.data.model.Order,
+        payerFullName: String,
+        payerDocument: String,
+        accessToken: String
+    ): PixPaymentResponse = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/orders"
+            val document = payerDocument.filter { it.isDigit() }
+            if (document.length != 11) {
+                return@withContext PixPaymentResponse(false, errorMessage = "Cadastre um CPF válido no perfil antes de pagar com PIX.")
+            }
+            val nameParts = payerFullName.trim().ifBlank { "Cliente ItaSuper" }.split(Regex("\\s+"))
+            val firstName = nameParts.firstOrNull().orEmpty().ifBlank { "Cliente" }
+            val lastName = nameParts.drop(1).joinToString(" ").ifBlank { "ItaSuper" }
+            val requestJson = JSONObject().apply {
+                put("action", "order_pix")
+                put("order_id", order.id)
+                put("amount", order.total)
+                put("description", "Pedido #${order.id.take(6).uppercase()} - ${order.storeName.ifBlank { "ItaSuper" }}")
+                put("payer_first_name", firstName)
+                put("payer_last_name", lastName)
+                put("payer_cpf", document)
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/functions/v1/payment-router")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(requestJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string().orEmpty()
+            if (!response.isSuccessful || responseText.isBlank()) {
+                return@withContext PixPaymentResponse(false, errorMessage = parseErrorMessage(responseText, "Não foi possível gerar o PIX."))
+            }
+            val payload = JSONObject(responseText)
+            if (payload.optBoolean("rate_limited", false)) {
+                return@withContext PixPaymentResponse(false, errorMessage = "Muitas tentativas de PIX. Aguarde alguns minutos e tente novamente.")
+            }
+            val gatewayError = payload.optString("error", "").trim()
+            if (gatewayError.isNotBlank()) {
+                return@withContext PixPaymentResponse(false, errorMessage = gatewayError)
+            }
+            val pixCode = payload.optString("pix_code", payload.optString("qr_code", "")).trim().ifBlank { null }
+            val qrCodeBase64 = payload.optString("qr_code_url", payload.optString("qr_code_base64", "")).trim().ifBlank { null }
+            if (pixCode == null && qrCodeBase64 == null) {
+                return@withContext PixPaymentResponse(false, errorMessage = "O servidor não devolveu o QR Code do PIX.")
+            }
+            PixPaymentResponse(true, pixCode = pixCode, qrCodeBase64 = qrCodeBase64)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating order PIX", e)
+            PixPaymentResponse(false, errorMessage = "Falha de conexão ao gerar o PIX.")
+        }
+    }
 
-            val bodyJson = JSONObject().apply {
-                put("store_id", order.storeId)
-                put("store_name", order.storeName)
-                put("subtotal", order.subtotal)
-                put("delivery_fee", order.deliveryFee)
-                put("discount", order.discount)
-                put("total", order.total)
-                put("status", order.status)
-                put("payment_method", order.paymentMethod)
-                put("delivery_address", order.deliveryAddress)
+    /** Envia o comprovante do PIX direto e vincula o arquivo ao pedido pela RPC oficial. */
+    suspend fun uploadPixDirectProof(
+        order: com.example.data.model.Order,
+        bytes: ByteArray,
+        mimeType: String,
+        extension: String,
+        accessToken: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            if (bytes.isEmpty()) return@withContext Result.failure(IllegalArgumentException("O comprovante está vazio."))
+            if (mimeType !in setOf("image/jpeg", "image/png", "application/pdf")) {
+                return@withContext Result.failure(IllegalArgumentException("Envie um comprovante JPG, PNG ou PDF."))
+            }
+            if (bytes.size > 5 * 1024 * 1024) return@withContext Result.failure(IllegalArgumentException("O comprovante deve ter no máximo 5 MB."))
+            val normalizedExtension = extension.lowercase().ifBlank { "jpg" }
+            val path = "${order.storeId}/${order.id}.$normalizedExtension"
+            val bearer = "Bearer $accessToken"
+            val uploadRequest = Request.Builder()
+                .url("$SUPABASE_URL/storage/v1/object/pix-proofs/$path")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", bearer)
+                .addHeader("x-upsert", "true")
+                .addHeader("Content-Type", mimeType)
+                .post(bytes.toRequestBody(mimeType.toMediaType()))
+                .build()
+            val uploadResponse = httpClient.newCall(uploadRequest).execute()
+            val uploadBody = uploadResponse.body?.string().orEmpty()
+            if (!uploadResponse.isSuccessful) {
+                return@withContext Result.failure(IllegalStateException(parseErrorMessage(uploadBody, "Não foi possível enviar o comprovante.")))
             }
 
-            val request = Request.Builder()
-                .url(url)
+            val attachJson = JSONObject().apply {
+                put("p_order_id", order.id)
+                put("p_proof_path", path)
+            }
+            val attachRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/attach_pix_proof")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Authorization", bearer)
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=representation")
-                .post(bodyJson.toString().toRequestBody(jsonMediaType))
+                .post(attachJson.toString().toRequestBody(jsonMediaType))
                 .build()
+            val attachResponse = httpClient.newCall(attachRequest).execute()
+            val attachBody = attachResponse.body?.string().orEmpty()
+            if (!attachResponse.isSuccessful) {
+                return@withContext Result.failure(IllegalStateException(parseErrorMessage(attachBody, "O comprovante foi enviado, mas não pôde ser associado ao pedido.")))
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error uploading PIX direct proof", e)
+            Result.failure(IllegalStateException("Falha de conexão ao enviar o comprovante."))
+        }
+    }
 
+    /** Carrega os pedidos e os itens do cliente autenticado, sem dados demonstrativos. */
+    suspend fun fetchOrdersForClient(clientId: String, accessToken: String): List<com.example.data.model.Order> = withContext(Dispatchers.IO) {
+        if (clientId.isBlank() || accessToken.isBlank()) return@withContext emptyList()
+        try {
+            val bearer = "Bearer $accessToken"
+            val ordersRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/orders?select=*&client_id=eq.$clientId&order=created_at.desc")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", bearer)
+                .get()
+                .build()
+            val ordersResponse = httpClient.newCall(ordersRequest).execute()
+            val ordersText = ordersResponse.body?.string().orEmpty()
+            if (!ordersResponse.isSuccessful || ordersText.isBlank()) return@withContext emptyList()
+            val ordersArray = JSONArray(ordersText)
+            if (ordersArray.length() == 0) return@withContext emptyList()
+
+            val orderIds = (0 until ordersArray.length()).mapNotNull { index ->
+                ordersArray.optJSONObject(index)?.optString("id", "")?.takeIf { it.isNotBlank() }
+            }
+            val storeIds = (0 until ordersArray.length()).mapNotNull { index ->
+                ordersArray.optJSONObject(index)?.optString("store_id", "")?.takeIf { it.isNotBlank() }
+            }.distinct()
+            val storesById = fetchStoreNames(storeIds, bearer)
+            val itemsByOrder = fetchOrderItems(orderIds, bearer)
+
+            (0 until ordersArray.length()).mapNotNull { index ->
+                val item = ordersArray.optJSONObject(index) ?: return@mapNotNull null
+                val id = item.optString("id", "")
+                val storeId = item.optString("store_id", "")
+                if (id.isBlank() || storeId.isBlank()) return@mapNotNull null
+                com.example.data.model.Order(
+                    id = id,
+                    storeId = storeId,
+                    storeName = storesById[storeId].orEmpty(),
+                    items = itemsByOrder[id].orEmpty(),
+                    subtotal = item.optDouble("subtotal", 0.0),
+                    deliveryFee = item.optDouble("delivery_fee", 0.0),
+                    total = item.optDouble("total_price", 0.0),
+                    paymentMethod = item.optString("payment_method", ""),
+                    deliveryAddress = item.optString("address_details", ""),
+                    status = item.optString("status", "pendente"),
+                    createdAt = item.optString("created_at", "")
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching client orders", e)
+            emptyList()
+        }
+    }
+
+    private fun fetchStoreNames(storeIds: List<String>, bearer: String): Map<String, String> {
+        if (storeIds.isEmpty()) return emptyMap()
+        return try {
+            val ids = storeIds.joinToString(",")
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/stores_public?select=id,name&id=in.($ids)")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", bearer)
+                .get()
+                .build()
             val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val responseText = response.body?.string()
-                if (!responseText.isNullOrBlank()) {
-                    val array = JSONArray(responseText)
-                    if (array.length() > 0) {
-                        val obj = array.getJSONObject(0)
-                        return@withContext obj.opt("id")?.toString()
-                    }
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return emptyMap()
+            val array = JSONArray(text)
+            buildMap {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id", "")
+                    if (id.isNotBlank()) put(id, item.optString("name", ""))
                 }
             }
-            null
+        } catch (e: Exception) {
+            Log.w(TAG, "Store names unavailable for order history", e)
+            emptyMap()
+        }
+    }
+
+    private fun fetchOrderItems(orderIds: List<String>, bearer: String): Map<String, List<com.example.data.model.CartItem>> {
+        if (orderIds.isEmpty()) return emptyMap()
+        return try {
+            val ids = orderIds.joinToString(",")
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/order_items?select=order_id,product_id,quantity,unit_price,addons,observations,products(id,store_id,name,description,price,category,image_url)&order_id=in.($ids)")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", bearer)
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return emptyMap()
+            val array = JSONArray(text)
+            val result = mutableMapOf<String, MutableList<com.example.data.model.CartItem>>()
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val orderId = item.optString("order_id", "")
+                val productJson = item.optJSONObject("products")
+                if (orderId.isBlank() || productJson == null) continue
+                val product = com.example.data.model.Product(
+                    id = productJson.optString("id", item.optString("product_id", "")),
+                    storeId = productJson.optString("store_id", ""),
+                    name = productJson.optString("name", "Produto"),
+                    description = productJson.optString("description", ""),
+                    price = item.optDouble("unit_price", productJson.optDouble("price", 0.0)),
+                    category = productJson.optString("category", ""),
+                    imageUrl = productJson.optString("image_url", "")
+                )
+                result.getOrPut(orderId) { mutableListOf() }.add(
+                    com.example.data.model.CartItem(
+                        product = product,
+                        quantity = item.optInt("quantity", 1),
+                        notes = item.optString("observations", "")
+                    )
+                )
+            }
+            result
+        } catch (e: Exception) {
+            Log.w(TAG, "Order items unavailable for order history", e)
+            emptyMap()
+        }
+    }
+
+    // 8. CREATE ORDER AND ITEMS WITH THE AUTHENTICATED CLIENT SESSION
+    suspend fun submitOrder(
+        order: com.example.data.model.Order,
+        clientId: String,
+        accessToken: String,
+        neighborhood: String,
+        needsChange: Boolean,
+        changeFor: Double?
+    ): OrderSubmissionResponse = withContext(Dispatchers.IO) {
+        try {
+            val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
+            val orderJson = JSONObject().apply {
+                put("client_id", clientId)
+                put("store_id", order.storeId)
+                put("subtotal", order.subtotal)
+                put("delivery_fee", order.deliveryFee)
+                put("total_price", order.total)
+                put("payment_method", order.paymentMethod)
+                put("neighborhood", neighborhood)
+                put("address_details", order.deliveryAddress)
+                put("needs_change", needsChange)
+                put("change_for", changeFor ?: JSONObject.NULL)
+                put("status", order.status)
+            }
+            val orderRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/orders")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $bearer")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=representation")
+                .post(orderJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val orderResponse = httpClient.newCall(orderRequest).execute()
+            val orderResponseText = orderResponse.body?.string().orEmpty()
+            if (!orderResponse.isSuccessful || orderResponseText.isBlank()) {
+                return@withContext OrderSubmissionResponse(
+                    isSuccess = false,
+                    errorMessage = parseErrorMessage(orderResponseText, "Não foi possível criar o pedido.")
+                )
+            }
+
+            val createdOrder = JSONArray(orderResponseText).optJSONObject(0)
+                ?: return@withContext OrderSubmissionResponse(false, errorMessage = "O servidor não devolveu o identificador do pedido.")
+            val orderId = createdOrder.optString("id", "")
+            if (orderId.isBlank()) {
+                return@withContext OrderSubmissionResponse(false, errorMessage = "O servidor não devolveu o identificador do pedido.")
+            }
+
+            val itemsJson = JSONArray()
+            order.items.forEach { cartItem ->
+                val addons = JSONArray()
+                cartItem.selectedAddons.forEach { addon ->
+                    addons.put(JSONObject().apply {
+                        put("id", addon.itemId)
+                        put("name", addon.itemName)
+                        put("price", addon.itemPrice)
+                        put("group_id", addon.groupId)
+                        put("groupName", addon.groupName)
+                        put("priceReplacesBase", addon.priceReplacesBase)
+                    })
+                }
+                itemsJson.put(JSONObject().apply {
+                    put("order_id", orderId)
+                    put("product_id", cartItem.product.id)
+                    put("quantity", cartItem.quantity)
+                    put("unit_price", cartItem.unitPrice)
+                    // O Capacitor grava a representação JSON dos adicionais neste campo JSONB.
+                    put("addons", if (addons.length() > 0) addons.toString() else JSONObject.NULL)
+                    put("observations", cartItem.notes.ifBlank { JSONObject.NULL })
+                })
+            }
+            val itemsRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/order_items")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $bearer")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(itemsJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val itemsResponse = httpClient.newCall(itemsRequest).execute()
+            val itemsResponseText = itemsResponse.body?.string().orEmpty()
+            if (!itemsResponse.isSuccessful) {
+                Log.e(TAG, "Order $orderId was created but order_items insertion failed: $itemsResponseText")
+                return@withContext OrderSubmissionResponse(
+                    isSuccess = false,
+                    errorMessage = parseErrorMessage(itemsResponseText, "O pedido foi criado, mas não foi possível registrar os itens.")
+                )
+            }
+
+            OrderSubmissionResponse(
+                isSuccess = true,
+                orderId = orderId,
+                createdAt = createdOrder.optString("created_at", "").ifBlank { null }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error submitting order", e)
-            null
+            OrderSubmissionResponse(isSuccess = false, errorMessage = "Falha de conexão ao enviar o pedido.")
         }
     }
 

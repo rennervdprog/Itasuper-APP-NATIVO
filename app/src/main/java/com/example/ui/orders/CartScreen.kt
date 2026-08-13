@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.CartItem
+import com.example.data.repository.StoreRepository
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
@@ -78,6 +79,11 @@ fun CartScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val cart by viewModel.cartState.collectAsState()
+    val store = cart.storeId?.let { StoreRepository.getStoreById(it) }
+    val isStoreClosed = store?.isOpen == false
+    val minimumOrder = store?.minOrder ?: 0.0
+    val belowMinimum = minimumOrder > 0.0 && cart.subtotal < minimumOrder
+    val minimumMissing = (minimumOrder - cart.subtotal).coerceAtLeast(0.0)
 
     Scaffold(
         topBar = {
@@ -512,10 +518,34 @@ fun CartScreen(
                     }
                 }
 
+                if (isStoreClosed || belowMinimum) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isStoreClosed) MaterialTheme.colorScheme.errorContainer else ItaSuperHighlightBg
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (isStoreClosed) {
+                                    "Esta loja está fechada no momento. O pedido não pode ser finalizado agora."
+                                } else {
+                                    "Pedido mínimo: R$ ${String.format("%.2f", minimumOrder).replace(".", ",")}. Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}."
+                                },
+                                color = if (isStoreClosed) MaterialTheme.colorScheme.onErrorContainer else ItaSuperPrimary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Proceed Button
                 item {
                     Button(
                         onClick = onNavigateToCheckout,
+                        enabled = !isStoreClosed && !belowMinimum,
                         colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -524,7 +554,11 @@ fun CartScreen(
                             .testTag("proceed_to_checkout_button")
                     ) {
                         Text(
-                            text = "Avançar para Checkout • R$ ${String.format("%.2f", cart.total).replace(".", ",")}",
+                            text = when {
+                                isStoreClosed -> "Loja fechada"
+                                belowMinimum -> "Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}"
+                                else -> "Avançar para Checkout • R$ ${String.format("%.2f", cart.total).replace(".", ",")}"
+                            },
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )

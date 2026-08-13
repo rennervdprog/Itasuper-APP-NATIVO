@@ -8,6 +8,7 @@ import com.example.data.remote.SupabaseClient
 import com.example.data.repository.CartRepository
 import com.example.data.repository.CartState
 import com.example.data.repository.OrderRepository
+import com.example.data.repository.StoreRepository
 import com.example.data.repository.UserSessionRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,26 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class PixPaymentUiState(
+    val order: Order? = null,
+    val isLoading: Boolean = false,
+    val pixCode: String? = null,
+    val qrCodeBase64: String? = null,
+    val errorMessage: String? = null
+)
+
+data class PixDirectPaymentUiState(
+    val order: Order? = null,
+    val storeName: String = "",
+    val pixKey: String = "",
+    val pixKeyType: String = "",
+    val beneficiary: String = "",
+    val instructions: String = "",
+    val isUploading: Boolean = false,
+    val proofSent: Boolean = false,
+    val errorMessage: String? = null
+)
 
 data class OrdersUiState(
     val couponCode: String = "",
@@ -33,13 +54,15 @@ data class OrdersUiState(
     val cepError: String? = null,
 
     // Payment state
-    val paymentMethod: String = "PIX",
+    val paymentMethod: String = "",
     val changeForAmount: String = "",
 
     // Flow status
     val isPlacingOrder: Boolean = false,
     val placedOrderSuccess: Order? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val pixPayment: PixPaymentUiState? = null,
+    val pixDirectPayment: PixDirectPaymentUiState? = null
 )
 
 class OrdersViewModel : ViewModel() {
@@ -65,6 +88,19 @@ class OrdersViewModel : ViewModel() {
             neighborhood = session.addressNeighborhood,
             city = session.addressCity
         )
+        refreshOrders()
+    }
+
+    fun refreshOrders() {
+        val session = UserSessionRepository.userSession.value
+        if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            OrderRepository.replaceOrders(emptyList())
+            return
+        }
+        viewModelScope.launch {
+            val remoteOrders = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
+            OrderRepository.replaceOrders(remoteOrders)
+        }
     }
 
     fun updateQuantity(productId: String, newQty: Int) {
@@ -218,31 +254,58 @@ class OrdersViewModel : ViewModel() {
             return
         }
 
-        // Validate Cash payment & Change amount
-        if (_uiState.value.paymentMethod.lowercase().contains("dinheiro")) {
-            val changeRaw = _uiState.value.changeForAmount.replace(",", ".").trim()
-            val changeDouble = changeRaw.toDoubleOrNull()
+        val storeId = cart.storeId
+        val store = storeId?.let { StoreRepository.getStoreById(it) }
+        val session = UserSessionRepository.userSession.value
+        if (storeId.isNullOrBlank() || store == null) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Não foi possível identificar a loja do pedido. Volte à sacola e tente novamente.")
+            return
+        }
+        if (!store.isOpen) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Esta loja está fechada no momento.")
+            return
+        }
+        if (store.minOrder > 0.0 && cart.subtotal < store.minOrder) {
+            val missing = store.minOrder - cart.subtotal
+            _uiState.value = _uiState.value.copy(
+                errorMessage = "Pedido mínimo: R$ ${String.format("%.2f", store.minOrder).replace(".", ",")}. Faltam R$ ${String.format("%.2f", missing).replace(".", ",")}.")
+            return
+        }
+        if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Sua sessão expirou. Entre novamente para finalizar o pedido.")
+            return
+        }
+        if (_uiState.value.paymentMethod.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Selecione a forma de pagamento.")
+            return
+        }
+
+        val normalizedPaymentMethod = when (_uiState.value.paymentMethod.lowercase()) {
+            "pix", "pix online" -> "pix"
+            "pix na maquininha" -> "pix_machine"
+            "pix direto" -> "pix_direto"
+            "cartão", "cartão na entrega" -> "cartao"
+            "dinheiro", "dinheiro na entrega" -> "dinheiro"
+            else -> _uiState.value.paymentMethod.lowercase()
+        }
+        val changeRaw = _uiState.value.changeForAmount.replace(",", ".").trim()
+        val changeDouble = changeRaw.toDoubleOrNull()
+        if (normalizedPaymentMethod == "dinheiro") {
             if (changeRaw.isBlank() || changeDouble == null) {
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = "Informe o valor do troco para pagamento em dinheiro."
-                )
+                _uiState.value = _uiState.value.copy(errorMessage = "Informe o valor do troco para pagamento em dinheiro.")
                 return
             }
             if (changeDouble < cart.total) {
                 val formattedTotal = String.format("R$ %.2f", cart.total).replace(".", ",")
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = "O valor para troco deve ser igual ou maior que o total do pedido ($formattedTotal)."
-                )
+                _uiState.value = _uiState.value.copy(errorMessage = "O valor para troco deve ser igual ou maior que o total do pedido ($formattedTotal).")
                 return
             }
         }
 
         // Validate Address if Delivery
         if (cart.deliveryType == "DELIVERY") {
-            if (_uiState.value.street.isBlank() || _uiState.value.number.isBlank() || _uiState.value.neighborhood.isBlank()) {
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = "Preencha rua, número e bairro para a entrega."
-                )
+            if (_uiState.value.street.isBlank() || _uiState.value.number.isBlank() || _uiState.value.neighborhood.isBlank() || _uiState.value.city.isBlank()) {
+                _uiState.value = _uiState.value.copy(errorMessage = "Preencha rua, número, bairro e cidade para a entrega.")
                 return
             }
         }
@@ -250,46 +313,136 @@ class OrdersViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(isPlacingOrder = true, errorMessage = null)
 
         viewModelScope.launch {
-            val storeId = cart.storeId ?: "s1"
-            val storeName = cart.storeName.ifBlank { "Loja ItaSuper" }
-            
+            val storeName = store.name
+            val deliveryNeighborhood = if (cart.deliveryType == "RETIRADA") "RETIRADA" else _uiState.value.neighborhood.trim()
             val formattedAddress = if (cart.deliveryType == "RETIRADA") {
-                "Retirada na loja: $storeName"
+                "Retirada na loja"
             } else {
                 val st = _uiState.value.street.trim()
                 val num = _uiState.value.number.trim()
                 val neigh = _uiState.value.neighborhood.trim()
                 val cty = _uiState.value.city.trim()
-                val comp = if (_uiState.value.complement.isNotBlank()) " (${_uiState.value.complement.trim()})" else ""
+                val comp = if (_uiState.value.complement.isNotBlank()) ", ${_uiState.value.complement.trim()}" else ""
                 "$st, $num - $neigh, $cty$comp"
             }
 
-            val payMethodText = if (_uiState.value.paymentMethod.lowercase().contains("dinheiro")) {
-                "Dinheiro (Troco para R$ ${_uiState.value.changeForAmount})"
-            } else {
-                _uiState.value.paymentMethod
-            }
-
-            val newOrder = OrderRepository.placeOrder(
+            val result = OrderRepository.placeOrder(
                 storeId = storeId,
                 storeName = storeName,
                 items = cart.items,
                 subtotal = cart.subtotal,
                 deliveryFee = cart.deliveryFee,
                 discount = cart.discountAmount,
-                paymentMethod = payMethodText,
-                deliveryAddress = formattedAddress
+                paymentMethod = normalizedPaymentMethod,
+                deliveryAddress = formattedAddress,
+                neighborhood = deliveryNeighborhood,
+                clientId = session.userId,
+                accessToken = session.accessToken,
+                needsChange = normalizedPaymentMethod == "dinheiro",
+                changeFor = if (normalizedPaymentMethod == "dinheiro") changeDouble else null
             )
 
-            _uiState.value = _uiState.value.copy(
-                isPlacingOrder = false,
-                placedOrderSuccess = newOrder,
-                couponCode = "",
-                changeForAmount = ""
-            )
-
-            onSuccess(newOrder)
+            result.onSuccess { newOrder ->
+                _uiState.value = _uiState.value.copy(
+                    isPlacingOrder = false,
+                    placedOrderSuccess = newOrder,
+                    couponCode = "",
+                    changeForAmount = ""
+                )
+                refreshOrders()
+                onSuccess(newOrder)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isPlacingOrder = false,
+                    errorMessage = error.message ?: "Não foi possível enviar o pedido. Tente novamente."
+                )
+            }
         }
+    }
+
+    fun generatePixPayment(order: Order) {
+        val session = UserSessionRepository.userSession.value
+        if (!session.isLoggedIn || session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Sua sessão expirou. Entre novamente para pagar com PIX.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            pixPayment = PixPaymentUiState(order = order, isLoading = true),
+            errorMessage = null
+        )
+        viewModelScope.launch {
+            val response = SupabaseClient.generatePixForOrder(
+                order = order,
+                payerFullName = session.name,
+                payerDocument = session.cpfCnpj,
+                accessToken = session.accessToken
+            )
+            _uiState.value = _uiState.value.copy(
+                pixPayment = if (response.isSuccess) {
+                    PixPaymentUiState(
+                        order = order,
+                        pixCode = response.pixCode,
+                        qrCodeBase64 = response.qrCodeBase64
+                    )
+                } else {
+                    PixPaymentUiState(order = order, errorMessage = response.errorMessage ?: "Não foi possível gerar o PIX.")
+                }
+            )
+        }
+    }
+
+    fun dismissPixPayment() {
+        _uiState.value = _uiState.value.copy(pixPayment = null)
+    }
+
+    fun openPixDirectPayment(order: Order) {
+        viewModelScope.launch {
+            val store = StoreRepository.getStoreById(order.storeId) ?: SupabaseClient.fetchStoreById(order.storeId)
+            if (store == null || !store.pixDirectEnabled || store.pixDirectKey.isBlank()) {
+                _uiState.value = _uiState.value.copy(errorMessage = "A chave PIX direto desta loja não está disponível.")
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(
+                pixDirectPayment = PixDirectPaymentUiState(
+                    order = order,
+                    storeName = store.name,
+                    pixKey = store.pixDirectKey,
+                    pixKeyType = store.pixDirectKeyType,
+                    beneficiary = store.pixDirectBeneficiary,
+                    instructions = store.pixDirectInstructions
+                ),
+                errorMessage = null
+            )
+        }
+    }
+
+    fun uploadPixDirectProof(bytes: ByteArray, mimeType: String, extension: String) {
+        val state = _uiState.value.pixDirectPayment ?: return
+        val order = state.order ?: return
+        val session = UserSessionRepository.userSession.value
+        if (session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                pixDirectPayment = state.copy(errorMessage = "Sua sessão expirou. Entre novamente para enviar o comprovante.")
+            )
+            return
+        }
+        _uiState.value = _uiState.value.copy(pixDirectPayment = state.copy(isUploading = true, errorMessage = null))
+        viewModelScope.launch {
+            val result = SupabaseClient.uploadPixDirectProof(order, bytes, mimeType, extension, session.accessToken)
+            val current = _uiState.value.pixDirectPayment ?: state
+            result.onSuccess {
+                _uiState.value = _uiState.value.copy(pixDirectPayment = current.copy(isUploading = false, proofSent = true))
+                refreshOrders()
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    pixDirectPayment = current.copy(isUploading = false, errorMessage = error.message ?: "Não foi possível enviar o comprovante.")
+                )
+            }
+        }
+    }
+
+    fun dismissPixDirectPayment() {
+        _uiState.value = _uiState.value.copy(pixDirectPayment = null)
     }
 
     fun dismissSuccessModal() {
