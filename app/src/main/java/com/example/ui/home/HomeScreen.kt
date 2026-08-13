@@ -163,6 +163,28 @@ fun HomeScreen(
         }
     )
 
+    LocationOrAddressDialog(
+        visible = uiState.showAddressChoiceDialog,
+        onDismiss = viewModel::closeLocationOrAddressDialog,
+        onAllowLocation = {
+            viewModel.closeLocationOrAddressDialog()
+            showPermissionsDialog = true
+        },
+        onRegisterAddress = viewModel::openAddressForm
+    )
+
+    AddressRegistrationSheet(
+        visible = uiState.showAddressForm,
+        draft = uiState.addressDraft,
+        isLookingUpCep = uiState.isLookingUpCep,
+        isSaving = uiState.isSavingAddress,
+        errorMessage = uiState.addressFormError,
+        onDismiss = viewModel::closeAddressForm,
+        onDraftChange = viewModel::updateAddressDraft,
+        onLookupCep = viewModel::lookupAddressByCep,
+        onSave = viewModel::saveAddress
+    )
+
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -208,7 +230,7 @@ fun HomeScreen(
                 uiState = uiState,
                 viewModel = viewModel,
                 onNavigateToOrders = onNavigateToOrders,
-                onRequestPermissions = { showPermissionsDialog = true }
+                onRequestPermissions = viewModel::openLocationOrAddressDialog
             )
 
             // 1. Busca
@@ -272,7 +294,9 @@ fun HomeScreen(
                 stores = uiState.stores,
                 isLoading = uiState.isLoadingStores,
                 errorMessage = uiState.errorMessage,
+                requiresAddress = uiState.requiresAddress,
                 onRetry = viewModel::loadStores,
+                onInformAddress = viewModel::openLocationOrAddressDialog,
                 onStoreClick = onNavigateToStore
             )
 
@@ -1536,7 +1560,9 @@ private fun HomeStoreListSection(
     stores: List<Store>,
     isLoading: Boolean,
     errorMessage: String?,
+    requiresAddress: Boolean,
     onRetry: () -> Unit,
+    onInformAddress: () -> Unit,
     onStoreClick: (String) -> Unit
 ) {
     Column(
@@ -1578,6 +1604,48 @@ private fun HomeStoreListSection(
                         text = "Carregando lojas...",
                         style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
                     )
+                }
+            }
+        } else if (requiresAddress) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = ItaSuperHighlightBg)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = ItaSuperPrimary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Informe sua localização ou endereço",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Precisamos da sua cidade para mostrar lojas que atendem sua região.",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = ItaSuperTextSecondary),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onInformAddress,
+                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Informar localização/endereço", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         } else if (errorMessage != null && stores.isEmpty()) {

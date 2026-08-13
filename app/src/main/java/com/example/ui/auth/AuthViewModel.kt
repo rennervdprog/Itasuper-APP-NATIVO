@@ -178,10 +178,11 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val result = SupabaseClient.signIn(email, password)
             if (result.isSuccess) {
-                UserSessionRepository.login(email)
-                if (result.userId != null) {
-                    UserSessionRepository.setUserId(result.userId)
-                }
+                UserSessionRepository.login(
+                    email = email,
+                    userId = result.userId,
+                    accessToken = result.accessToken
+                )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     successMessage = "Login realizado!",
@@ -267,9 +268,10 @@ class AuthViewModel : ViewModel() {
                     email = email,
                     cpfCnpj = state.regCpfCnpj,
                     whatsapp = state.regWhatsapp,
-                    pin = state.regPin
+                    pin = state.regPin,
+                    userId = authResult.userId,
+                    accessToken = authResult.accessToken
                 )
-                UserSessionRepository.setUserId(authResult.userId)
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

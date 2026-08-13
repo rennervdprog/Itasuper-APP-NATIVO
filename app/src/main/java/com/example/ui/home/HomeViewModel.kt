@@ -17,9 +17,23 @@ import kotlinx.coroutines.launch
 
 import com.example.data.model.DiscoverProduct
 
+data class AddressDraft(
+    val cep: String = "",
+    val street: String = "",
+    val number: String = "",
+    val complement: String = "",
+    val neighborhood: String = "",
+    val city: String = "",
+    val state: String = "",
+    val referencePoint: String = "",
+    val whatsapp: String = ""
+)
+
 data class HomeUiState(
     val streetName: String = "",
     val streetNumber: String = "",
+    val activeCity: String = "",
+    val requiresAddress: Boolean = false,
     val isEditingNumber: Boolean = false,
     val selectedCategory: String = "todas",
     val searchQuery: String = "",
@@ -32,6 +46,12 @@ data class HomeUiState(
     val isDirectDeliveryFilterActive: Boolean = false,
     val lastOrder: LastOrder? = null,
     val showSupportSheet: Boolean = false,
+    val showAddressChoiceDialog: Boolean = false,
+    val showAddressForm: Boolean = false,
+    val addressDraft: AddressDraft = AddressDraft(),
+    val isLookingUpCep: Boolean = false,
+    val isSavingAddress: Boolean = false,
+    val addressFormError: String? = null,
     val snackbarMessage: String? = null,
     val isRefreshingLocation: Boolean = false,
     val isLoadingStores: Boolean = false,
@@ -48,6 +68,8 @@ class HomeViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(
             streetName = userSession.addressStreet,
             streetNumber = userSession.addressNumber,
+            activeCity = userSession.addressCity,
+            requiresAddress = userSession.addressCity.isBlank(),
             lastOrder = StoreRepository.lastOrder.value
         )
 
@@ -139,7 +161,14 @@ class HomeViewModel : ViewModel() {
         val currentCategory = _uiState.value.selectedCategory
         val query = _uiState.value.searchQuery.trim().lowercase()
         val allStores = StoreRepository.stores.value
+        val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
+        val normalizedCity = normalizeForComparison(activeCity)
         val freeFeeOnly = _uiState.value.isFreeFeeFilterActive
+
+        if (normalizedCity.isBlank()) {
+            _uiState.value = _uiState.value.copy(stores = emptyList(), requiresAddress = true)
+            return
+        }
         val directDeliveryOnly = _uiState.value.isDirectDeliveryFilterActive
 
         val filtered = allStores.filter { store ->
@@ -156,11 +185,19 @@ class HomeViewModel : ViewModel() {
             val matchDirectDelivery = if (directDeliveryOnly) {
                 store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
             } else true
+            val matchCity = normalizeForComparison(store.address).contains(normalizedCity)
 
-            matchCategory && matchQuery && matchFreeFee && matchDirectDelivery
+            matchCategory && matchQuery && matchFreeFee && matchDirectDelivery && matchCity
         }
 
-        _uiState.value = _uiState.value.copy(stores = filtered)
+        _uiState.value = _uiState.value.copy(stores = filtered, requiresAddress = false)
+    }
+
+    private fun normalizeForComparison(value: String): String {
+        return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase()
+            .trim()
     }
 
     fun toggleEditNumber() {
@@ -233,6 +270,7 @@ class HomeViewModel : ViewModel() {
                         // Converte lat/lng em endereço legível (rua + bairro) via Geocoder nativo do Android
                         var resolvedStreet = "Sua Localização GPS"
                         var resolvedNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}"
+                        var resolvedCity = UserSessionRepository.userSession.value.addressCity
                         try {
                             val geocoder = android.location.Geocoder(context, java.util.Locale("pt", "BR"))
                             @Suppress("DEPRECATION")
@@ -243,6 +281,7 @@ class HomeViewModel : ViewModel() {
                                 if (!thoroughfare.isNullOrBlank()) {
                                     resolvedStreet = thoroughfare
                                     resolvedNumber = addr.subThoroughfare ?: (addr.subLocality ?: addr.locality ?: "")
+                                    resolvedCity = addr.locality ?: addr.subAdminArea ?: resolvedCity
                                 }
                             }
                         } catch (geoEx: Exception) {
@@ -252,6 +291,8 @@ class HomeViewModel : ViewModel() {
                         _uiState.value = _uiState.value.copy(
                             streetName = resolvedStreet,
                             streetNumber = resolvedNumber,
+                            activeCity = resolvedCity,
+                            requiresAddress = resolvedCity.isBlank(),
                             isRefreshingLocation = false,
                             snackbarMessage = "Localização atualizada com sucesso!"
                         )
@@ -283,6 +324,153 @@ class HomeViewModel : ViewModel() {
 
     fun onFiltersClick() {
         _uiState.value = _uiState.value.copy(snackbarMessage = "Filtros em breve")
+    }
+
+    fun openLocationOrAddressDialog() {
+        _uiState.value = _uiState.value.copy(showAddressChoiceDialog = true)
+    }
+
+    fun closeLocationOrAddressDialog() {
+        _uiState.value = _uiState.value.copy(showAddressChoiceDialog = false)
+    }
+
+    fun openAddressForm() {
+        val session = UserSessionRepository.userSession.value
+        _uiState.value = _uiState.value.copy(
+            showAddressChoiceDialog = false,
+            showAddressForm = true,
+            addressFormError = null,
+            addressDraft = AddressDraft(
+                cep = session.addressCep,
+                street = session.addressStreet,
+                number = session.addressNumber,
+                complement = session.addressComplement,
+                neighborhood = session.addressNeighborhood,
+                city = session.addressCity,
+                state = session.addressState,
+                referencePoint = session.addressReferencePoint,
+                whatsapp = session.whatsapp
+            )
+        )
+    }
+
+    fun closeAddressForm() {
+        _uiState.value = _uiState.value.copy(showAddressForm = false, addressFormError = null)
+    }
+
+    fun updateAddressDraft(transform: (AddressDraft) -> AddressDraft) {
+        _uiState.value = _uiState.value.copy(
+            addressDraft = transform(_uiState.value.addressDraft),
+            addressFormError = null
+        )
+    }
+
+    fun lookupAddressByCep() {
+        val cleanCep = _uiState.value.addressDraft.cep.filter { it.isDigit() }
+        if (cleanCep.length != 8) {
+            _uiState.value = _uiState.value.copy(addressFormError = "Informe um CEP válido com 8 dígitos.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(isLookingUpCep = true, addressFormError = null)
+        viewModelScope.launch {
+            val result = SupabaseClient.fetchAddressByCep(cleanCep)
+            if (result == null) {
+                _uiState.value = _uiState.value.copy(
+                    isLookingUpCep = false,
+                    addressFormError = "CEP não encontrado. Confira ou preencha manualmente."
+                )
+            } else {
+                updateAddressDraft { current ->
+                    current.copy(
+                        cep = result.cep.ifBlank { cleanCep },
+                        street = result.street.ifBlank { current.street },
+                        neighborhood = result.neighborhood.ifBlank { current.neighborhood },
+                        city = result.city.ifBlank { current.city },
+                        state = result.state.ifBlank { current.state }
+                    )
+                }
+                _uiState.value = _uiState.value.copy(isLookingUpCep = false)
+            }
+        }
+    }
+
+    fun saveAddress() {
+        val draft = _uiState.value.addressDraft
+        val cleanCep = draft.cep.filter { it.isDigit() }
+        val cleanWhatsapp = draft.whatsapp.filter { it.isDigit() }
+        when {
+            cleanCep.length != 8 -> {
+                _uiState.value = _uiState.value.copy(addressFormError = "Informe um CEP válido.")
+                return
+            }
+            draft.street.isBlank() || draft.number.isBlank() || draft.neighborhood.isBlank() -> {
+                _uiState.value = _uiState.value.copy(addressFormError = "Preencha rua, número e bairro.")
+                return
+            }
+            draft.city.isBlank() || draft.state.isBlank() -> {
+                _uiState.value = _uiState.value.copy(addressFormError = "Informe um CEP que identifique cidade e estado.")
+                return
+            }
+            cleanWhatsapp.length < 10 -> {
+                _uiState.value = _uiState.value.copy(addressFormError = "Informe um WhatsApp válido com DDD.")
+                return
+            }
+        }
+
+        val session = UserSessionRepository.userSession.value
+        if (session.userId.isBlank()) {
+            _uiState.value = _uiState.value.copy(addressFormError = "Sua sessão expirou. Entre novamente para salvar o endereço.")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isSavingAddress = true, addressFormError = null)
+        viewModelScope.launch {
+            val saved = SupabaseClient.updateUserProfileAddress(
+                userId = session.userId,
+                accessToken = session.accessToken,
+                cep = cleanCep,
+                street = draft.street.trim(),
+                number = draft.number.trim(),
+                complement = draft.complement.trim(),
+                neighborhood = draft.neighborhood.trim(),
+                city = draft.city.trim(),
+                state = draft.state.trim(),
+                referencePoint = draft.referencePoint.trim(),
+                whatsapp = cleanWhatsapp
+            )
+            if (!saved) {
+                _uiState.value = _uiState.value.copy(
+                    isSavingAddress = false,
+                    addressFormError = "Não foi possível salvar o endereço. Tente novamente."
+                )
+                return@launch
+            }
+
+            UserSessionRepository.updateProfile(
+                name = session.name,
+                whatsapp = cleanWhatsapp,
+                street = draft.street.trim(),
+                number = draft.number.trim(),
+                neighborhood = draft.neighborhood.trim(),
+                cep = cleanCep,
+                pixKeyType = session.pixKeyType,
+                pixKey = session.pixKey,
+                city = draft.city.trim(),
+                state = draft.state.trim(),
+                complement = draft.complement.trim(),
+                referencePoint = draft.referencePoint.trim()
+            )
+            _uiState.value = _uiState.value.copy(
+                streetName = draft.street.trim(),
+                streetNumber = draft.number.trim(),
+                activeCity = draft.city.trim(),
+                requiresAddress = false,
+                isSavingAddress = false,
+                showAddressForm = false,
+                snackbarMessage = "Endereço salvo! Atualizando lojas da sua região."
+            )
+            loadStores()
+        }
     }
 
     fun onRepeatLastOrder() {

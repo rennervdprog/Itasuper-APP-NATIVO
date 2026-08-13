@@ -10,16 +10,24 @@ object UserSessionRepository {
     private val _userSession = MutableStateFlow(UserSession())
     val userSession: StateFlow<UserSession> = _userSession.asStateFlow()
 
+    fun login(email: String, userId: String?, accessToken: String?) {
+        _userSession.value = _userSession.value.copy(
+            isLoggedIn = true,
+            userId = userId ?: _userSession.value.userId,
+            accessToken = accessToken ?: _userSession.value.accessToken,
+            email = email,
+            name = if (_userSession.value.name.isBlank()) "Cliente ItaSuper" else _userSession.value.name
+        )
+    }
+
     fun setUserId(userId: String) {
         _userSession.value = _userSession.value.copy(userId = userId)
     }
 
-    fun login(email: String) {
-        _userSession.value = _userSession.value.copy(
-            isLoggedIn = true,
-            email = email,
-            name = if (_userSession.value.name.isBlank()) "Cliente ItaSuper" else _userSession.value.name
-        )
+    fun setAccessToken(accessToken: String?) {
+        if (!accessToken.isNullOrBlank()) {
+            _userSession.value = _userSession.value.copy(accessToken = accessToken)
+        }
     }
 
     fun register(
@@ -27,11 +35,14 @@ object UserSessionRepository {
         email: String,
         cpfCnpj: String,
         whatsapp: String,
-        pin: String
+        pin: String,
+        userId: String,
+        accessToken: String?
     ) {
         _userSession.value = UserSession(
             isLoggedIn = true,
-            userId = "user_" + System.currentTimeMillis(),
+            userId = userId,
+            accessToken = accessToken.orEmpty(),
             name = name,
             email = email,
             cpfCnpj = cpfCnpj,
@@ -41,7 +52,7 @@ object UserSessionRepository {
     }
 
     fun logout() {
-        _userSession.value = _userSession.value.copy(isLoggedIn = false)
+        _userSession.value = UserSession()
     }
 
     fun updateProfile(
@@ -52,7 +63,11 @@ object UserSessionRepository {
         neighborhood: String,
         cep: String,
         pixKeyType: String,
-        pixKey: String
+        pixKey: String,
+        city: String = _userSession.value.addressCity,
+        state: String = _userSession.value.addressState,
+        complement: String = _userSession.value.addressComplement,
+        referencePoint: String = _userSession.value.addressReferencePoint
     ) {
         _userSession.value = _userSession.value.copy(
             name = name,
@@ -60,7 +75,11 @@ object UserSessionRepository {
             addressStreet = street,
             addressNumber = number,
             addressNeighborhood = neighborhood,
+            addressCity = city,
+            addressState = state,
             addressCep = cep,
+            addressComplement = complement,
+            addressReferencePoint = referencePoint,
             pixKeyType = pixKeyType,
             pixKey = pixKey
         )

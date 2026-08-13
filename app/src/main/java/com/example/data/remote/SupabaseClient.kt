@@ -208,6 +208,51 @@ object SupabaseClient {
         }
     }
 
+    suspend fun updateUserProfileAddress(
+        userId: String,
+        accessToken: String,
+        cep: String,
+        street: String,
+        number: String,
+        complement: String,
+        neighborhood: String,
+        city: String,
+        state: String,
+        referencePoint: String,
+        whatsapp: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId"
+            val bodyJson = JSONObject().apply {
+                put("cep", cep)
+                put("street", street)
+                put("number", number)
+                put("address_number", number)
+                put("complement", complement)
+                put("neighborhood", neighborhood)
+                put("city", city)
+                put("state", state)
+                put("reference_point", referencePoint)
+                put("whatsapp_number", whatsapp)
+                put("phone", whatsapp)
+            }
+            val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $bearer")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful || response.code == 204 || response.code == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating user address", e)
+            false
+        }
+    }
+
     data class OpeningHour(
         val storeId: String,
         val dayOfWeek: Int,

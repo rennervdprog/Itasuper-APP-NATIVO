@@ -5,6 +5,7 @@ data class UserSession(
     val userId: String = "",
     val name: String = "",
     val email: String = "",
+    val accessToken: String = "",
     val cpfCnpj: String = "",
     val whatsapp: String = "",
     val deliveryPin: String = "",
@@ -13,6 +14,9 @@ data class UserSession(
     val addressNeighborhood: String = "",
     val addressCity: String = "",
     val addressCep: String = "",
+    val addressState: String = "",
+    val addressComplement: String = "",
+    val addressReferencePoint: String = "",
     val pixKeyType: String = "",
     val pixKey: String = ""
 )
