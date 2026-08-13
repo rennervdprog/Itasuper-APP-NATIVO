@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -610,7 +611,8 @@ fun StoreDetailScreen(
                     onDismissRequest = { viewModel.closeBuilderModal() },
                     properties = DialogProperties(
                         usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = false
+                        // Mantém o diálogo em tela cheia, mas dentro das áreas seguras do aparelho.
+                        decorFitsSystemWindows = true
                     )
                 ) {
                     PastelWizardFullScreenContent(
@@ -1904,8 +1906,9 @@ fun PastelWizardFullScreenContent(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding(),
-                shadowElevation = 8.dp,
+                    .navigationBarsPadding()
+                    .imePadding(),
+                shadowElevation = 6.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Box(
@@ -1916,7 +1919,7 @@ fun PastelWizardFullScreenContent(
                         modifier = Modifier
                             .widthIn(max = 680.dp)
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1925,8 +1928,8 @@ fun PastelWizardFullScreenContent(
                                 onClick = onNextStep,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                    .heightIn(min = 54.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
                             ) {
                                 Text(
@@ -2048,15 +2051,18 @@ fun PastelWizardFullScreenContent(
                         Text(
                             text = "Quantos sabores você deseja?",
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = ItaSuperTextPrimary
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Monte seu pastel combinando até $maxFlavors sabores no mesmo pastel.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray
+                            color = Color(0xFF757575),
+                            lineHeight = 21.sp
                         )
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(22.dp))
 
                         val options = (2..minOf(4, maxFlavors)).toList()
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2065,26 +2071,32 @@ fun PastelWizardFullScreenContent(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .heightIn(min = 104.dp)
                                         .clickable { onSelectTargetFlavors(optCount) },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+                                        containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
                                     ),
-                                    border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color.LightGray),
-                                    shape = RoundedCornerShape(12.dp)
+                                    border = BorderStroke(
+                                        if (selected) 2.dp else 1.dp,
+                                        if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)
+                                    ),
+                                    shape = RoundedCornerShape(18.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(20.dp),
+                                            .padding(horizontal = 20.dp, vertical = 18.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = "$optCount Sabores",
                                                 fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.titleMedium
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = ItaSuperTextPrimary
                                             )
+                                            Spacer(modifier = Modifier.height(3.dp))
                                             Text(
                                                 text = when (optCount) {
                                                     2 -> "Meio a Meio (50% cada)"
@@ -2092,13 +2104,17 @@ fun PastelWizardFullScreenContent(
                                                     else -> "1/4 para cada sabor"
                                                 },
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = Color.Gray
+                                                color = Color(0xFF757575)
                                             )
                                         }
+                                        Spacer(modifier = Modifier.width(12.dp))
                                         RadioButton(
                                             selected = selected,
                                             onClick = { onSelectTargetFlavors(optCount) },
-                                            colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                            colors = RadioButtonDefaults.colors(
+                                                selectedColor = ItaSuperPrimary,
+                                                unselectedColor = Color(0xFF737373)
+                                            )
                                         )
                                     }
                                 }
