@@ -73,13 +73,28 @@ class HomeViewModel : ViewModel() {
 
     init {
         val userSession = UserSessionRepository.userSession.value
+        val initialCity = userSession.activeLocationCity.ifBlank { userSession.addressCity }
         _uiState.value = _uiState.value.copy(
-            streetName = userSession.addressStreet,
-            streetNumber = userSession.addressNumber,
-            activeCity = userSession.addressCity,
-            requiresAddress = userSession.addressCity.isBlank(),
+            streetName = userSession.activeLocationStreet.ifBlank { userSession.addressStreet },
+            streetNumber = userSession.activeLocationNumber.ifBlank { userSession.addressNumber },
+            activeCity = initialCity,
+            requiresAddress = initialCity.isBlank(),
             lastOrder = StoreRepository.lastOrder.value
         )
+
+        // A cidade usada no catálogo é GPS quando ativo; sem GPS, usa o endereço cadastrado.
+        viewModelScope.launch {
+            UserSessionRepository.userSession.collect { session ->
+                val effectiveCity = session.activeLocationCity.ifBlank { session.addressCity }
+                _uiState.value = _uiState.value.copy(
+                    streetName = session.activeLocationStreet.ifBlank { session.addressStreet },
+                    streetNumber = session.activeLocationNumber.ifBlank { session.addressNumber },
+                    activeCity = effectiveCity,
+                    requiresAddress = effectiveCity.isBlank()
+                )
+                refreshRegionalCatalog()
+            }
+        }
 
         // Observe stores flow reactively
         viewModelScope.launch {
@@ -131,7 +146,11 @@ class HomeViewModel : ViewModel() {
      * lojas da cidade ativa; filtros de interface são aplicados somente após esse recorte.
      */
     private fun refreshRegionalCatalog(sourceStores: List<Store> = storesWithCalculatedDistance(StoreRepository.stores.value)) {
-        val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
+        val activeCity = _uiState.value.activeCity.ifBlank {
+            UserSessionRepository.userSession.value.activeLocationCity.ifBlank {
+                UserSessionRepository.userSession.value.addressCity
+            }
+        }
         val normalizedCity = normalizeForComparison(activeCity)
         val regionalStores = if (normalizedCity.isBlank()) emptyList() else {
             sourceStores.filter { normalizeForComparison(it.addressCity) == normalizedCity }
@@ -339,7 +358,9 @@ class HomeViewModel : ViewModel() {
                         // Converte lat/lng em endereço legível (rua + bairro) via Geocoder nativo do Android
                         var resolvedStreet = "Sua Localização GPS"
                         var resolvedNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}"
+                        var resolvedNeighborhood = ""
                         var resolvedCity = UserSessionRepository.userSession.value.addressCity
+                        var resolvedState = UserSessionRepository.userSession.value.addressState
                         try {
                             val geocoder = android.location.Geocoder(context, java.util.Locale("pt", "BR"))
                             @Suppress("DEPRECATION")
@@ -349,8 +370,10 @@ class HomeViewModel : ViewModel() {
                                 val thoroughfare = addr.thoroughfare ?: addr.subLocality ?: addr.locality
                                 if (!thoroughfare.isNullOrBlank()) {
                                     resolvedStreet = thoroughfare
-                                    resolvedNumber = addr.subThoroughfare ?: (addr.subLocality ?: addr.locality ?: "")
+                                    resolvedNumber = addr.subThoroughfare ?: ""
+                                    resolvedNeighborhood = addr.subLocality ?: addr.subAdminArea ?: ""
                                     resolvedCity = addr.locality ?: addr.subAdminArea ?: resolvedCity
+                                    resolvedState = addr.adminArea ?: resolvedState
                                 }
                             }
                         } catch (geoEx: Exception) {
@@ -362,7 +385,9 @@ class HomeViewModel : ViewModel() {
                         UserSessionRepository.updateActiveLocation(
                             street = resolvedStreet,
                             number = resolvedNumber,
-                            city = resolvedCity
+                            neighborhood = resolvedNeighborhood,
+                            city = resolvedCity,
+                            state = resolvedState
                         )
                         _uiState.value = _uiState.value.copy(
                             streetName = resolvedStreet,

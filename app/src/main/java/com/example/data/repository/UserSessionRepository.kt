@@ -50,6 +50,7 @@ object UserSessionRepository {
             name = if (_userSession.value.name.isBlank()) "Cliente ItaSuper" else _userSession.value.name
         )
         persistCurrentSession()
+        synchronizeProfileFromRemote()
     }
 
     fun setUserId(userId: String) {
@@ -89,15 +90,20 @@ object UserSessionRepository {
             deliveryPin = pin
         )
         persistCurrentSession()
+        synchronizeProfileFromRemote()
     }
 
     /**
      * Renova a sessão sem interromper o cliente quando ele está temporariamente sem rede.
-     * A sessão só é apagada pela ação explícita de sair.
+     * Sempre que há token válido, sincroniza também o perfil real da conta.
      */
     fun refreshSession() {
         val current = _userSession.value
-        if (!current.isLoggedIn || current.refreshToken.isBlank()) return
+        if (!current.isLoggedIn) return
+        if (current.refreshToken.isBlank()) {
+            synchronizeProfileFromRemote()
+            return
+        }
         repositoryScope.launch {
             val result = SupabaseClient.refreshSession(current.refreshToken)
             if (result.isSuccess && !result.accessToken.isNullOrBlank()) {
@@ -112,8 +118,45 @@ object UserSessionRepository {
                 )
                 _userSession.value = updated
                 persistCurrentSession()
+                synchronizeProfile(updated)
+            } else if (current.accessToken.isNotBlank()) {
+                // Falha transitória de refresh não desloga o cliente; ainda tenta ler o perfil com o token atual.
+                synchronizeProfile(current)
             }
         }
+    }
+
+    /** Atualiza a sessão com os dados reais de `profiles`, sem remover informações locais válidas em caso de campo nulo. */
+    fun synchronizeProfileFromRemote() {
+        val current = _userSession.value
+        if (!current.isLoggedIn || current.userId.isBlank() || current.accessToken.isBlank()) return
+        repositoryScope.launch { synchronizeProfile(current) }
+    }
+
+    private suspend fun synchronizeProfile(sessionAtRequest: UserSession) {
+        val remote = SupabaseClient.fetchCustomerProfile(sessionAtRequest.userId, sessionAtRequest.accessToken) ?: return
+        val current = _userSession.value
+        // Evita aplicar uma resposta de uma conta anterior após troca de sessão.
+        if (!current.isLoggedIn || current.userId != sessionAtRequest.userId) return
+
+        _userSession.value = current.copy(
+            name = remote.fullName.ifBlank { current.name },
+            email = remote.email.ifBlank { current.email },
+            cpfCnpj = remote.document.ifBlank { current.cpfCnpj },
+            whatsapp = remote.whatsapp.ifBlank { current.whatsapp },
+            deliveryPin = remote.deliveryPin.ifBlank { current.deliveryPin },
+            addressCep = remote.cep.ifBlank { current.addressCep },
+            addressStreet = remote.street.ifBlank { current.addressStreet },
+            addressNumber = remote.number.ifBlank { current.addressNumber },
+            addressComplement = remote.complement.ifBlank { current.addressComplement },
+            addressNeighborhood = remote.neighborhood.ifBlank { current.addressNeighborhood },
+            addressCity = remote.city.ifBlank { current.addressCity },
+            addressState = remote.state.ifBlank { current.addressState },
+            addressReferencePoint = remote.referencePoint.ifBlank { current.addressReferencePoint },
+            pixKeyType = remote.pixKeyType.ifBlank { current.pixKeyType },
+            pixKey = remote.pixKey.ifBlank { current.pixKey }
+        )
+        persistCurrentSession()
     }
 
     fun logout() {
@@ -152,13 +195,21 @@ object UserSessionRepository {
         persistCurrentSession()
     }
 
-    /** Atualiza apenas a localização ativa no aparelho; o endereço do perfil só muda quando o usuário o salva. */
-    fun updateActiveLocation(street: String, number: String, city: String) {
+    /** Atualiza somente o contexto do GPS ativo; nunca altera o endereço cadastrado no perfil. */
+    fun updateActiveLocation(
+        street: String,
+        number: String,
+        neighborhood: String,
+        city: String,
+        state: String
+    ) {
         if (city.isBlank()) return
         _userSession.value = _userSession.value.copy(
-            addressStreet = street.ifBlank { _userSession.value.addressStreet },
-            addressNumber = number.ifBlank { _userSession.value.addressNumber },
-            addressCity = city
+            activeLocationStreet = street,
+            activeLocationNumber = number,
+            activeLocationNeighborhood = neighborhood,
+            activeLocationCity = city,
+            activeLocationState = state
         )
         persistCurrentSession()
     }

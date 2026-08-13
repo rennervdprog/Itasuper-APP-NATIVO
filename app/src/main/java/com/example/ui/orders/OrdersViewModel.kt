@@ -50,6 +50,9 @@ data class OrdersUiState(
     val neighborhood: String = "",
     val city: String = "",
     val complement: String = "",
+    val showAddressEditor: Boolean = true,
+    val showGpsAddressConfirmation: Boolean = false,
+    val usingGpsAddress: Boolean = false,
     val isSearchingCep: Boolean = false,
     val cepError: String? = null,
 
@@ -80,17 +83,72 @@ class OrdersViewModel : ViewModel() {
         initialValue = emptyList()
     )
 
+    private var addressEditedByCustomer = false
+
     init {
-        // Load default address from UserSession
-        val session = UserSessionRepository.userSession.value
+        applySavedAddress(UserSessionRepository.userSession.value)
+        viewModelScope.launch {
+            UserSessionRepository.userSession.collect { session ->
+                if (!addressEditedByCustomer) applySavedAddress(session)
+            }
+        }
+        refreshOrders()
+    }
+
+    private fun applySavedAddress(session: com.example.data.model.UserSession) {
+        val hasSavedAddress = session.addressStreet.isNotBlank() &&
+            session.addressNumber.isNotBlank() &&
+            session.addressNeighborhood.isNotBlank() &&
+            session.addressCity.isNotBlank()
+        val gpsDiverges = hasSavedAddress && activeLocationDiffersFromSavedAddress(session)
         _uiState.value = _uiState.value.copy(
             cep = session.addressCep,
             street = session.addressStreet,
             number = session.addressNumber,
             neighborhood = session.addressNeighborhood,
-            city = session.addressCity
+            city = session.addressCity,
+            complement = session.addressComplement,
+            showAddressEditor = !hasSavedAddress,
+            showGpsAddressConfirmation = gpsDiverges,
+            usingGpsAddress = false
         )
-        refreshOrders()
+    }
+
+    private fun activeLocationDiffersFromSavedAddress(session: com.example.data.model.UserSession): Boolean {
+        if (session.activeLocationCity.isBlank() || session.activeLocationStreet.isBlank()) return false
+        fun normalized(value: String) = value.trim().lowercase().replace(Regex("\\s+"), " ")
+        val sameCity = normalized(session.activeLocationCity) == normalized(session.addressCity)
+        val sameStreet = normalized(session.activeLocationStreet) == normalized(session.addressStreet)
+        val activeNumber = normalized(session.activeLocationNumber)
+        val savedNumber = normalized(session.addressNumber)
+        val sameNumber = activeNumber.isBlank() || savedNumber.isBlank() || activeNumber == savedNumber
+        return !(sameCity && sameStreet && sameNumber)
+    }
+
+    fun useSavedAddressForCheckout() {
+        addressEditedByCustomer = false
+        applySavedAddress(UserSessionRepository.userSession.value)
+        _uiState.value = _uiState.value.copy(showGpsAddressConfirmation = false)
+    }
+
+    fun useGpsAddressForCheckout() {
+        val session = UserSessionRepository.userSession.value
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(
+            street = session.activeLocationStreet.ifBlank { _uiState.value.street },
+            number = session.activeLocationNumber,
+            neighborhood = session.activeLocationNeighborhood.ifBlank { _uiState.value.neighborhood },
+            city = session.activeLocationCity.ifBlank { _uiState.value.city },
+            showAddressEditor = true,
+            showGpsAddressConfirmation = false,
+            usingGpsAddress = true,
+            cepError = null
+        )
+    }
+
+    fun openAddressEditor() {
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(showAddressEditor = true, showGpsAddressConfirmation = false)
     }
 
     fun refreshOrders() {
@@ -218,30 +276,37 @@ class OrdersViewModel : ViewModel() {
 
     // Address & ViaCEP handlers
     fun updateCep(value: String) {
-        _uiState.value = _uiState.value.copy(cep = value, cepError = null)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(cep = value, cepError = null, showAddressEditor = true)
     }
 
     fun updateStreet(value: String) {
-        _uiState.value = _uiState.value.copy(street = value)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(street = value, showAddressEditor = true)
     }
 
     fun updateNumber(value: String) {
-        _uiState.value = _uiState.value.copy(number = value)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(number = value, showAddressEditor = true)
     }
 
     fun updateNeighborhood(value: String) {
-        _uiState.value = _uiState.value.copy(neighborhood = value)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(neighborhood = value, showAddressEditor = true)
     }
 
     fun updateCity(value: String) {
-        _uiState.value = _uiState.value.copy(city = value)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(city = value, showAddressEditor = true)
     }
 
     fun updateComplement(value: String) {
-        _uiState.value = _uiState.value.copy(complement = value)
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(complement = value, showAddressEditor = true)
     }
 
     fun searchAddressByCep() {
+        addressEditedByCustomer = true
         val cepInput = _uiState.value.cep.trim()
         if (cepInput.isBlank()) {
             _uiState.value = _uiState.value.copy(cepError = "Informe o CEP.")

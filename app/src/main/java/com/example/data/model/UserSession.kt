@@ -20,6 +20,13 @@ data class UserSession(
     val addressState: String = "",
     val addressComplement: String = "",
     val addressReferencePoint: String = "",
+    // Localização temporária do aparelho: usada para catálogo, distância e confirmação de entrega.
+    // Não substitui o endereço cadastrado da conta.
+    val activeLocationStreet: String = "",
+    val activeLocationNumber: String = "",
+    val activeLocationNeighborhood: String = "",
+    val activeLocationCity: String = "",
+    val activeLocationState: String = "",
     val pixKeyType: String = "",
     val pixKey: String = ""
 )

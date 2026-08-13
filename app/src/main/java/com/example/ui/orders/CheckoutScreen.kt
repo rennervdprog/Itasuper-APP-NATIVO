@@ -73,6 +73,28 @@ fun CheckoutScreen(
     val uiState by viewModel.uiState.collectAsState()
     val cart by viewModel.cartState.collectAsState()
 
+    if (uiState.showGpsAddressConfirmation && cart.deliveryType == "DELIVERY") {
+        AlertDialog(
+            onDismissRequest = { viewModel.useSavedAddressForCheckout() },
+            title = { Text("Confirmar local de entrega") },
+            text = {
+                Text(
+                    "Sua localização atual parece diferente do endereço cadastrado. Deseja manter o endereço salvo ou confirmar os dados da localização atual?"
+                )
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.useGpsAddressForCheckout() }) {
+                    Text("Usar localização atual")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { viewModel.useSavedAddressForCheckout() }) {
+                    Text("Usar endereço salvo")
+                }
+            }
+        )
+    }
+
     // Confirmation Modal on successful order placement
     if (uiState.placedOrderSuccess != null) {
         OrderSuccessDialog(
@@ -167,8 +189,46 @@ fun CheckoutScreen(
                                     )
                                 }
                             }
+                        } else if (!uiState.showAddressEditor) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ItaSuperHighlightBg)
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = listOf(uiState.street, uiState.number)
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(", "),
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperPrimary,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = listOf(uiState.neighborhood, uiState.city)
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" - "),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (uiState.complement.isNotBlank()) {
+                                    Text(
+                                        text = uiState.complement,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                androidx.compose.material3.TextButton(
+                                    onClick = viewModel::openAddressEditor,
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Alterar endereço")
+                                }
+                            }
                         } else {
-                            // CEP Search Row
+                            // Cadastro, edição ou confirmação da localização atual.
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = uiState.cep,

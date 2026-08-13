@@ -95,7 +95,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         StoreRepository.stores,
         UserSessionRepository.userSession
     ) { stores, session ->
-        val city = session.addressCity.normalizeText()
+        val city = session.activeLocationCity.ifBlank { session.addressCity }.normalizeText()
         if (city.isBlank()) emptyList() else {
             stores.filter { it.addressCity.normalizeText() == city }
         }

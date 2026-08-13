@@ -27,6 +27,24 @@ data class SupabaseAuthResponse(
     val errorMessage: String? = null
 )
 
+data class RemoteCustomerProfile(
+    val fullName: String = "",
+    val email: String = "",
+    val document: String = "",
+    val whatsapp: String = "",
+    val deliveryPin: String = "",
+    val cep: String = "",
+    val street: String = "",
+    val number: String = "",
+    val complement: String = "",
+    val neighborhood: String = "",
+    val city: String = "",
+    val state: String = "",
+    val referencePoint: String = "",
+    val pixKeyType: String = "",
+    val pixKey: String = ""
+)
+
 data class OrderSubmissionResponse(
     val isSuccess: Boolean,
     val orderId: String? = null,
@@ -199,6 +217,57 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error refreshing Supabase session", e)
             SupabaseAuthResponse(isSuccess = false, errorMessage = "Falha ao renovar sessão")
+        }
+    }
+
+    /** Lê o perfil do cliente autenticado — mesma fonte usada pelas telas do Capacitor. */
+    suspend fun fetchCustomerProfile(userId: String, accessToken: String): RemoteCustomerProfile? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val select = listOf(
+                "full_name", "email", "document", "whatsapp_number", "phone", "delivery_pin",
+                "cep", "street", "number", "address_number", "complement", "neighborhood",
+                "city", "state", "reference_point", "pix_type", "pix_key"
+            ).joinToString(",")
+            val url = "$SUPABASE_URL/rest/v1/profiles?select=$select&user_id=eq.$userId&limit=1"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+            if (!response.isSuccessful || responseText.isBlank()) {
+                Log.w(TAG, "Perfil não pôde ser sincronizado: code=${response.code}")
+                return@withContext null
+            }
+            val profile = JSONArray(responseText).optJSONObject(0) ?: return@withContext null
+            RemoteCustomerProfile(
+                fullName = profile.optNullableString("full_name").orEmpty().trim(),
+                email = profile.optNullableString("email").orEmpty().trim(),
+                document = profile.optNullableString("document").orEmpty().trim(),
+                whatsapp = profile.optNullableString("whatsapp_number")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: profile.optNullableString("phone").orEmpty(),
+                deliveryPin = profile.optNullableString("delivery_pin").orEmpty().trim(),
+                cep = profile.optNullableString("cep").orEmpty().trim(),
+                street = profile.optNullableString("street").orEmpty().trim(),
+                number = profile.optNullableString("number")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: profile.optNullableString("address_number").orEmpty(),
+                complement = profile.optNullableString("complement").orEmpty().trim(),
+                neighborhood = profile.optNullableString("neighborhood").orEmpty().trim(),
+                city = profile.optNullableString("city").orEmpty().trim(),
+                state = profile.optNullableString("state").orEmpty().trim(),
+                referencePoint = profile.optNullableString("reference_point").orEmpty().trim(),
+                pixKeyType = profile.optNullableString("pix_type").orEmpty().trim(),
+                pixKey = profile.optNullableString("pix_key").orEmpty().trim()
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao buscar perfil do cliente", e)
+            null
         }
     }
 
