@@ -226,8 +226,8 @@ object SupabaseClient {
         try {
             val select = listOf(
                 "full_name", "email", "document", "whatsapp_number", "phone", "delivery_pin",
-                "cep", "street", "number", "address_number", "complement", "neighborhood",
-                "city", "state", "reference_point", "pix_type", "pix_key"
+                "cep", "street", "number", "complement", "neighborhood",
+                "city", "reference_point", "pix_type", "pix_key"
             ).joinToString(",")
             val url = "$SUPABASE_URL/rest/v1/profiles?select=$select&user_id=eq.$userId&limit=1"
             val request = Request.Builder()
@@ -254,9 +254,7 @@ object SupabaseClient {
                 deliveryPin = profile.optNullableString("delivery_pin").orEmpty().trim(),
                 cep = profile.optNullableString("cep").orEmpty().trim(),
                 street = profile.optNullableString("street").orEmpty().trim(),
-                number = profile.optNullableString("number")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: profile.optNullableString("address_number").orEmpty(),
+                number = profile.optNullableString("number").orEmpty(),
                 complement = profile.optNullableString("complement").orEmpty().trim(),
                 neighborhood = profile.optNullableString("neighborhood").orEmpty().trim(),
                 city = profile.optNullableString("city").orEmpty().trim(),
@@ -316,18 +314,20 @@ object SupabaseClient {
     }
 
     // 3b. UPDATE PROFILE NUMBER/ADDRESS IN SUPABASE
-    suspend fun updateUserProfileNumber(userId: String, number: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun updateUserProfileNumber(
+        userId: String,
+        accessToken: String,
+        number: String
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = "$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId"
-            val bodyJson = JSONObject().apply {
-                put("number", number)
-                put("address_number", number)
-            }
+            val bodyJson = JSONObject().put("number", number)
+            val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
 
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Authorization", "Bearer $bearer")
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Prefer", "return=minimal")
                 .patch(bodyJson.toString().toRequestBody(jsonMediaType))
@@ -350,7 +350,6 @@ object SupabaseClient {
         complement: String,
         neighborhood: String,
         city: String,
-        state: String,
         referencePoint: String,
         whatsapp: String
     ): Boolean = withContext(Dispatchers.IO) {
@@ -360,11 +359,9 @@ object SupabaseClient {
                 put("cep", cep)
                 put("street", street)
                 put("number", number)
-                put("address_number", number)
                 put("complement", complement)
                 put("neighborhood", neighborhood)
                 put("city", city)
-                put("state", state)
                 put("reference_point", referencePoint)
                 put("whatsapp_number", whatsapp)
                 put("phone", whatsapp)

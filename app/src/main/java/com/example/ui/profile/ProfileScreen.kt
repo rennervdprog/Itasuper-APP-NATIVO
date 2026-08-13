@@ -106,7 +106,6 @@ fun ProfileScreen(
     var complement by remember { mutableStateOf(session.addressComplement) }
     var neighborhood by remember { mutableStateOf(session.addressNeighborhood) }
     var city by remember { mutableStateOf(session.addressCity) }
-    var state by remember { mutableStateOf(session.addressState) }
     var referencePoint by remember { mutableStateOf(session.addressReferencePoint) }
     var whatsapp by remember { mutableStateOf(session.whatsapp) }
     var pin by remember { mutableStateOf("") }
@@ -135,7 +134,6 @@ fun ProfileScreen(
         session.addressComplement,
         session.addressNeighborhood,
         session.addressCity,
-        session.addressState,
         session.addressReferencePoint,
         session.whatsapp
     ) {
@@ -146,7 +144,6 @@ fun ProfileScreen(
             complement = session.addressComplement
             neighborhood = session.addressNeighborhood
             city = session.addressCity
-            state = session.addressState
             referencePoint = session.addressReferencePoint
             whatsapp = session.whatsapp
         }
@@ -447,7 +444,6 @@ fun ProfileScreen(
                                             street = result.street.ifBlank { street }
                                             neighborhood = result.neighborhood.ifBlank { neighborhood }
                                             city = result.city.ifBlank { city }
-                                            state = result.state.ifBlank { state }
                                         }
                                     }
                                 },
@@ -484,21 +480,11 @@ fun ProfileScreen(
                             onValueChange = { addressDirty = true; neighborhood = it },
                             label = "Bairro"
                         )
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            ProfileTextField(
-                                value = city,
-                                onValueChange = { addressDirty = true; city = it },
-                                label = "Cidade",
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            ProfileTextField(
-                                value = state,
-                                onValueChange = { addressDirty = true; state = it.uppercase().take(2) },
-                                label = "UF",
-                                modifier = Modifier.weight(0.45f)
-                            )
-                        }
+                        ProfileTextField(
+                            value = city,
+                            onValueChange = { addressDirty = true; city = it },
+                            label = "Cidade"
+                        )
                         ProfileTextField(
                             value = referencePoint,
                             onValueChange = { addressDirty = true; referencePoint = it },
@@ -516,7 +502,7 @@ fun ProfileScreen(
                                 when {
                                     cep.length != 8 -> feedback = "Informe um CEP válido com 8 dígitos."
                                     street.isBlank() || number.isBlank() || neighborhood.isBlank() -> feedback = "Preencha rua, número e bairro."
-                                    city.isBlank() || state.length != 2 -> feedback = "Informe cidade e UF."
+                                    city.isBlank() -> feedback = "Informe a cidade."
                                     whatsapp.filter(Char::isDigit).length < 10 -> feedback = "Informe um WhatsApp válido com DDD."
                                     else -> scope.launch {
                                         isSavingAddress = true
@@ -529,7 +515,6 @@ fun ProfileScreen(
                                             complement = complement.trim(),
                                             neighborhood = neighborhood.trim(),
                                             city = city.trim(),
-                                            state = state.trim(),
                                             referencePoint = referencePoint.trim(),
                                             whatsapp = whatsapp.filter(Char::isDigit)
                                         )
@@ -545,7 +530,7 @@ fun ProfileScreen(
                                                 pixKeyType = session.pixKeyType,
                                                 pixKey = session.pixKey,
                                                 city = city.trim(),
-                                                state = state.trim(),
+                                                state = "",
                                                 complement = complement.trim(),
                                                 referencePoint = referencePoint.trim()
                                             )

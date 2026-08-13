@@ -315,7 +315,11 @@ class HomeViewModel : ViewModel() {
 
         viewModelScope.launch {
             if (currentUserSession.userId.isNotBlank()) {
-                SupabaseClient.updateUserProfileNumber(currentUserSession.userId, currentNumber)
+                SupabaseClient.updateUserProfileNumber(
+                    userId = currentUserSession.userId,
+                    accessToken = currentUserSession.accessToken,
+                    number = currentNumber
+                )
             }
         }
 
@@ -536,7 +540,6 @@ class HomeViewModel : ViewModel() {
                 complement = draft.complement.trim(),
                 neighborhood = draft.neighborhood.trim(),
                 city = draft.city.trim(),
-                state = draft.state.trim(),
                 referencePoint = draft.referencePoint.trim(),
                 whatsapp = cleanWhatsapp
             )
@@ -558,7 +561,7 @@ class HomeViewModel : ViewModel() {
                 pixKeyType = session.pixKeyType,
                 pixKey = session.pixKey,
                 city = draft.city.trim(),
-                state = draft.state.trim(),
+                state = "",
                 complement = draft.complement.trim(),
                 referencePoint = draft.referencePoint.trim()
             )
