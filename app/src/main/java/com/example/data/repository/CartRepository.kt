@@ -13,6 +13,8 @@ data class CartState(
     val storeName: String = "",
     val items: List<CartItem> = emptyList(),
     val deliveryType: String = "DELIVERY", // "DELIVERY" or "RETIRADA"
+    val deliveryLatitude: Double? = null,
+    val deliveryLongitude: Double? = null,
     val appliedCoupon: Coupon? = null,
     val discountAmount: Double = 0.0
 ) {
@@ -36,16 +38,48 @@ data class CartState(
                 "lojista" -> 0.0
                 else -> splitFull
             }
-            val total = when (mode) {
+            val storeDeliveryFee = when (mode) {
                 "platform" -> store.platformDeliveryFee
-                "own", "direto" -> store.ownDeliveryFee + platformAddToCustomer
+                "own", "direto" -> {
+                    if (store.deliveryFeeType.equals("km", true) &&
+                        store.latitude != null && store.longitude != null &&
+                        deliveryLatitude != null && deliveryLongitude != null
+                    ) {
+                        val distanceKm = haversineKm(store.latitude, store.longitude, deliveryLatitude, deliveryLongitude)
+                        val pricedKm = kotlin.math.max(1, kotlin.math.ceil(distanceKm).toInt())
+                        val baseKm = store.deliveryBaseKm.coerceAtLeast(0.0)
+                        val baseFee = store.deliveryFeeBase.coerceAtLeast(0.0)
+                        val extraKm = (pricedKm - baseKm).coerceAtLeast(0.0)
+                        baseFee + extraKm * store.deliveryFeePerKm.coerceAtLeast(0.0)
+                    } else {
+                        store.ownDeliveryFee
+                    }
+                }
                 else -> store.platformDeliveryFee
             }
+            val total = storeDeliveryFee + if (mode in setOf("own", "direto")) platformAddToCustomer else 0.0
             return (Math.round(total * 100.0) / 100.0).coerceAtLeast(0.0)
+        }
+
+    val deliveryDistanceKm: Double?
+        get() {
+            val store = storeId?.let { StoreRepository.getStoreById(it) } ?: return null
+            if (store.latitude == null || store.longitude == null || deliveryLatitude == null || deliveryLongitude == null) return null
+            return Math.round(haversineKm(store.latitude, store.longitude, deliveryLatitude, deliveryLongitude) * 10.0) / 10.0
         }
 
     val total: Double
         get() = (subtotal + deliveryFee - discountAmount).coerceAtLeast(0.0)
+
+    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val radius = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
+        return radius * 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+    }
 }
 
 object CartRepository {
@@ -53,21 +87,40 @@ object CartRepository {
     private val _cartState = MutableStateFlow(CartState())
     val cartState: StateFlow<CartState> = _cartState.asStateFlow()
 
+    private var storage: CartStorage? = null
+    private var activeUserId: String = ""
+
+    /** Restaura a sacola da conta atual; ao sair, limpa apenas a memória e preserva a sacola da conta. */
+    fun initialize(context: android.content.Context, userId: String) {
+        storage = storage ?: CartStorage(context)
+        if (userId == activeUserId) return
+        activeUserId = userId
+        _cartState.value = if (userId.isBlank()) CartState() else storage?.read(userId) ?: CartState()
+    }
+
     fun setDeliveryType(type: String) {
-        _cartState.value = _cartState.value.copy(deliveryType = type)
+        publish(_cartState.value.copy(deliveryType = type))
+    }
+
+    fun setDeliveryCoordinates(latitude: Double?, longitude: Double?) {
+        publish(_cartState.value.copy(deliveryLatitude = latitude, deliveryLongitude = longitude))
     }
 
     fun applyCoupon(coupon: Coupon, discount: Double) {
-        _cartState.value = _cartState.value.copy(
-            appliedCoupon = coupon,
-            discountAmount = discount
+        publish(
+            _cartState.value.copy(
+                appliedCoupon = coupon,
+                discountAmount = discount
+            )
         )
     }
 
     fun removeCoupon() {
-        _cartState.value = _cartState.value.copy(
-            appliedCoupon = null,
-            discountAmount = 0.0
+        publish(
+            _cartState.value.copy(
+                appliedCoupon = null,
+                discountAmount = 0.0
+            )
         )
     }
 
@@ -79,59 +132,74 @@ object CartRepository {
         selectedAddons: List<SelectedAddonItem> = emptyList()
     ) {
         val current = _cartState.value
-        
-        // If adding from a different store, reset cart to new store
         if (current.storeId != null && current.storeId != product.storeId && current.items.isNotEmpty()) {
-            _cartState.value = CartState(
-                storeId = product.storeId,
-                storeName = storeName,
-                items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
+            publish(
+                CartState(
+                    storeId = product.storeId,
+                    storeName = storeName,
+                    items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
+                )
             )
             return
         }
 
-        val existingIndex = current.items.indexOfFirst { 
+        val existingIndex = current.items.indexOfFirst {
             it.product.id == product.id && it.selectedAddons == selectedAddons && it.notes == notes
         }
         val updatedItems = current.items.toMutableList()
-
         if (existingIndex >= 0) {
             val existing = updatedItems[existingIndex]
-            val newQty = existing.quantity + quantity
-            updatedItems[existingIndex] = existing.copy(quantity = newQty)
+            updatedItems[existingIndex] = existing.copy(quantity = existing.quantity + quantity)
         } else {
             updatedItems.add(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
         }
-
-        _cartState.value = current.copy(
-            storeId = product.storeId,
-            storeName = storeName,
-            items = updatedItems
-        )
+        publish(current.copy(storeId = product.storeId, storeName = storeName, items = updatedItems))
     }
 
     fun updateQuantity(productId: String, newQuantity: Int) {
         val current = _cartState.value
         if (newQuantity <= 0) {
             val updatedItems = current.items.filterNot { it.product.id == productId }
-            val newStoreId = if (updatedItems.isEmpty()) null else current.storeId
-            val newCoupon = if (updatedItems.isEmpty()) null else current.appliedCoupon
-            val newDiscount = if (updatedItems.isEmpty()) 0.0 else current.discountAmount
-            _cartState.value = current.copy(
-                storeId = newStoreId,
-                items = updatedItems,
-                appliedCoupon = newCoupon,
-                discountAmount = newDiscount
+            publish(
+                current.copy(
+                    storeId = if (updatedItems.isEmpty()) null else current.storeId,
+                    items = updatedItems,
+                    appliedCoupon = if (updatedItems.isEmpty()) null else current.appliedCoupon,
+                    discountAmount = if (updatedItems.isEmpty()) 0.0 else current.discountAmount
+                )
             )
         } else {
-            val updatedItems = current.items.map {
+            publish(current.copy(items = current.items.map {
                 if (it.product.id == productId) it.copy(quantity = newQuantity) else it
-            }
-            _cartState.value = current.copy(items = updatedItems)
+            }))
         }
     }
 
+    /** Remove itens indisponíveis ou desatualizados depois de consultar o cardápio real da loja. */
+    fun validateAgainstCatalog(products: List<Product>) {
+        val current = _cartState.value
+        if (current.items.isEmpty()) return
+        val available = products.filter { it.isAvailable }.associateBy { it.id }
+        val validatedItems = current.items.mapNotNull { item ->
+            val currentProduct = available[item.product.id] ?: return@mapNotNull null
+            item.copy(product = currentProduct)
+        }
+        publish(
+            current.copy(
+                items = validatedItems,
+                storeId = if (validatedItems.isEmpty()) null else current.storeId,
+                appliedCoupon = if (validatedItems.isEmpty()) null else current.appliedCoupon,
+                discountAmount = if (validatedItems.isEmpty()) 0.0 else current.discountAmount
+            )
+        )
+    }
+
     fun clearCart() {
-        _cartState.value = CartState()
+        publish(CartState())
+    }
+
+    private fun publish(state: CartState) {
+        _cartState.value = state
+        if (activeUserId.isNotBlank()) storage?.save(activeUserId, state)
     }
 }

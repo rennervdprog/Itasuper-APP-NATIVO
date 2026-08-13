@@ -50,6 +50,8 @@ class SessionStorage(context: Context) {
             .putString(KEY_ACTIVE_LOCATION_NEIGHBORHOOD, session.activeLocationNeighborhood)
             .putString(KEY_ACTIVE_LOCATION_CITY, session.activeLocationCity)
             .putString(KEY_ACTIVE_LOCATION_STATE, session.activeLocationState)
+            .putString(KEY_ACTIVE_LOCATION_LATITUDE, session.activeLocationLatitude?.toString().orEmpty())
+            .putString(KEY_ACTIVE_LOCATION_LONGITUDE, session.activeLocationLongitude?.toString().orEmpty())
             .putString(KEY_PIX_KEY_TYPE, session.pixKeyType)
             .putString(KEY_PIX_KEY, session.pixKey)
             .apply()
@@ -84,6 +86,8 @@ class SessionStorage(context: Context) {
             activeLocationNeighborhood = preferences.getString(KEY_ACTIVE_LOCATION_NEIGHBORHOOD, "").orEmpty(),
             activeLocationCity = preferences.getString(KEY_ACTIVE_LOCATION_CITY, "").orEmpty(),
             activeLocationState = preferences.getString(KEY_ACTIVE_LOCATION_STATE, "").orEmpty(),
+            activeLocationLatitude = preferences.getString(KEY_ACTIVE_LOCATION_LATITUDE, "").orEmpty().toDoubleOrNull(),
+            activeLocationLongitude = preferences.getString(KEY_ACTIVE_LOCATION_LONGITUDE, "").orEmpty().toDoubleOrNull(),
             pixKeyType = preferences.getString(KEY_PIX_KEY_TYPE, "").orEmpty(),
             pixKey = preferences.getString(KEY_PIX_KEY, "").orEmpty(),
             isSessionRestored = false
@@ -119,6 +123,8 @@ class SessionStorage(context: Context) {
         const val KEY_ACTIVE_LOCATION_NEIGHBORHOOD = "active_location_neighborhood"
         const val KEY_ACTIVE_LOCATION_CITY = "active_location_city"
         const val KEY_ACTIVE_LOCATION_STATE = "active_location_state"
+        const val KEY_ACTIVE_LOCATION_LATITUDE = "active_location_latitude"
+        const val KEY_ACTIVE_LOCATION_LONGITUDE = "active_location_longitude"
         const val KEY_PIX_KEY_TYPE = "pix_key_type"
         const val KEY_PIX_KEY = "pix_key"
     }

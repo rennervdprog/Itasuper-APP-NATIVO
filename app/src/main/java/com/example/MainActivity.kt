@@ -29,6 +29,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.data.repository.CartRepository
 import com.example.data.repository.UserSessionRepository
 import com.example.ui.auth.AuthScreen
 import com.example.ui.auth.AuthViewModel
@@ -75,6 +76,12 @@ fun ItaSuperApp() {
 
     LaunchedEffect(Unit) {
         UserSessionRepository.initialize(context)
+    }
+    LaunchedEffect(userSession.isLoggedIn, userSession.userId) {
+        CartRepository.initialize(
+            context = context,
+            userId = if (userSession.isLoggedIn) userSession.userId else ""
+        )
     }
 
     if (!userSession.isSessionRestored) {

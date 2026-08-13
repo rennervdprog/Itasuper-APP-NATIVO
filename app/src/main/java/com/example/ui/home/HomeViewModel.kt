@@ -248,8 +248,12 @@ class HomeViewModel : ViewModel() {
         val freeFeeOnly = _uiState.value.isFreeFeeFilterActive
         val directDeliveryOnly = _uiState.value.isDirectDeliveryFilterActive
         return regionalStores.filter { store ->
-            val matchCategory = currentCategory == "todas" || store.category.equals(currentCategory, ignoreCase = true)
-            val matchQuery = query.isEmpty() || store.name.lowercase().contains(query) || store.category.lowercase().contains(query)
+            val categories = listOf(store.category) + store.secondaryCategories
+            val matchCategory = currentCategory == "todas" || categories.any { it.equals(currentCategory, ignoreCase = true) }
+            val matchQuery = query.isEmpty() ||
+                store.name.lowercase().contains(query) ||
+                categories.any { it.lowercase().contains(query) } ||
+                store.addressNeighborhood.lowercase().contains(query)
             val matchFreeFee = !freeFeeOnly || store.isFreeDelivery || store.ownDeliveryFee <= 0.0 || store.deliveryFee.equals("Grátis", ignoreCase = true)
             val matchDirectDelivery = !directDeliveryOnly || store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
             matchCategory && matchQuery && matchFreeFee && matchDirectDelivery
@@ -391,7 +395,9 @@ class HomeViewModel : ViewModel() {
                             number = resolvedNumber,
                             neighborhood = resolvedNeighborhood,
                             city = resolvedCity,
-                            state = resolvedState
+                            state = resolvedState,
+                            latitude = bestLoc.latitude,
+                            longitude = bestLoc.longitude
                         )
                         _uiState.value = _uiState.value.copy(
                             streetName = resolvedStreet,

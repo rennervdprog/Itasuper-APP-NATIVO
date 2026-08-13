@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.model.CartItem
+import com.example.data.model.Coupon
 import com.example.data.model.Order
 import com.example.data.remote.SupabaseClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +35,10 @@ object OrderRepository {
         clientId: String,
         accessToken: String,
         needsChange: Boolean = false,
-        changeFor: Double? = null
+        changeFor: Double? = null,
+        clientLatitude: Double? = null,
+        clientLongitude: Double? = null,
+        coupon: Coupon? = null
     ): Result<Order> {
         if (storeId.isBlank() || clientId.isBlank() || accessToken.isBlank()) {
             return Result.failure(IllegalStateException("Sua sessão expirou. Entre novamente para finalizar o pedido."))
@@ -70,7 +74,9 @@ object OrderRepository {
             accessToken = accessToken,
             neighborhood = neighborhood,
             needsChange = needsChange,
-            changeFor = changeFor
+            changeFor = changeFor,
+            clientLatitude = clientLatitude,
+            clientLongitude = clientLongitude
         )
         if (!response.isSuccess || response.orderId.isNullOrBlank()) {
             return Result.failure(IllegalStateException(response.errorMessage ?: "Não foi possível enviar o pedido. Tente novamente."))
@@ -80,6 +86,10 @@ object OrderRepository {
             id = response.orderId,
             createdAt = response.createdAt ?: draft.createdAt
         )
+        // O uso do cupom não bloqueia o pedido; reproduz o registro assíncrono do Capacitor.
+        coupon?.id?.takeIf { it.isNotBlank() }?.let { couponId ->
+            SupabaseClient.registerCouponUse(couponId, clientId, response.orderId, accessToken)
+        }
         _orders.value = listOf(confirmedOrder) + _orders.value
         CartRepository.clearCart()
         return Result.success(confirmedOrder)

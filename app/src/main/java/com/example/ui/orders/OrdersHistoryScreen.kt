@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -130,6 +132,96 @@ fun OrdersHistoryScreen(
     val uiState by viewModel.uiState.collectAsState()
     val activeOrders = orders.filterNot { it.isFinished() }
     val previousOrders = orders.filter { it.isFinished() }
+    val orderPendingCancellation = remember { mutableStateOf<Order?>(null) }
+    val orderPendingRating = remember { mutableStateOf<Order?>(null) }
+    val ratingValue = remember { mutableStateOf(5) }
+    val ratingComment = remember { mutableStateOf("") }
+    val orderPendingRefund = remember { mutableStateOf<Order?>(null) }
+    val refundDescription = remember { mutableStateOf("") }
+
+    orderPendingCancellation.value?.let { order ->
+        AlertDialog(
+            onDismissRequest = { orderPendingCancellation.value = null },
+            title = { Text("Cancelar pedido?") },
+            text = { Text("O cancelamento será analisado conforme o estágio atual do preparo. Deseja continuar?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        orderPendingCancellation.value = null
+                        viewModel.cancelOrder(order)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Confirmar cancelamento") }
+            },
+            dismissButton = {
+                TextButton(onClick = { orderPendingCancellation.value = null }) { Text("Manter pedido") }
+            }
+        )
+    }
+
+    orderPendingRating.value?.let { order ->
+        AlertDialog(
+            onDismissRequest = { orderPendingRating.value = null },
+            title = { Text("Como foi seu pedido?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (1..5).forEach { star ->
+                            TextButton(onClick = { ratingValue.value = star }) {
+                                Text(if (star <= ratingValue.value) "★" else "☆", color = ItaSuperPrimary, fontSize = 24.sp)
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = ratingComment.value,
+                        onValueChange = { ratingComment.value = it },
+                        label = { Text("Comentário (opcional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.submitOrderRating(order, ratingValue.value, ratingComment.value) { success ->
+                        if (success) {
+                            orderPendingRating.value = null
+                            ratingComment.value = ""
+                        }
+                    }
+                }) { Text("Enviar avaliação") }
+            },
+            dismissButton = { TextButton(onClick = { orderPendingRating.value = null }) { Text("Agora não") } }
+        )
+    }
+
+    orderPendingRefund.value?.let { order ->
+        AlertDialog(
+            onDismissRequest = { orderPendingRefund.value = null },
+            title = { Text("Solicitar reembolso") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("O crédito será analisado pela plataforma e, se aprovado, retornará à sua carteira ItaSuper.")
+                    OutlinedTextField(
+                        value = refundDescription.value,
+                        onValueChange = { refundDescription.value = it },
+                        label = { Text("Descreva o problema") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.requestRefund(order, "outro", refundDescription.value) { success ->
+                        if (success) {
+                            orderPendingRefund.value = null
+                            refundDescription.value = ""
+                        }
+                    }
+                }) { Text("Enviar solicitação") }
+            },
+            dismissButton = { TextButton(onClick = { orderPendingRefund.value = null }) { Text("Cancelar") } }
+        )
+    }
 
     uiState.pixPayment?.let { PixPaymentDialog(state = it, onDismiss = viewModel::dismissPixPayment) }
     uiState.pixDirectPayment?.let {
@@ -188,7 +280,7 @@ fun OrdersHistoryScreen(
                             onPayPix = { viewModel.generatePixPayment(order) },
                             onPixDirect = { viewModel.openPixDirectPayment(order) },
                             onConfirmDelivery = { viewModel.confirmDelivery(order) },
-                            onCancelOrder = { viewModel.cancelOrder(order) },
+                            onCancelOrder = { orderPendingCancellation.value = order },
                             isConfirmingDelivery = uiState.confirmingDeliveryOrderId == order.id,
                             isCancelling = uiState.cancellingOrderId == order.id
                         )
@@ -197,10 +289,15 @@ fun OrdersHistoryScreen(
                 if (previousOrders.isNotEmpty()) {
                     item { OrderSectionTitle("ANTERIORES (${previousOrders.size})") }
                     items(previousOrders, key = { it.id }) { order ->
-                        PreviousOrderCard(order = order, onRepeatOrder = {
-                            viewModel.repeatOrder(order)
-                            onNavigateToCart()
-                        })
+                        PreviousOrderCard(
+                            order = order,
+                            onRepeatOrder = {
+                                viewModel.repeatOrder(order)
+                                onNavigateToCart()
+                            },
+                            onRateOrder = { orderPendingRating.value = order },
+                            onRefundOrder = { orderPendingRefund.value = order }
+                        )
                     }
                 }
                 item { Spacer(Modifier.height(16.dp)) }
@@ -425,7 +522,12 @@ private fun SummaryLine(label: String, value: String) {
 }
 
 @Composable
-private fun PreviousOrderCard(order: Order, onRepeatOrder: () -> Unit) {
+private fun PreviousOrderCard(
+    order: Order,
+    onRepeatOrder: () -> Unit,
+    onRateOrder: () -> Unit,
+    onRefundOrder: () -> Unit
+) {
     val presentation = order.presentation()
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -453,6 +555,12 @@ private fun PreviousOrderCard(order: Order, onRepeatOrder: () -> Unit) {
                     Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = ItaSuperPrimary)
                     Spacer(Modifier.width(6.dp))
                     Text("Pedir novamente", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
+                    if (order.paymentMethod !in setOf("dinheiro", "pix_machine", "cartao")) {
+                        TextButton(onClick = onRefundOrder) { Text("Solicitar reembolso") }
+                    }
                 }
             }
         }

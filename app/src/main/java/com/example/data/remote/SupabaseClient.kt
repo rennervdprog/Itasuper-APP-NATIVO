@@ -5,6 +5,7 @@ import com.example.data.model.AddonGroup
 import com.example.data.model.AddonItem
 import com.example.data.model.MenuSection
 import com.example.data.model.Product
+import com.example.data.model.SavedAddress
 import com.example.data.model.Store
 import com.example.data.model.StoreSettings
 import kotlinx.coroutines.Dispatchers
@@ -266,6 +267,158 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao buscar perfil do cliente", e)
             null
+        }
+    }
+
+    /** Endereços salvos do cliente, na mesma tabela usada pelo seletor do Capacitor. */
+    suspend fun fetchSavedAddresses(userId: String, accessToken: String): List<SavedAddress> = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank()) return@withContext emptyList()
+        try {
+            val select = "id,label,street,number,complement,neighborhood,reference_point,is_default,cep,latitude,longitude,pin_confirmed"
+            val url = "$SUPABASE_URL/rest/v1/saved_addresses?select=$select&user_id=eq.$userId&order=is_default.desc,created_at.desc"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Endereços salvos indisponíveis: code=${response.code}")
+                return@withContext emptyList()
+            }
+            val array = JSONArray(body)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optNullableString("id").orEmpty()
+                    if (id.isBlank()) continue
+                    add(
+                        SavedAddress(
+                            id = id,
+                            label = item.optNullableString("label").orEmpty().ifBlank { "Casa" },
+                            street = item.optNullableString("street").orEmpty(),
+                            number = item.optNullableString("number").orEmpty(),
+                            complement = item.optNullableString("complement").orEmpty(),
+                            neighborhood = item.optNullableString("neighborhood").orEmpty(),
+                            referencePoint = item.optNullableString("reference_point").orEmpty(),
+                            cep = item.optNullableString("cep").orEmpty(),
+                            latitude = item.takeIf { it.has("latitude") && !it.isNull("latitude") }?.optDouble("latitude"),
+                            longitude = item.takeIf { it.has("longitude") && !it.isNull("longitude") }?.optDouble("longitude"),
+                            pinConfirmed = item.optBoolean("pin_confirmed", false),
+                            isDefault = item.optBoolean("is_default", false)
+                        )
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao buscar endereços salvos", error)
+            emptyList()
+        }
+    }
+
+    suspend fun createSavedAddress(userId: String, accessToken: String, address: SavedAddress): SavedAddress? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank() || address.street.isBlank() || address.number.isBlank()) return@withContext null
+        try {
+            val existing = fetchSavedAddresses(userId, accessToken)
+            val makeDefault = address.isDefault || existing.isEmpty()
+            if (makeDefault && existing.isNotEmpty()) {
+                val clearRequest = Request.Builder()
+                    .url("$SUPABASE_URL/rest/v1/saved_addresses?user_id=eq.$userId")
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .addHeader("Content-Type", "application/json")
+                    .patch(JSONObject().put("is_default", false).toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(clearRequest).execute().use { if (!it.isSuccessful) return@withContext null }
+            }
+            val body = JSONObject().apply {
+                put("user_id", userId)
+                put("label", address.label.ifBlank { "Casa" })
+                put("street", address.street)
+                put("number", address.number)
+                put("complement", address.complement)
+                put("neighborhood", address.neighborhood)
+                put("reference_point", address.referencePoint)
+                put("cep", address.cep)
+                address.latitude?.let { put("latitude", it) }
+                address.longitude?.let { put("longitude", it) }
+                put("pin_confirmed", address.pinConfirmed)
+                put("is_default", makeDefault)
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/saved_addresses")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=representation")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseBody = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext null
+            val item = JSONArray(responseBody).optJSONObject(0) ?: return@withContext null
+            SavedAddress(
+                id = item.optNullableString("id").orEmpty(),
+                label = item.optNullableString("label").orEmpty().ifBlank { "Casa" },
+                street = item.optNullableString("street").orEmpty(),
+                number = item.optNullableString("number").orEmpty(),
+                complement = item.optNullableString("complement").orEmpty(),
+                neighborhood = item.optNullableString("neighborhood").orEmpty(),
+                referencePoint = item.optNullableString("reference_point").orEmpty(),
+                cep = item.optNullableString("cep").orEmpty(),
+                latitude = item.takeIf { it.has("latitude") && !it.isNull("latitude") }?.optDouble("latitude"),
+                longitude = item.takeIf { it.has("longitude") && !it.isNull("longitude") }?.optDouble("longitude"),
+                pinConfirmed = item.optBoolean("pin_confirmed", false),
+                isDefault = item.optBoolean("is_default", false)
+            )
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao salvar endereço", error)
+            null
+        }
+    }
+
+    suspend fun setDefaultSavedAddress(userId: String, addressId: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || addressId.isBlank() || accessToken.isBlank()) return@withContext false
+        try {
+            val clearRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/saved_addresses?user_id=eq.$userId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .patch(JSONObject().put("is_default", false).toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(clearRequest).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false
+            }
+            val defaultRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/saved_addresses?id=eq.$addressId&user_id=eq.$userId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .patch(JSONObject().put("is_default", true).toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(defaultRequest).execute().use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao definir endereço padrão", error)
+            false
+        }
+    }
+
+    suspend fun deleteSavedAddress(userId: String, addressId: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || addressId.isBlank() || accessToken.isBlank()) return@withContext false
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/saved_addresses?id=eq.$addressId&user_id=eq.$userId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .delete()
+                .build()
+            httpClient.newCall(request).execute().use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao excluir endereço salvo", error)
+            false
         }
     }
 
@@ -572,6 +725,10 @@ object SupabaseClient {
                     val computedIsOpen = checkIsStoreOpenNow(id, isForceClosed, defaultIsOpen, openingHours)
 
                     val ownFee = item.optDouble("own_delivery_fee", 0.0)
+                    val deliveryFeeType = item.optString("delivery_fee_type", "fixed")
+                    val deliveryBaseKm = item.optDouble("delivery_base_km", 0.0)
+                    val deliveryFeeBase = item.optDouble("delivery_fee_base", ownFee)
+                    val deliveryFeePerKm = item.optDouble("delivery_fee_per_km", 0.0)
                     val platformFee = item.optDouble("delivery_fee", 0.0)
                     val deliveryMode = item.optString("delivery_mode", "platform")
                     val platformFeeSplit = item.optString("platform_fee_split", "cliente")
@@ -710,6 +867,10 @@ object SupabaseClient {
                         settings = storeSettings,
                         deliveryMode = deliveryMode,
                         ownDeliveryFee = ownFee,
+                        deliveryFeeType = deliveryFeeType,
+                        deliveryBaseKm = deliveryBaseKm,
+                        deliveryFeeBase = deliveryFeeBase,
+                        deliveryFeePerKm = deliveryFeePerKm,
                         platformDeliveryFee = platformFee,
                         platformFeeSplit = platformFeeSplit,
                         planType = planType,
@@ -1385,6 +1546,81 @@ object SupabaseClient {
         }
     }
 
+    suspend fun submitOrderRating(orderId: String, storeId: String, userId: String, rating: Int, comment: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (orderId.isBlank() || storeId.isBlank() || userId.isBlank() || accessToken.isBlank() || rating !in 1..5) return@withContext false
+        try {
+            val body = JSONObject().apply {
+                put("order_id", orderId)
+                put("store_id", storeId)
+                put("user_id", userId)
+                put("rating", rating)
+                put("comment", comment.trim().ifBlank { JSONObject.NULL })
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/order_ratings")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao enviar avaliação", error)
+            false
+        }
+    }
+
+    suspend fun requestRefund(order: com.example.data.model.Order, userId: String, reason: String, description: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (order.id.isBlank() || order.storeId.isBlank() || userId.isBlank() || accessToken.isBlank()) return@withContext false
+        try {
+            val body = JSONObject().apply {
+                put("order_id", order.id)
+                put("store_id", order.storeId)
+                put("requester_id", userId)
+                put("reason", reason)
+                put("description", description.trim().ifBlank { JSONObject.NULL })
+                put("refund_type", "wallet_credit")
+                put("requested_amount", order.total)
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/refund_requests")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao solicitar reembolso", error)
+            false
+        }
+    }
+
+    /** Registra o consumo do cupom sem bloquear a confirmação do pedido. */
+    suspend fun registerCouponUse(couponId: String, userId: String, orderId: String, accessToken: String) = withContext(Dispatchers.IO) {
+        if (couponId.isBlank() || userId.isBlank() || orderId.isBlank() || accessToken.isBlank()) return@withContext
+        try {
+            val body = JSONObject().apply {
+                put("coupon_id", couponId)
+                put("user_id", userId)
+                put("order_id", orderId)
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/coupon_uses")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().close()
+        } catch (error: Exception) {
+            Log.w(TAG, "Não foi possível registrar o uso do cupom", error)
+        }
+    }
+
     // 7. VIA CEP ADDRESS LOOKUP
     data class CepAddress(
         val cep: String = "",
@@ -1697,7 +1933,9 @@ object SupabaseClient {
         accessToken: String,
         neighborhood: String,
         needsChange: Boolean,
-        changeFor: Double?
+        changeFor: Double?,
+        clientLatitude: Double? = null,
+        clientLongitude: Double? = null
     ): OrderSubmissionResponse = withContext(Dispatchers.IO) {
         try {
             val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
@@ -1710,6 +1948,8 @@ object SupabaseClient {
                 put("payment_method", order.paymentMethod)
                 put("neighborhood", neighborhood)
                 put("address_details", order.deliveryAddress)
+                put("client_lat", clientLatitude ?: JSONObject.NULL)
+                put("client_lng", clientLongitude ?: JSONObject.NULL)
                 put("needs_change", needsChange)
                 put("change_for", changeFor ?: JSONObject.NULL)
                 put("status", order.status)

@@ -206,7 +206,9 @@ object UserSessionRepository {
         number: String,
         neighborhood: String,
         city: String,
-        state: String
+        state: String,
+        latitude: Double? = null,
+        longitude: Double? = null
     ) {
         if (city.isBlank()) return
         _userSession.value = _userSession.value.copy(
@@ -214,7 +216,9 @@ object UserSessionRepository {
             activeLocationNumber = number,
             activeLocationNeighborhood = neighborhood,
             activeLocationCity = city,
-            activeLocationState = state
+            activeLocationState = state,
+            activeLocationLatitude = latitude,
+            activeLocationLongitude = longitude
         )
         persistCurrentSession()
     }

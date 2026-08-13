@@ -168,6 +168,68 @@ fun CheckoutScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        if (cart.deliveryType == "DELIVERY" && uiState.savedAddresses.isNotEmpty()) {
+                            Text(
+                                text = "Endereços salvos",
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            uiState.savedAddresses.forEach { address ->
+                                val selected = address.id == uiState.selectedSavedAddressId
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) ItaSuperHighlightBg else Color.Transparent)
+                                        .selectable(
+                                            selected = selected,
+                                            onClick = { viewModel.selectSavedAddress(address) }
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = selected,
+                                        onClick = null,
+                                        colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = address.label,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = listOf(address.displayLine, address.neighborhood)
+                                                .filter { it.isNotBlank() }
+                                                .joinToString(" · "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (address.pinConfirmed) {
+                                            Text(
+                                                text = "Localização confirmada",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = ItaSuperSuccess
+                                            )
+                                        }
+                                    }
+                                    if (!address.isDefault) {
+                                        androidx.compose.material3.TextButton(onClick = { viewModel.makeSavedAddressDefault(address) }) {
+                                            Text("Padrão")
+                                        }
+                                    }
+                                    androidx.compose.material3.TextButton(onClick = { viewModel.deleteSavedAddress(address) }) {
+                                        Text("Excluir", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+
                         if (cart.deliveryType == "RETIRADA") {
                             Box(
                                 modifier = Modifier
@@ -353,6 +415,12 @@ fun CheckoutScreen(
                                     .fillMaxWidth()
                                     .testTag("checkout_complement_input")
                             )
+                            androidx.compose.material3.TextButton(
+                                onClick = { viewModel.saveCurrentAddress() },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Salvar como endereço")
+                            }
                         }
                     }
                 }

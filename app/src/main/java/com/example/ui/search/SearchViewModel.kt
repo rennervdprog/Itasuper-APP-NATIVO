@@ -136,25 +136,28 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
         val matched = stores.filter { store ->
             val normStoreName = store.name.normalizeText()
-            val normStoreCat = store.category.normalizeText()
+            val normCategories = (listOf(store.category) + store.secondaryCategories).map { it.normalizeText() }
 
             val matchesCategory = if (selectedCat == null) {
                 true
             } else {
                 val catTermsNorm = selectedCat.matchingTerms.map { it.normalizeText() }
-                normStoreCat == selectedCat.id ||
-                        normStoreCat == selectedCat.name.normalizeText() ||
-                        catTermsNorm.any { normStoreCat.contains(it) || it.contains(normStoreCat) }
+                normCategories.any { category ->
+                    category == selectedCat.id ||
+                        category == selectedCat.name.normalizeText() ||
+                        catTermsNorm.any { category.contains(it) || it.contains(category) }
+                }
             }
 
             val matchesQuery = if (normQuery.length < 2) {
                 true
             } else {
                 normStoreName.contains(normQuery) ||
-                        normStoreCat.contains(normQuery) ||
+                        normCategories.any { it.contains(normQuery) } ||
+                        store.addressNeighborhood.normalizeText().contains(normQuery) ||
                         searchCategories.any { cat ->
                             cat.matchingTerms.any { term ->
-                                term.normalizeText().contains(normQuery) && normStoreCat.contains(term.normalizeText())
+                                term.normalizeText().contains(normQuery) && normCategories.any { it.contains(term.normalizeText()) }
                             }
                         }
             }

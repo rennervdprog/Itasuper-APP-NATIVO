@@ -27,6 +27,8 @@ data class UserSession(
     val activeLocationNeighborhood: String = "",
     val activeLocationCity: String = "",
     val activeLocationState: String = "",
+    val activeLocationLatitude: Double? = null,
+    val activeLocationLongitude: Double? = null,
     val pixKeyType: String = "",
     val pixKey: String = ""
 )
