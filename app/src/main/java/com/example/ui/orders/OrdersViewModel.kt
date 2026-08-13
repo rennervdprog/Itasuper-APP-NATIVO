@@ -62,7 +62,9 @@ data class OrdersUiState(
     val placedOrderSuccess: Order? = null,
     val errorMessage: String? = null,
     val pixPayment: PixPaymentUiState? = null,
-    val pixDirectPayment: PixDirectPaymentUiState? = null
+    val pixDirectPayment: PixDirectPaymentUiState? = null,
+    val confirmingDeliveryOrderId: String? = null,
+    val cancellingOrderId: String? = null
 )
 
 class OrdersViewModel : ViewModel() {
@@ -100,6 +102,40 @@ class OrdersViewModel : ViewModel() {
         viewModelScope.launch {
             val remoteOrders = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
             OrderRepository.replaceOrders(remoteOrders)
+        }
+    }
+
+    fun confirmDelivery(order: Order) {
+        val session = UserSessionRepository.userSession.value
+        if (session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Sua sessão expirou. Entre novamente para confirmar a entrega.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(confirmingDeliveryOrderId = order.id, errorMessage = null)
+            val result = SupabaseClient.confirmDeliveryByClient(order.id, session.accessToken)
+            _uiState.value = _uiState.value.copy(
+                confirmingDeliveryOrderId = null,
+                errorMessage = result.exceptionOrNull()?.message
+            )
+            if (result.isSuccess) refreshOrders()
+        }
+    }
+
+    fun cancelOrder(order: Order) {
+        val session = UserSessionRepository.userSession.value
+        if (session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Sua sessão expirou. Entre novamente para cancelar o pedido.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(cancellingOrderId = order.id, errorMessage = null)
+            val result = SupabaseClient.cancelOrderByClient(order.id, session.accessToken)
+            _uiState.value = _uiState.value.copy(
+                cancellingOrderId = null,
+                errorMessage = result.exceptionOrNull()?.message
+            )
+            if (result.isSuccess) refreshOrders()
         }
     }
 

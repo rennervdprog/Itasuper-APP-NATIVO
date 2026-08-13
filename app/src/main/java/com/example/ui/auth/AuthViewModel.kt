@@ -181,7 +181,9 @@ class AuthViewModel : ViewModel() {
                 UserSessionRepository.login(
                     email = email,
                     userId = result.userId,
-                    accessToken = result.accessToken
+                    accessToken = result.accessToken,
+                    refreshToken = result.refreshToken,
+                    expiresAtSeconds = result.expiresAt
                 )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -270,7 +272,9 @@ class AuthViewModel : ViewModel() {
                     whatsapp = state.regWhatsapp,
                     pin = state.regPin,
                     userId = authResult.userId,
-                    accessToken = authResult.accessToken
+                    accessToken = authResult.accessToken,
+                    refreshToken = authResult.refreshToken,
+                    expiresAtSeconds = authResult.expiresAt
                 )
 
                 _uiState.value = _uiState.value.copy(

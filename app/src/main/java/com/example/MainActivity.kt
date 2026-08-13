@@ -11,14 +11,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -58,13 +61,37 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        UserSessionRepository.refreshSession()
+    }
 }
 
 @Composable
 fun ItaSuperApp() {
-    val navController = rememberNavController()
+    val context = LocalContext.current
     val userSession by UserSessionRepository.userSession.collectAsState()
 
+    LaunchedEffect(Unit) {
+        UserSessionRepository.initialize(context)
+    }
+
+    if (!userSession.isSessionRestored) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Restaurando sua sessão...")
+            }
+        }
+        return
+    }
+
+    val navController = rememberNavController()
     val startDestination = if (userSession.isLoggedIn) "home" else "auth"
 
     NavHost(

@@ -21,6 +21,8 @@ data class SupabaseAuthResponse(
     val isSuccess: Boolean,
     val userId: String? = null,
     val accessToken: String? = null,
+    val refreshToken: String? = null,
+    val expiresAt: Long? = null,
     val email: String? = null,
     val errorMessage: String? = null
 )
@@ -77,6 +79,8 @@ object SupabaseClient {
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val json = JSONObject(responseText)
                 val accessToken = json.optNullableString("access_token")
+                val refreshToken = json.optNullableString("refresh_token")
+                val expiresAt = json.optLong("expires_at", 0L).takeIf { it > 0L }
                 val userObj = json.optJSONObject("user")
                 val userId = userObj?.optString("id") ?: json.optString("id")
                 val userEmail = userObj?.optString("email") ?: email
@@ -85,6 +89,8 @@ object SupabaseClient {
                     isSuccess = true,
                     userId = userId,
                     accessToken = accessToken,
+                    refreshToken = refreshToken,
+                    expiresAt = expiresAt,
                     email = userEmail
                 )
             } else {
@@ -126,6 +132,8 @@ object SupabaseClient {
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val json = JSONObject(responseText)
                 val accessToken = json.optNullableString("access_token")
+                val refreshToken = json.optNullableString("refresh_token")
+                val expiresAt = json.optLong("expires_at", 0L).takeIf { it > 0L }
                 val userObj = json.optJSONObject("user")
                 val userId = userObj?.optString("id") ?: json.optString("id")
                 val userEmail = userObj?.optString("email") ?: email
@@ -134,6 +142,8 @@ object SupabaseClient {
                     isSuccess = true,
                     userId = userId,
                     accessToken = accessToken,
+                    refreshToken = refreshToken,
+                    expiresAt = expiresAt,
                     email = userEmail
                 )
             } else {
@@ -149,6 +159,46 @@ object SupabaseClient {
                 isSuccess = false,
                 errorMessage = "Falha de conexão: ${e.localizedMessage}"
             )
+        }
+    }
+
+    // 2b. REFRESH SESSION
+    suspend fun refreshSession(refreshToken: String): SupabaseAuthResponse = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/auth/v1/token?grant_type=refresh_token"
+            val bodyJson = JSONObject().apply { put("refresh_token", refreshToken) }
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+            if (response.isSuccessful && responseText.isNotBlank()) {
+                val json = JSONObject(responseText)
+                val accessToken = json.optNullableString("access_token")
+                val nextRefreshToken = json.optNullableString("refresh_token")
+                val expiresAt = json.optLong("expires_at", 0L).takeIf { it > 0L }
+                val userObj = json.optJSONObject("user")
+                SupabaseAuthResponse(
+                    isSuccess = !accessToken.isNullOrBlank(),
+                    userId = userObj?.optString("id"),
+                    accessToken = accessToken,
+                    refreshToken = nextRefreshToken,
+                    expiresAt = expiresAt,
+                    email = userObj?.optString("email")
+                )
+            } else {
+                SupabaseAuthResponse(
+                    isSuccess = false,
+                    errorMessage = parseErrorMessage(responseText, "Sua sessão expirou. Entre novamente.")
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing Supabase session", e)
+            SupabaseAuthResponse(isSuccess = false, errorMessage = "Falha ao renovar sessão")
         }
     }
 
@@ -1374,7 +1424,12 @@ object SupabaseClient {
                     paymentMethod = item.optString("payment_method", ""),
                     deliveryAddress = item.optString("address_details", ""),
                     status = item.optString("status", "pendente"),
-                    createdAt = item.optString("created_at", "")
+                    createdAt = item.optString("created_at", ""),
+                    confirmedAt = item.optString("confirmed_at", ""),
+                    deliveryPin = item.optString("delivery_pin", ""),
+                    neighborhood = item.optString("neighborhood", ""),
+                    driverId = item.optString("driver_id", item.optString("assigned_driver_id", "")),
+                    deliveryConfirmedByClient = item.optBoolean("delivery_confirmed_by_client", false)
                 )
             }
         } catch (e: Exception) {
@@ -1451,6 +1506,36 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.w(TAG, "Order items unavailable for order history", e)
             emptyMap()
+        }
+    }
+
+    /** Confirma a entrega pela mesma RPC protegida usada pelo cliente Capacitor. */
+    suspend fun confirmDeliveryByClient(orderId: String, accessToken: String): Result<Unit> = withContext(Dispatchers.IO) {
+        callOrderRpc("client_confirm_delivery", orderId, accessToken)
+    }
+
+    /** Aplica a política oficial de cancelamento do pedido no backend. */
+    suspend fun cancelOrderByClient(orderId: String, accessToken: String): Result<Unit> = withContext(Dispatchers.IO) {
+        callOrderRpc("apply_cancellation_policy", orderId, accessToken)
+    }
+
+    private fun callOrderRpc(functionName: String, orderId: String, accessToken: String): Result<Unit> {
+        return try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/$functionName")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(JSONObject().put("_order_id", orderId).toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (response.isSuccessful) Result.success(Unit) else {
+                Result.failure(IllegalStateException(parseErrorMessage(body, "Não foi possível atualizar o pedido.")))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calling $functionName", e)
+            Result.failure(IllegalStateException("Falha de conexão ao atualizar o pedido."))
         }
     }
 

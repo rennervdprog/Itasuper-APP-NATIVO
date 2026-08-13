@@ -12,5 +12,10 @@ data class Order(
     val paymentMethod: String,
     val deliveryAddress: String,
     val status: String = "Em preparação",
-    val createdAt: String
+    val createdAt: String,
+    val confirmedAt: String = "",
+    val deliveryPin: String = "",
+    val neighborhood: String = "",
+    val driverId: String = "",
+    val deliveryConfirmedByClient: Boolean = false
 )
