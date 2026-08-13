@@ -661,9 +661,9 @@ private fun StoreBuilderCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(testTag),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7F1)),
-        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.32f)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9F5)),
+        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.14f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -697,8 +697,8 @@ private fun StoreInfoMetric(
     Card(
         modifier = Modifier.heightIn(min = 92.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFCFBF9)),
-        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.08f)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
+        border = BorderStroke(1.dp, Color(0xFFF0EFEC)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -734,7 +734,7 @@ fun StoreHeaderSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(132.dp)
+                    .height(118.dp)
                     .background(ItaSuperSecondary)
             ) {
                 if (!store?.bannerUrl.isNullOrBlank()) {
@@ -764,13 +764,13 @@ fun StoreHeaderSection(
             // 2. Overlapping Circular Logo (100dp)
             Surface(
                 modifier = Modifier
-                    .padding(top = 82.dp)
-                    .size(92.dp)
+                    .padding(top = 72.dp)
+                    .size(88.dp)
                     .testTag("store_logo_overlay"),
                 shape = CircleShape,
                 color = Color.White,
-                shadowElevation = 6.dp,
-                border = BorderStroke(4.dp, Color.White)
+                shadowElevation = 3.dp,
+                border = BorderStroke(3.dp, Color.White)
             ) {
                 if (!store?.logoUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -799,7 +799,7 @@ fun StoreHeaderSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(38.dp))
 
         // Store Details Body
         Column(
@@ -865,9 +865,9 @@ fun StoreHeaderSection(
             val hasMapsTarget = store?.latitude != null && store.longitude != null || store?.address?.isNotBlank() == true
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
+                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
             ) {
                 Row(
                     modifier = Modifier
@@ -971,9 +971,9 @@ fun StoreHeaderSection(
                     .fillMaxWidth()
                     .clickable { isHoursExpanded = !isHoursExpanded }
                     .testTag("expand_hours_button"),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
+                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
@@ -1053,9 +1053,9 @@ fun StoreHeaderSection(
             // 4. Seção "Pagamento" com chips (Cartão, Dinheiro, PIX)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
+                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -1157,129 +1157,120 @@ fun ProductItemCard(
     onCardClick: () -> Unit,
     onAddClick: () -> Unit
 ) {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clickable { onCardClick() }
-            .testTag("product_item_${product.id}"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp)
+            .testTag("product_item_${product.id}")
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 16.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = product.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = ItaSuperTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-
                 if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
                     Text(
                         text = product.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray,
+                        color = Color(0xFF7A7A7A),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-
                 Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = String.format("R$ %.2f", product.price).replace(".", ","),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = ItaSuperPrimary
+                    )
+                    if (product.originalPrice != null && product.originalPrice > product.price) {
+                        Spacer(modifier = Modifier.width(7.dp))
                         Text(
-                            text = String.format("R$ %.2f", product.price).replace(".", ","),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperPrimary
+                            text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF969696),
+                            textDecoration = TextDecoration.LineThrough
                         )
-
-                        if (product.originalPrice != null && product.originalPrice > product.price) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray,
-                                textDecoration = TextDecoration.LineThrough
-                            )
-                        }
-                    }
-
-                    // Botão Pill "Adicionar" ao lado do preço
-                    Surface(
-                        modifier = Modifier
-                            .clickable { onAddClick() }
-                            .testTag("add_product_button_${product.id}"),
-                        shape = RoundedCornerShape(20.dp),
-                        color = ItaSuperPrimary.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.3f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                tint = ItaSuperPrimary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Adicionar",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperPrimary,
-                                    fontSize = 12.sp
-                                )
-                            )
-                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Clean Product Image (without any button overlay)
-            if (product.imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = product.imageUrl,
-                    contentDescription = product.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ItaSuperSecondary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ShoppingBag,
-                        contentDescription = null,
-                        tint = Color.LightGray
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                if (product.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = product.imageUrl,
+                        contentDescription = product.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(82.dp)
+                            .clip(RoundedCornerShape(16.dp))
                     )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(82.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFFFFF7F1)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ShoppingBag,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary.copy(alpha = 0.45f)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    modifier = Modifier
+                        .clickable { onAddClick() }
+                        .testTag("add_product_button_${product.id}"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = ItaSuperPrimary.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.18f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Adicionar",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperPrimary,
+                                fontSize = 12.sp
+                            )
+                        )
+                    }
                 }
             }
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = Color(0xFFF0F0ED),
+            thickness = 1.dp
+        )
     }
 }
 
