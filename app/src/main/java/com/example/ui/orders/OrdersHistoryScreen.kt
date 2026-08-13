@@ -134,8 +134,8 @@ fun OrdersHistoryScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
+                            .size(88.dp)
+                            .clip(RoundedCornerShape(26.dp))
                             .background(ItaSuperHighlightBg),
                         contentAlignment = Alignment.Center
                     ) {
@@ -143,7 +143,7 @@ fun OrdersHistoryScreen(
                             imageVector = Icons.Default.Receipt,
                             contentDescription = null,
                             tint = ItaSuperPrimary,
-                            modifier = Modifier.size(54.dp)
+                            modifier = Modifier.size(42.dp)
                         )
                     }
 
@@ -170,7 +170,7 @@ fun OrdersHistoryScreen(
                     Button(
                         onClick = onExploreClick,
                         colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth(0.8f)
                             .height(48.dp)
@@ -214,7 +214,7 @@ private fun OrderHistoryCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(2.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

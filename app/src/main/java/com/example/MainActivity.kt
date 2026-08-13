@@ -32,6 +32,7 @@ import com.example.ui.auth.AuthViewModel
 import com.example.ui.home.HomeScreen
 import com.example.ui.home.HomeViewModel
 import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.profile.ProfileScreen
 import com.example.ui.orders.CartScreen
 import com.example.ui.orders.CheckoutScreen
 import com.example.ui.orders.OrdersHistoryScreen
@@ -179,9 +180,7 @@ fun ItaSuperApp() {
         }
 
         composable("perfil") {
-            PlaceholderNavScreen(
-                title = "Perfil do Cliente",
-                currentRoute = "perfil",
+            ProfileScreen(
                 onNavigateToRoute = { route ->
                     navController.navigate(route) {
                         popUpTo("home") { saveState = true }

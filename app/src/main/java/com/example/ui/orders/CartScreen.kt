@@ -84,17 +84,23 @@ fun CartScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ShoppingBag,
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
                         Text(
-                            text = "Sua Sacola",
+                            text = "Carrinho",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleLarge
                         )
+                        if (cart.items.isNotEmpty()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "${cart.totalItemCount} ${if (cart.totalItemCount == 1) "item" else "itens"}",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -109,16 +115,6 @@ fun CartScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = onNavigateToOrders,
-                        modifier = Modifier.testTag("cart_to_orders_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Receipt,
-                            contentDescription = "Meus Pedidos",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                     if (cart.items.isNotEmpty()) {
                         TextButton(
                             onClick = { viewModel.clearCart() },
@@ -149,8 +145,8 @@ fun CartScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
+                            .size(88.dp)
+                            .clip(RoundedCornerShape(26.dp))
                             .background(ItaSuperHighlightBg),
                         contentAlignment = Alignment.Center
                     ) {
@@ -158,14 +154,14 @@ fun CartScreen(
                             imageVector = Icons.Default.ShoppingBag,
                             contentDescription = null,
                             tint = ItaSuperPrimary,
-                            modifier = Modifier.size(54.dp)
+                            modifier = Modifier.size(42.dp)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
-                        text = "Sua sacola está vazia",
+                        text = "Seu carrinho está vazio",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
