@@ -12,6 +12,7 @@ import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
 import com.example.data.repository.SearchHistoryRepository
 import com.example.data.repository.StoreRepository
+import com.example.data.repository.UserSessionRepository
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -89,31 +90,39 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         state.debouncedQuery.normalizeText().length >= 2 || state.selectedCategoryId != null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    // Seção "Em Alta" (lojas abertas com foto, ordenadas por rating desc, máx 8)
-    val trendingStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+    /** Mesma fonte regional usada pela Home: cidade ativa do GPS/endereço + lojas públicas. */
+    private val regionalStores: StateFlow<List<Store>> = combine(
+        StoreRepository.stores,
+        UserSessionRepository.userSession
+    ) { stores, session ->
+        val city = session.addressCity.normalizeText()
+        if (city.isBlank()) emptyList() else {
+            stores.filter { it.addressCity.normalizeText() == city }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Seção "Em Alta" (lojas abertas da cidade ativa, ordenadas por rating desc, máx 8)
+    val trendingStores: StateFlow<List<Store>> = regionalStores.map { stores ->
         stores.filter { it.isOpen && (it.logoUrl.isNotBlank() || it.bannerUrl.isNotBlank()) }
             .sortedByDescending { it.rating }
             .take(8)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Seção "Novidades" (lojas com created_at nos últimos 30 dias, máx 8)
-    val newStores: StateFlow<List<Store>> = StoreRepository.stores.map { stores ->
+    // Seção "Novidades" da cidade ativa (máx 8)
+    val newStores: StateFlow<List<Store>> = regionalStores.map { stores ->
         val thirtyDaysAgo = try {
             Instant.now().minus(30, ChronoUnit.DAYS).toString()
         } catch (e: Exception) {
             ""
         }
-
         stores.filter { store ->
             store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank() && store.createdAt >= thirtyDaysAgo
-        }
-        .sortedByDescending { it.createdAt }
-        .take(8)
+        }.sortedByDescending { it.createdAt }.take(8)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Result List for Search Mode
+    // Resultados de busca somente da cidade ativa.
     val filteredStores: StateFlow<List<Store>> = combine(
-        StoreRepository.stores,
+        regionalStores,
         _uiState
     ) { stores, state ->
         val normQuery = state.debouncedQuery.normalizeText()

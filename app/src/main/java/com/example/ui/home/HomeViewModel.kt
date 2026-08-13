@@ -39,6 +39,7 @@ data class HomeUiState(
     val searchQuery: String = "",
     val categories: List<CategoryItem> = StoreRepository.categories,
     val stores: List<Store> = emptyList(),
+    val regionalStoreCount: Int = 0,
     val favoriteStores: List<Store> = emptyList(),
     val banners: List<Banner> = emptyList(),
     val discoverProducts: List<DiscoverProduct> = emptyList(),
@@ -67,6 +68,7 @@ class HomeViewModel : ViewModel() {
     // a fonte de localização do perfil, enquanto o GPS melhora distância e ordenação.
     private var currentLatitude: Double? = null
     private var currentLongitude: Double? = null
+    private var catalogGeneration = 0
 
     init {
         val userSession = UserSessionRepository.userSession.value
@@ -81,8 +83,7 @@ class HomeViewModel : ViewModel() {
         // Observe stores flow reactively
         viewModelScope.launch {
             StoreRepository.stores.collect { updatedStores ->
-                filterStores()
-                loadDiscoverProducts(updatedStores)
+                refreshRegionalCatalog(storesWithCalculatedDistance(updatedStores))
             }
         }
 
@@ -110,7 +111,7 @@ class HomeViewModel : ViewModel() {
                     isLoadingStores = false,
                     errorMessage = null
                 )
-                loadDiscoverProducts(currentStores)
+                refreshRegionalCatalog(currentStores)
             }
         }
     }
@@ -122,20 +123,45 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    private fun loadDiscoverProducts(stores: List<Store>) {
+    /**
+     * Fonte única do catálogo regional. Toda vitrine da Home recebe a mesma lista de
+     * lojas da cidade ativa; filtros de interface são aplicados somente após esse recorte.
+     */
+    private fun refreshRegionalCatalog(sourceStores: List<Store> = storesWithCalculatedDistance(StoreRepository.stores.value)) {
         val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
         val normalizedCity = normalizeForComparison(activeCity)
-        val cityStores = if (normalizedCity.isBlank()) {
-            emptyList()
-        } else {
-            stores.filter { store -> normalizeForComparison(store.addressCity) == normalizedCity }
+        val regionalStores = if (normalizedCity.isBlank()) emptyList() else {
+            sourceStores.filter { normalizeForComparison(it.addressCity) == normalizedCity }
         }
+        val generation = ++catalogGeneration
+        val filteredStores = applyUiFilters(regionalStores)
+        val sortedStores = filteredStores.sortedWith(
+            compareBy<Store> { !it.isOpen }
+                .thenBy { it.distanceKm ?: Double.MAX_VALUE }
+                .thenBy { it.name.lowercase() }
+        )
+        _uiState.value = _uiState.value.copy(
+            stores = sortedStores,
+            regionalStoreCount = regionalStores.size,
+            favoriteStores = regionalStores.sortedWith(
+                compareBy<Store> { !it.isOpen }
+                    .thenBy { it.distanceKm ?: Double.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            ).take(2),
+            requiresAddress = normalizedCity.isBlank()
+        )
+        loadDiscoverProducts(regionalStores, generation)
+    }
+
+    private fun loadDiscoverProducts(regionalStores: List<Store>, generation: Int) {
         viewModelScope.launch {
-            val openStores = cityStores.filter { it.isOpen }
-            val products = if (cityStores.isEmpty()) emptyList() else {
-                SupabaseClient.fetchDiscoverProducts(openStores.ifEmpty { cityStores })
+            val openStores = regionalStores.filter { it.isOpen }
+            val products = if (regionalStores.isEmpty()) emptyList() else {
+                SupabaseClient.fetchDiscoverProducts(openStores.ifEmpty { regionalStores })
             }
-            _uiState.value = _uiState.value.copy(discoverProducts = products)
+            if (generation == catalogGeneration) {
+                _uiState.value = _uiState.value.copy(discoverProducts = products)
+            }
         }
     }
 
@@ -168,50 +194,21 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun filterStores() {
+        refreshRegionalCatalog()
+    }
+
+    private fun applyUiFilters(regionalStores: List<Store>): List<Store> {
         val currentCategory = _uiState.value.selectedCategory
         val query = _uiState.value.searchQuery.trim().lowercase()
-        val allStores = storesWithCalculatedDistance(StoreRepository.stores.value)
-        val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
-        val normalizedCity = normalizeForComparison(activeCity)
         val freeFeeOnly = _uiState.value.isFreeFeeFilterActive
-
-        if (normalizedCity.isBlank()) {
-            _uiState.value = _uiState.value.copy(stores = emptyList(), requiresAddress = true)
-            return
-        }
         val directDeliveryOnly = _uiState.value.isDirectDeliveryFilterActive
-
-        val filtered = allStores.filter { store ->
-            val matchCategory = if (currentCategory == "todas") true else {
-                store.category.equals(currentCategory, ignoreCase = true)
-            }
-            val matchQuery = if (query.isEmpty()) true else {
-                store.name.lowercase().contains(query) || store.category.lowercase().contains(query)
-            }
-            val matchFreeFee = if (freeFeeOnly) {
-                store.isFreeDelivery || store.ownDeliveryFee <= 0.0 || store.deliveryFee.equals("Grátis", ignoreCase = true)
-            } else true
-
-            val matchDirectDelivery = if (directDeliveryOnly) {
-                store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
-            } else true
-            // A cidade é a fonte de verdade do catálogo. O endereço montado é apenas
-            // apresentação e pode estar incompleto, portanto não participa do filtro.
-            val matchCity = normalizeForComparison(store.addressCity) == normalizedCity
-
-            matchCategory && matchQuery && matchFreeFee && matchDirectDelivery && matchCity
+        return regionalStores.filter { store ->
+            val matchCategory = currentCategory == "todas" || store.category.equals(currentCategory, ignoreCase = true)
+            val matchQuery = query.isEmpty() || store.name.lowercase().contains(query) || store.category.lowercase().contains(query)
+            val matchFreeFee = !freeFeeOnly || store.isFreeDelivery || store.ownDeliveryFee <= 0.0 || store.deliveryFee.equals("Grátis", ignoreCase = true)
+            val matchDirectDelivery = !directDeliveryOnly || store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
+            matchCategory && matchQuery && matchFreeFee && matchDirectDelivery
         }
-
-        val sorted = filtered.sortedWith(
-            compareBy<Store> { !it.isOpen }
-                .thenBy { it.distanceKm ?: Double.MAX_VALUE }
-                .thenBy { it.name.lowercase() }
-        )
-        _uiState.value = _uiState.value.copy(
-            stores = sorted,
-            favoriteStores = sorted.take(2),
-            requiresAddress = false
-        )
     }
 
     private fun storesWithCalculatedDistance(stores: List<Store>): List<Store> {
@@ -336,6 +333,11 @@ class HomeViewModel : ViewModel() {
 
                         currentLatitude = bestLoc.latitude
                         currentLongitude = bestLoc.longitude
+                        UserSessionRepository.updateActiveLocation(
+                            street = resolvedStreet,
+                            number = resolvedNumber,
+                            city = resolvedCity
+                        )
                         _uiState.value = _uiState.value.copy(
                             streetName = resolvedStreet,
                             streetNumber = resolvedNumber,
@@ -344,6 +346,7 @@ class HomeViewModel : ViewModel() {
                             isRefreshingLocation = false,
                             snackbarMessage = "Localização atualizada com sucesso!"
                         )
+                        refreshRegionalCatalog()
                         loadStores()
                         return
                     }
@@ -517,6 +520,7 @@ class HomeViewModel : ViewModel() {
                 showAddressForm = false,
                 snackbarMessage = "Endereço salvo! Atualizando lojas da sua região."
             )
+            refreshRegionalCatalog()
             loadStores()
         }
     }

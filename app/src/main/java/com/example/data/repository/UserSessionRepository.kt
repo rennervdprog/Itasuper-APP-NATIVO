@@ -152,6 +152,17 @@ object UserSessionRepository {
         persistCurrentSession()
     }
 
+    /** Atualiza apenas a localização ativa no aparelho; o endereço do perfil só muda quando o usuário o salva. */
+    fun updateActiveLocation(street: String, number: String, city: String) {
+        if (city.isBlank()) return
+        _userSession.value = _userSession.value.copy(
+            addressStreet = street.ifBlank { _userSession.value.addressStreet },
+            addressNumber = number.ifBlank { _userSession.value.addressNumber },
+            addressCity = city
+        )
+        persistCurrentSession()
+    }
+
     fun updatePin(newPin: String) {
         _userSession.value = _userSession.value.copy(deliveryPin = newPin)
         persistCurrentSession()

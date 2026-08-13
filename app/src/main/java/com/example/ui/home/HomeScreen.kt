@@ -292,6 +292,11 @@ fun HomeScreen(
             // 6. Lista normal de lojas abaixo
             HomeStoreListSection(
                 stores = uiState.stores,
+                regionalStoreCount = uiState.regionalStoreCount,
+                hasActiveFilters = uiState.selectedCategory != "todas" ||
+                    uiState.searchQuery.isNotBlank() ||
+                    uiState.isFreeFeeFilterActive ||
+                    uiState.isDirectDeliveryFilterActive,
                 isLoading = uiState.isLoadingStores,
                 errorMessage = uiState.errorMessage,
                 requiresAddress = uiState.requiresAddress,
@@ -1543,6 +1548,8 @@ private fun HomeFavoriteStoresSection(
 @Composable
 private fun HomeStoreListSection(
     stores: List<Store>,
+    regionalStoreCount: Int,
+    hasActiveFilters: Boolean,
     isLoading: Boolean,
     errorMessage: String?,
     requiresAddress: Boolean,
@@ -1583,7 +1590,7 @@ private fun HomeStoreListSection(
             }
             if (activeCity.isNotBlank()) {
                 Text(
-                    text = "${stores.size} ${if (stores.size == 1) "loja" else "lojas"}",
+                    text = "$regionalStoreCount ${if (regionalStoreCount == 1) "loja" else "lojas"}",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1693,10 +1700,10 @@ private fun HomeStoreListSection(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (activeCity.isNotBlank()) {
-                        "Nenhuma loja disponível em $activeCity"
-                    } else {
-                        "Nenhuma loja encontrada para esse filtro"
+                    text = when {
+                        regionalStoreCount > 0 && hasActiveFilters -> "Nenhuma loja encontrada com os filtros selecionados"
+                        activeCity.isNotBlank() -> "Nenhuma loja disponível em $activeCity"
+                        else -> "Nenhuma loja encontrada para esse filtro"
                     },
                     style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
                 )
