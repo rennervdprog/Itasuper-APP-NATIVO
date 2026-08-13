@@ -164,6 +164,11 @@ object UserSessionRepository {
         storage?.clear()
     }
 
+    fun updatePersonal(name: String, document: String) {
+        _userSession.value = _userSession.value.copy(name = name, cpfCnpj = document)
+        persistCurrentSession()
+    }
+
     fun updateProfile(
         name: String,
         whatsapp: String,

@@ -386,6 +386,84 @@ object SupabaseClient {
         }
     }
 
+    suspend fun updateCustomerPersonalProfile(
+        userId: String,
+        accessToken: String,
+        fullName: String,
+        document: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId"
+            val bodyJson = JSONObject().apply {
+                put("full_name", fullName)
+                put("document", document)
+            }
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful || response.code == 200 || response.code == 204
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao atualizar dados pessoais", e)
+            false
+        }
+    }
+
+    suspend fun updateCustomerDeliveryPin(
+        userId: String,
+        accessToken: String,
+        pin: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId"
+            val bodyJson = JSONObject().put("delivery_pin", pin)
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful || response.code == 200 || response.code == 204
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao atualizar PIN de entrega", e)
+            false
+        }
+    }
+
+    /** Retorna nulo ao excluir com sucesso ou uma mensagem adequada para exibição ao cliente. */
+    suspend fun deleteCustomerAccount(accessToken: String, reason: String): String? = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) return@withContext "Sua sessão expirou. Entre novamente para continuar."
+        try {
+            val url = "$SUPABASE_URL/functions/v1/delete-account"
+            val bodyJson = JSONObject().put("reason", reason.ifBlank { "Solicitação do usuário" })
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string().orEmpty()
+            if (response.isSuccessful) {
+                null
+            } else {
+                JSONObject(responseText).optNullableString("error")
+                    ?: "Não foi possível excluir sua conta. Tente novamente."
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao excluir conta do cliente", e)
+            "Não foi possível excluir sua conta. Verifique sua conexão e tente novamente."
+        }
+    }
+
     data class OpeningHour(
         val storeId: String,
         val dayOfWeek: Int,

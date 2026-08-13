@@ -74,6 +74,15 @@ object LocationOnboardingPreferences {
             .putBoolean("completed_$userId", true)
             .apply()
     }
+
+    fun reset(context: Context, userId: String) {
+        if (userId.isBlank()) return
+        context
+            .getSharedPreferences(LOCATION_ONBOARDING_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("completed_$userId")
+            .apply()
+    }
 }
 
 private enum class LocationOnboardingStep {
