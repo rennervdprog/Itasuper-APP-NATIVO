@@ -229,13 +229,16 @@ fun StoreDetailScreen(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     IconButton(
+                        enabled = !uiState.store?.whatsapp.isNullOrBlank(),
                         onClick = {
-                            val phone = uiState.store?.whatsapp?.ifBlank { "5521999999999" } ?: "5521999999999"
-                            val whatsappUri = Uri.parse("https://api.whatsapp.com/send?phone=$phone&text=${Uri.encode("Olá! Vim pelo app ItaSuper Delivery.")}")
-                            val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
-                            try {
-                                context.startActivity(intent)
-                            } catch (_: Exception) {}
+                            val phone = uiState.store?.whatsapp.orEmpty()
+                            if (phone.isNotBlank()) {
+                                val whatsappUri = Uri.parse("https://api.whatsapp.com/send?phone=$phone&text=${Uri.encode("Olá! Vim pelo app ItaSuper Delivery.")}")
+                                val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
+                                try {
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
                         },
                         modifier = Modifier
                             .size(40.dp)
@@ -829,7 +832,8 @@ fun StoreHeaderSection(
             Spacer(modifier = Modifier.height(16.dp))
 
             // 1. Address Line + MAPS Button
-            val addressText = store?.address?.ifBlank { "Av. 22 de Maio, Centro, Itaboraí - RJ" } ?: "Av. 22 de Maio, Centro, Itaboraí - RJ"
+            val addressText = store?.address?.ifBlank { "Endereço não informado" } ?: "Endereço não informado"
+            val hasMapsTarget = store?.latitude != null && store.longitude != null || store?.address?.isNotBlank() == true
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -865,16 +869,17 @@ fun StoreHeaderSection(
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         modifier = Modifier
-                            .clickable {
-                                val lat = store?.latitude ?: -22.7461
-                                val lng = store?.longitude ?: -42.8588
-                                val gmmIntentUri = Uri.parse("geo:$lat,$lng?q=${Uri.encode(addressText)}")
+                            .clickable(enabled = hasMapsTarget) {
+                                val lat = store?.latitude
+                                val lng = store?.longitude
+                                val mapsQuery = if (lat != null && lng != null) "$lat,$lng" else addressText
+                                val gmmIntentUri = Uri.parse("geo:0,0?q=${Uri.encode(mapsQuery)}")
                                 val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
                                 mapIntent.setPackage("com.google.android.apps.maps")
                                 try {
                                     context.startActivity(mapIntent)
                                 } catch (_: Exception) {
-                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lng"))
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(mapsQuery)}"))
                                     context.startActivity(browserIntent)
                                 }
                             }
@@ -932,7 +937,7 @@ fun StoreHeaderSection(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = store?.deliveryFee ?: "Grátis",
+                            text = store?.deliveryFee?.ifBlank { "A consultar" } ?: "A consultar",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (store?.isFreeDelivery == true) Color(0xFF2E7D32) else ItaSuperTextPrimary,
@@ -961,7 +966,7 @@ fun StoreHeaderSection(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = store?.deliveryTime ?: "30-40 min",
+                            text = store?.deliveryTime?.ifBlank { "A consultar" } ?: "A consultar",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = ItaSuperTextPrimary,
@@ -990,7 +995,9 @@ fun StoreHeaderSection(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = String.format("R$ %.2f", store?.minOrder ?: 15.0).replace('.', ','),
+                            text = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
+                                String.format("R$ %.2f", value).replace('.', ',')
+                            } ?: "A consultar",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = ItaSuperTextPrimary,
@@ -1076,13 +1083,11 @@ fun StoreHeaderSection(
                                 }
                             }
                         } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Segunda a Domingo", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
-                                Text(text = "11:00 às 23:30", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
-                            }
+                            Text(
+                                text = "Horários não informados.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
                         }
                     }
                 }
@@ -1103,25 +1108,40 @@ fun StoreHeaderSection(
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val paymentMethods = listOf("Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro")
-                        paymentMethods.forEach { method ->
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = ItaSuperSecondary.copy(alpha = 0.5f)
-                            ) {
-                                Text(
-                                    text = method,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Medium,
-                                        color = ItaSuperTextPrimary,
-                                        fontSize = 11.sp
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                )
+                    val settings = store?.settings
+                    val paymentMethods = buildList {
+                        if (settings?.acceptPixOnline == true) add("PIX Online")
+                        if (settings?.acceptPixMachine == true) add("PIX")
+                        if (settings?.acceptCard == true) add("Cartão")
+                        if (settings?.acceptCash == true) add("Dinheiro")
+                    }
+                    if (paymentMethods.isEmpty()) {
+                        Text(
+                            text = "Consulte a loja",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            paymentMethods.chunked(2).forEach { rowMethods ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowMethods.forEach { method ->
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = ItaSuperSecondary.copy(alpha = 0.5f)
+                                        ) {
+                                            Text(
+                                                text = method,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = ItaSuperTextPrimary,
+                                                    fontSize = 11.sp
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -194,7 +194,10 @@ class StoreDetailViewModel : ViewModel() {
 
         viewModelScope.launch {
             val storeList = StoreRepository.stores.value
-            val store = storeList.find { it.id == storeId } ?: storeList.firstOrNull()
+            val cachedStore = storeList.find { it.id == storeId }
+            // Consulta completa para que o detalhe não herde campos incompletos
+            // carregados anteriormente pela Home ou pela Busca.
+            val store = SupabaseClient.fetchStoreById(storeId) ?: cachedStore
 
             // Fetch menu_sections from Supabase
             val sections = SupabaseClient.fetchMenuSectionsForStore(storeId)

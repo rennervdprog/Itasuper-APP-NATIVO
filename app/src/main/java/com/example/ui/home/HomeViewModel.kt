@@ -63,6 +63,11 @@ class HomeViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    // Coordenadas são mantidas apenas em memória: o endereço salvo continua sendo
+    // a fonte de localização do perfil, enquanto o GPS melhora distância e ordenação.
+    private var currentLatitude: Double? = null
+    private var currentLongitude: Double? = null
+
     init {
         val userSession = UserSessionRepository.userSession.value
         _uiState.value = _uiState.value.copy(
@@ -97,7 +102,7 @@ class HomeViewModel : ViewModel() {
                 errorMessage = null
             )
             val success = StoreRepository.refreshStoresFromSupabase()
-            val currentStores = StoreRepository.stores.value
+            val currentStores = storesWithCalculatedDistance(StoreRepository.stores.value)
 
             if (!success || currentStores.isEmpty()) {
                 _uiState.value = _uiState.value.copy(
@@ -160,7 +165,7 @@ class HomeViewModel : ViewModel() {
     private fun filterStores() {
         val currentCategory = _uiState.value.selectedCategory
         val query = _uiState.value.searchQuery.trim().lowercase()
-        val allStores = StoreRepository.stores.value
+        val allStores = storesWithCalculatedDistance(StoreRepository.stores.value)
         val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
         val normalizedCity = normalizeForComparison(activeCity)
         val freeFeeOnly = _uiState.value.isFreeFeeFilterActive
@@ -190,7 +195,37 @@ class HomeViewModel : ViewModel() {
             matchCategory && matchQuery && matchFreeFee && matchDirectDelivery && matchCity
         }
 
-        _uiState.value = _uiState.value.copy(stores = filtered, requiresAddress = false)
+        val sorted = filtered.sortedWith(
+            compareBy<Store> { !it.isOpen }
+                .thenBy { it.distanceKm ?: Double.MAX_VALUE }
+                .thenBy { it.name.lowercase() }
+        )
+        _uiState.value = _uiState.value.copy(stores = sorted, requiresAddress = false)
+    }
+
+    private fun storesWithCalculatedDistance(stores: List<Store>): List<Store> {
+        val userLat = currentLatitude ?: return stores
+        val userLng = currentLongitude ?: return stores
+        return stores.map { store ->
+            val storeLat = store.latitude
+            val storeLng = store.longitude
+            if (storeLat == null || storeLng == null) {
+                store
+            } else {
+                // A referência web aplica fator urbano de 1,3 sobre a distância geodésica.
+                store.copy(distanceKm = haversineKm(userLat, userLng, storeLat, storeLng) * 1.3)
+            }
+        }
+    }
+
+    private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val earthRadiusKm = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+        return earthRadiusKm * 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
     }
 
     private fun normalizeForComparison(value: String): String {
@@ -288,6 +323,8 @@ class HomeViewModel : ViewModel() {
                             android.util.Log.e("HomeViewModel", "Geocoder failed, mantendo coordenadas cruas", geoEx)
                         }
 
+                        currentLatitude = bestLoc.latitude
+                        currentLongitude = bestLoc.longitude
                         _uiState.value = _uiState.value.copy(
                             streetName = resolvedStreet,
                             streetNumber = resolvedNumber,

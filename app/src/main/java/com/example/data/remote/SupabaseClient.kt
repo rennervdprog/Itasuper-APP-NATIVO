@@ -335,6 +335,11 @@ object SupabaseClient {
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val jsonArray = JSONArray(responseText)
                 val storeList = mutableListOf<Store>()
+                val ownerWhatsappById = fetchStoreOwnerWhatsapps(
+                    (0 until jsonArray.length()).mapNotNull { index ->
+                        jsonArray.optJSONObject(index)?.optString("owner_id", "")?.takeIf { it.isNotBlank() }
+                    }.distinct()
+                )
 
                 for (i in 0 until jsonArray.length()) {
                     val item = jsonArray.getJSONObject(i)
@@ -359,16 +364,40 @@ object SupabaseClient {
                     val computedIsOpen = checkIsStoreOpenNow(id, isForceClosed, defaultIsOpen, openingHours)
 
                     val ownFee = item.optDouble("own_delivery_fee", 0.0)
-                    val deliveryMode = item.optString("delivery_mode", "direto")
-                    val isFree = ownFee <= 0.0
-                    val deliveryFeeText = if (isFree) "Grátis" else String.format("R$ %.2f", ownFee).replace(".", ",")
+                    val platformFee = item.optDouble("delivery_fee", 0.0)
+                    val deliveryMode = item.optString("delivery_mode", "")
+                    val rawFee = when (deliveryMode.lowercase()) {
+                        "platform" -> platformFee
+                        "pickup" -> 0.0
+                        else -> if (ownFee > 0.0) ownFee else platformFee
+                    }
+                    val isFree = deliveryMode.equals("pickup", true) || rawFee <= 0.0
+                    val deliveryFeeText = when {
+                        deliveryMode.equals("pickup", true) -> "Retirada"
+                        rawFee > 0.0 -> String.format("R$ %.2f", rawFee).replace(".", ",")
+                        else -> "Grátis"
+                    }
+                    val rawDeliveryTime = item.optString("estimated_delivery_time", "").trim()
+                    val minimumOrder = item.optDouble("minimum_order_value", 0.0)
 
                     val createdAt = item.optString("created_at", "")
                     val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else null
                     val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else null
-
-                    val storeAddress = item.optString("address", item.optString("formatted_address", "Av. 22 de Maio, Centro, Itaboraí - RJ")).ifBlank { "Av. 22 de Maio, Centro, Itaboraí - RJ" }
-                    val storeWhatsapp = item.optString("whatsapp", item.optString("phone", "5521999999999")).ifBlank { "5521999999999" }
+                    val addressStreet = item.optString("address_street", "").trim()
+                    val addressNumber = item.optString("address_number", "").trim()
+                    val addressNeighborhood = item.optString("address_neighborhood", "").trim()
+                    val addressCity = item.optString("address_city", "").trim()
+                    val addressState = item.optString("address_state", "").trim()
+                    val addressCep = item.optString("address_cep", "").trim()
+                    val addressReference = item.optString("address_reference", "").trim()
+                    val storeAddress = listOf(
+                        listOf(addressStreet, addressNumber).filter { it.isNotBlank() }.joinToString(", "),
+                        addressNeighborhood,
+                        listOf(addressCity, addressState).filter { it.isNotBlank() }.joinToString(" - ")
+                    ).filter { it.isNotBlank() }.joinToString(", ")
+                    val ownerId = item.optString("owner_id", "").trim()
+                    val storeWhatsapp = item.optString("whatsapp", item.optString("phone", "")).trim()
+                        .ifBlank { ownerWhatsappById[ownerId].orEmpty() }
 
                     val storeOpeningHours = openingHours.filter { it.storeId == id }.map { oh ->
                         com.example.data.model.StoreOpeningHour(
@@ -419,8 +448,14 @@ object SupabaseClient {
                         pizzaPriceMode = settingsObj?.optString("pizza_price_mode", "maior") ?: "maior",
                         pastelPriceMode = settingsObj?.optString("pastel_price_mode", "maior") ?: "maior",
                         pizzaSingleSize = settingsObj?.optBoolean("pizza_single_size", false) ?: false,
-                        pastelSingleSize = settingsObj?.optBoolean("pastel_single_size", false) ?: false
+                        pastelSingleSize = settingsObj?.optBoolean("pastel_single_size", false) ?: false,
+                        acceptPixOnline = settingsObj?.optBoolean("accept_pix_online", false) ?: false,
+                        acceptPixMachine = settingsObj?.optBoolean("accept_pix_machine", false) ?: false,
+                        acceptCard = settingsObj?.optBoolean("accept_card", true) ?: true,
+                        acceptCash = settingsObj?.optBoolean("accept_cash", true) ?: true
                     )
+
+                    val deliveryTime = formatDeliveryTime(rawDeliveryTime, settingsObj)
 
                     val store = Store(
                         id = id,
@@ -428,20 +463,31 @@ object SupabaseClient {
                         category = category,
                         secondaryCategories = secCats,
                         rating = rating,
-                        deliveryTime = "30-40 min",
+                        deliveryTime = deliveryTime,
                         deliveryFee = deliveryFeeText,
                         isFreeDelivery = isFree,
                         isOpen = computedIsOpen,
-                        distanceKm = 1.2,
+                        forceClosed = isForceClosed,
+                        distanceKm = null,
                         logoUrl = imageUrl,
                         bannerUrl = bannerUrl,
-                        minOrder = 15.0,
+                        minOrder = minimumOrder,
                         createdAt = createdAt,
+                        slug = item.optString("slug", ""),
+                        status = status,
                         latitude = lat,
                         longitude = lng,
                         settings = storeSettings,
                         deliveryMode = deliveryMode,
                         ownDeliveryFee = ownFee,
+                        platformDeliveryFee = platformFee,
+                        addressStreet = addressStreet,
+                        addressNumber = addressNumber,
+                        addressNeighborhood = addressNeighborhood,
+                        addressCity = addressCity,
+                        addressState = addressState,
+                        addressCep = addressCep,
+                        addressReference = addressReference,
                         address = storeAddress,
                         whatsapp = storeWhatsapp,
                         openingHours = storeOpeningHours
@@ -456,6 +502,65 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
             emptyList()
+        }
+    }
+
+    /** Busca contatos públicos dos proprietários sem criar valores substitutos. */
+    private fun fetchStoreOwnerWhatsapps(ownerIds: List<String>): Map<String, String> {
+        if (ownerIds.isEmpty()) return emptyMap()
+        return try {
+            val ownerFilter = ownerIds.joinToString(",")
+            val url = "$SUPABASE_URL/rest/v1/profiles?select=user_id,whatsapp_number&user_id=in.($ownerFilter)"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string().orEmpty()
+            if (!response.isSuccessful || responseText.isBlank()) return emptyMap()
+
+            val profiles = JSONArray(responseText)
+            buildMap {
+                for (index in 0 until profiles.length()) {
+                    val profile = profiles.optJSONObject(index) ?: continue
+                    val userId = profile.optString("user_id", "").trim()
+                    val whatsapp = profile.optString("whatsapp_number", "").trim()
+                    if (userId.isNotBlank() && whatsapp.isNotBlank()) put(userId, whatsapp)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Store owner WhatsApp unavailable", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Carrega os metadados reais da loja selecionada. O mapper de lista já preserva
+     * todos os campos de stores_public; esta função garante o mesmo resultado em
+     * acessos diretos ao detalhe da loja, quando a Home ainda não foi carregada.
+     */
+    suspend fun fetchStoreById(storeId: String): Store? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        try {
+            // Reutiliza o mapper central para manter os campos e as regras do card
+            // de loja idênticos entre Home, Busca e Detalhe.
+            fetchActiveStores().firstOrNull { it.id == storeId }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching store $storeId", e)
+            null
+        }
+    }
+
+    private fun formatDeliveryTime(raw: String, settings: JSONObject?): String {
+        if (raw.isNotBlank()) return if (raw.contains("min", true)) raw else "$raw min"
+        val min = settings?.optDouble("delivery_time_min", Double.NaN) ?: Double.NaN
+        val max = settings?.optDouble("delivery_time_max", Double.NaN) ?: Double.NaN
+        return if (min.isFinite() && max.isFinite() && min > 0 && max > 0) {
+            "${min.toInt()}-${max.toInt()} min"
+        } else {
+            ""
         }
     }
 
