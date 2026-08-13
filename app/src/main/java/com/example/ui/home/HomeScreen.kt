@@ -67,6 +67,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -251,6 +252,18 @@ fun HomeScreen(
                 onInformAddress = viewModel::openLocationOrAddressDialog,
                 onStoreClick = onNavigateToStore
             )
+
+            // Descubra permanece na Home, mas somente com mídia real.
+            if (uiState.discoverProducts.any { product ->
+                    product.imageUrl.isNotBlank() && !product.imageUrl.equals("null", ignoreCase = true)
+                }
+            ) {
+                Spacer(modifier = Modifier.height(30.dp))
+                HomeDiscoverProductsSection(
+                    products = uiState.discoverProducts,
+                    onProductClick = { storeId -> onNavigateToStore(storeId) }
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -963,7 +976,10 @@ private fun HomeDiscoverProductsSection(
     products: List<DiscoverProduct>,
     onProductClick: (String) -> Unit
 ) {
-    if (products.isEmpty()) return
+    val productsWithImages = products.filter { product ->
+        product.imageUrl.isNotBlank() && !product.imageUrl.equals("null", ignoreCase = true)
+    }
+    if (productsWithImages.isEmpty()) return
 
     Column(
         modifier = Modifier
@@ -1008,7 +1024,7 @@ private fun HomeDiscoverProductsSection(
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            products.chunked(2).forEach { rowProducts ->
+            productsWithImages.chunked(2).forEach { rowProducts ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1033,23 +1049,12 @@ private fun HomeDiscoverProductsSection(
                                         .aspectRatio(1f)
                                         .background(ItaSuperHighlightBg)
                                 ) {
-                                    if (product.imageUrl.isNotBlank()) {
-                                        AsyncImage(
-                                            model = product.imageUrl,
-                                            contentDescription = product.name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Fastfood,
-                                            contentDescription = null,
-                                            tint = ItaSuperPrimary,
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .align(Alignment.Center)
-                                        )
-                                    }
+                                    AsyncImage(
+                                        model = product.imageUrl,
+                                        contentDescription = product.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
 
                                     // Badge "Aberta" com bolinha verde (produtos já vêm só de lojas abertas)
                                     Surface(
@@ -1376,6 +1381,44 @@ private fun HomeLastOrderSection(
 }
 
 @Composable
+private fun StoreLogoThumbnail(
+    store: Store,
+    modifier: Modifier,
+    circular: Boolean
+) {
+    val imageUrl = store.logoUrl.ifBlank { store.bannerUrl }.trim()
+    var imageFailed by remember(store.id, imageUrl) {
+        mutableStateOf(imageUrl.isBlank() || imageUrl.equals("null", ignoreCase = true))
+    }
+    val shape = if (circular) CircleShape else RoundedCornerShape(18.dp)
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(ItaSuperHighlightBg),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!imageFailed) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = store.name,
+                contentScale = ContentScale.Crop,
+                onError = { imageFailed = true },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        if (imageFailed) {
+            Text(
+                text = store.name.trim().take(1).uppercase().ifBlank { "I" },
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                color = ItaSuperPrimary
+            )
+        }
+    }
+}
+
+@Composable
 private fun HomeFavoriteStoresSection(
     favoriteStores: List<Store>,
     onStoreClick: (String) -> Unit
@@ -1418,30 +1461,13 @@ private fun HomeFavoriteStoresSection(
                         .clickable { onStoreClick(store.id) }
                         .testTag("fav_store_${store.id}")
                 ) {
-                    Box(
+                    StoreLogoThumbnail(
+                        store = store,
                         modifier = Modifier
                             .size(68.dp)
-                            .clip(CircleShape)
-                            .background(ItaSuperHighlightBg)
                             .border(2.dp, ItaSuperPrimary.copy(alpha = 0.22f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (store.logoUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = store.logoUrl,
-                                contentDescription = store.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().clip(CircleShape)
-                            )
-                        } else {
-                            Text(
-                                text = store.name.trim().take(1).uppercase().ifBlank { "I" },
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                                color = ItaSuperPrimary
-                            )
-                        }
-                    }
+                        circular = true
+                    )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = store.name,
@@ -1615,12 +1641,11 @@ private fun HomeStoreListSection(
                 )
             }
         } else {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                stores.forEach { store ->
+            Column(modifier = Modifier.fillMaxWidth()) {
+                stores.forEachIndexed { index, store ->
                     StoreCardItem(
                         store = store,
+                        showDivider = index < stores.lastIndex,
                         onClick = { onStoreClick(store.id) }
                     )
                 }
@@ -1662,6 +1687,7 @@ private fun nextStoreOpeningLabel(store: Store): String {
 @Composable
 private fun StoreCardItem(
     store: Store,
+    showDivider: Boolean,
     onClick: () -> Unit
 ) {
     val categoryLabel = store.category.replace("_", " ").ifBlank { "Loja" }
@@ -1682,42 +1708,21 @@ private fun StoreCardItem(
     }
     val openingMessage = nextStoreOpeningLabel(store)
 
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .testTag("store_card_${store.id}"),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .testTag("store_card_${store.id}")
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(68.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(ItaSuperHighlightBg),
-                contentAlignment = Alignment.Center
-            ) {
-                if (store.logoUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = store.logoUrl,
-                        contentDescription = store.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Text(
-                        text = store.name.trim().take(1).uppercase().ifBlank { "I" },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp,
-                        color = ItaSuperPrimary
-                    )
-                }
-            }
+            StoreLogoThumbnail(
+                store = store,
+                modifier = Modifier.size(68.dp),
+                circular = false
+            )
 
             Spacer(modifier = Modifier.width(13.dp))
 
@@ -1811,6 +1816,12 @@ private fun StoreCardItem(
                 contentDescription = "Abrir loja",
                 tint = if (store.isOpen) ItaSuperTextSecondary else ItaSuperTextSecondary.copy(alpha = 0.45f),
                 modifier = Modifier.size(24.dp)
+            )
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                color = Color(0xFFEEEEEE),
+                thickness = 1.dp
             )
         }
     }

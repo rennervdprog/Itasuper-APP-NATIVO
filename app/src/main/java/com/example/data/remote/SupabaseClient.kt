@@ -649,7 +649,14 @@ object SupabaseClient {
     }
 
     private fun formatDeliveryTime(raw: String, settings: JSONObject?): String {
-        if (raw.isNotBlank()) return if (raw.contains("min", true)) raw else "$raw min"
+        val normalized = raw.trim()
+        val hasValidRawValue = normalized.isNotBlank() &&
+            !normalized.equals("null", ignoreCase = true) &&
+            !normalized.equals("undefined", ignoreCase = true) &&
+            normalized != "-"
+        if (hasValidRawValue) {
+            return if (normalized.contains("min", true)) normalized else "$normalized min"
+        }
         val min = settings?.optDouble("delivery_time_min", Double.NaN) ?: Double.NaN
         val max = settings?.optDouble("delivery_time_max", Double.NaN) ?: Double.NaN
         return if (min.isFinite() && max.isFinite() && min > 0 && max > 0) {
