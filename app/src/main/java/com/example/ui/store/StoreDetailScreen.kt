@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.automirrored.filled.Chat
 import com.example.data.model.MenuSection
@@ -181,12 +182,33 @@ fun StoreDetailScreen(
                             )
                         )
                     } else {
-                        Text(
-                            text = uiState.store?.name ?: "Detalhes da Loja",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                text = uiState.store?.name ?: "Detalhes da Loja",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = ItaSuperTextPrimary
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .background(
+                                            if (uiState.store?.isOpen == true) Color(0xFF22C55E) else Color(0xFFE5484D),
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (uiState.store?.isOpen == true) "ABERTO" else "FECHADO",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
                     }
                 },
                 navigationIcon = {
@@ -303,7 +325,7 @@ fun StoreDetailScreen(
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
-                                        text = "Ver Sacola",
+                                        text = "Ver carrinho",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp
@@ -389,86 +411,29 @@ fun StoreDetailScreen(
 
                 if (showPizzaBuilderButton || showPastelBuilderButton) {
                     item {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             if (showPizzaBuilderButton) {
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { viewModel.openBuilder("pizza") }
-                                        .testTag("monte_sua_pizza_button"),
-                                    colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.1f)),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.3f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.LocalPizza,
-                                            contentDescription = "Monte Sua Pizza",
-                                            tint = ItaSuperPrimary,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = "Monte Sua Pizza",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
-                                                color = ItaSuperPrimary
-                                            )
-                                            Text(
-                                                text = "Meio a Meio",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                    }
-                                }
+                                StoreBuilderCard(
+                                    title = "Monte sua Pizza",
+                                    subtitle = "Escolha o tamanho e combine até 4 sabores",
+                                    icon = Icons.Default.LocalPizza,
+                                    testTag = "monte_sua_pizza_button",
+                                    onClick = { viewModel.openBuilder("pizza") }
+                                )
                             }
-
                             if (showPastelBuilderButton) {
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { viewModel.openBuilder("pastel") }
-                                        .testTag("monte_seu_pastel_button"),
-                                    colors = CardDefaults.cardColors(containerColor = ItaSuperSecondary.copy(alpha = 0.2f)),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Restaurant,
-                                            contentDescription = "Monte Seu Pastel",
-                                            tint = ItaSuperPrimary,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = "Monte Seu Pastel",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
-                                                color = ItaSuperPrimary
-                                            )
-                                            Text(
-                                                text = "Meio a Meio",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                    }
-                                }
+                                StoreBuilderCard(
+                                    title = "Monte seu Pastel",
+                                    subtitle = "Combine sabores diferentes em um pastel",
+                                    icon = Icons.Default.Restaurant,
+                                    testTag = "monte_seu_pastel_button",
+                                    onClick = { viewModel.openBuilder("pastel") }
+                                )
                             }
                         }
                     }
@@ -687,6 +652,70 @@ fun StoreDetailScreen(
 }
 
 @Composable
+private fun StoreBuilderCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(testTag),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7F1)),
+        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.32f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(52.dp).background(ItaSuperPrimary.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(28.dp))
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = ItaSuperTextPrimary)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = subtitle, fontSize = 14.sp, lineHeight = 18.sp, color = Color(0xFF737373))
+            }
+            Icon(imageVector = Icons.Default.KeyboardArrowRight, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun StoreInfoMetric(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    valueColor: Color = ItaSuperTextPrimary
+) {
+    Card(
+        modifier = Modifier.heightIn(min = 92.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFCFBF9)),
+        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.08f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(17.dp))
+            Spacer(modifier = Modifier.height(5.dp))
+            Text(text = label.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7A7A7A), textAlign = TextAlign.Center)
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
 fun StoreHeaderSection(
     store: Store?,
     productsCount: Int = 0,
@@ -705,7 +734,7 @@ fun StoreHeaderSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp)
+                    .height(132.dp)
                     .background(ItaSuperSecondary)
             ) {
                 if (!store?.bannerUrl.isNullOrBlank()) {
@@ -735,8 +764,8 @@ fun StoreHeaderSection(
             // 2. Overlapping Circular Logo (100dp)
             Surface(
                 modifier = Modifier
-                    .padding(top = 100.dp)
-                    .size(100.dp)
+                    .padding(top = 82.dp)
+                    .size(92.dp)
                     .testTag("store_logo_overlay"),
                 shape = CircleShape,
                 color = Color.White,
@@ -770,7 +799,7 @@ fun StoreHeaderSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(58.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         // Store Details Body
         Column(
@@ -913,98 +942,24 @@ fun StoreHeaderSection(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. 3 Cards Side by Side (Taxa, Tempo, Pedido Mín.)
+            // 2. Métricas comerciais com a mesma semântica do Capacitor.
+            val deliveryFeeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+            val deliveryTimeText = store?.deliveryTime?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+            val minimumOrderText = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
+                String.format("R$ %.2f", value).replace('.', ',')
+            } ?: "—"
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Card Taxa
-                Card(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = ItaSuperSecondary.copy(alpha = 0.4f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Taxa",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = store?.deliveryFee?.ifBlank { "A consultar" } ?: "A consultar",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (store?.isFreeDelivery == true) Color(0xFF2E7D32) else ItaSuperTextPrimary,
-                                fontSize = 13.sp
-                            )
-                        )
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    StoreInfoMetric("Taxa", deliveryFeeText, Icons.Default.Navigation, if (store?.isFreeDelivery == true) Color(0xFF17803D) else ItaSuperTextPrimary)
                 }
-
-                // Card Tempo
-                Card(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = ItaSuperSecondary.copy(alpha = 0.4f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Tempo",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = store?.deliveryTime?.ifBlank { "A consultar" } ?: "A consultar",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = ItaSuperTextPrimary,
-                                fontSize = 13.sp
-                            )
-                        )
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    StoreInfoMetric("Tempo", deliveryTimeText, Icons.Outlined.Schedule)
                 }
-
-                // Card Pedido Mín.
-                Card(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = ItaSuperSecondary.copy(alpha = 0.4f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Pedido Mín.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
-                                String.format("R$ %.2f", value).replace('.', ',')
-                            } ?: "A consultar",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = ItaSuperTextPrimary,
-                                fontSize = 13.sp
-                            )
-                        )
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    StoreInfoMetric("Pedido mín.", minimumOrderText, Icons.Default.ShoppingBag)
                 }
             }
 
@@ -1035,7 +990,7 @@ fun StoreHeaderSection(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Horários de Funcionamento",
+                                text = "Horários",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -1104,7 +1059,7 @@ fun StoreHeaderSection(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        text = "Formas de Pagamento Aceitas",
+                        text = "Pagamento",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
