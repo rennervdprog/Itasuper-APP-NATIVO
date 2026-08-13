@@ -612,8 +612,8 @@ fun StoreDetailScreen(
                     onDismissRequest = { viewModel.closeBuilderModal() },
                     properties = DialogProperties(
                         usePlatformDefaultWidth = false,
-                        // Mantém o diálogo em tela cheia, mas dentro das áreas seguras do aparelho.
-                        decorFitsSystemWindows = true
+                        // O diálogo desenha até as bordas; o Compose reserva status, navegação e teclado.
+                        decorFitsSystemWindows = false
                     )
                 ) {
                     PastelWizardFullScreenContent(
@@ -636,7 +636,8 @@ fun StoreDetailScreen(
                     onDismissRequest = { viewModel.closeBuilderModal() },
                     properties = DialogProperties(
                         usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = true
+                        // Mantém os insets reais disponíveis para navigationBarsPadding e imePadding.
+                        decorFitsSystemWindows = false
                     )
                 ) {
                     PizzaWizardFullScreenContent(
@@ -1909,123 +1910,6 @@ fun PastelWizardFullScreenContent(
                 )
             }
         },
-        bottomBar = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding(),
-                shadowElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .widthIn(max = 680.dp)
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (step == 0) {
-                            Button(
-                                onClick = onNextStep,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 54.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-                            ) {
-                                Text(
-                                    text = "Avançar para Escolha de Sabores",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        } else if (step in 1..targetFlavors) {
-                            val flavorIndex = step - 1
-                            val hasSelectionForThisStep = uiState.wizardSelectedFlavors.getOrNull(flavorIndex) != null
-
-                            OutlinedButton(
-                                onClick = onPrevStep,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Anterior", textAlign = TextAlign.Center)
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Button(
-                                onClick = onNextStep,
-                                enabled = hasSelectionForThisStep,
-                                modifier = Modifier
-                                    .weight(1.5f)
-                                    .heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-                            ) {
-                                Text(
-                                    text = if (step == targetFlavors) "Ir para Complementos" else "Próximo Sabor",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        } else {
-                            // Final step
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 2.dp, vertical = 2.dp)
-                            ) {
-                                IconButton(onClick = onQuantityDecrement, enabled = uiState.wizardQuantity > 1) {
-                                    Icon(imageVector = Icons.Default.Remove, contentDescription = "Diminuir")
-                                }
-                                Text(
-                                    text = "${uiState.wizardQuantity}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.padding(horizontal = 6.dp)
-                                )
-                                IconButton(onClick = onQuantityIncrement) {
-                                    Icon(imageVector = Icons.Default.Add, contentDescription = "Aumentar")
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            Button(
-                                onClick = onAddToCartClick,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 50.dp)
-                                    .testTag("confirm_pastel_wizard_add_to_cart"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-                            ) {
-                                Text(
-                                    text = "Adicionar • ${String.format("R$ %.2f", uiState.wizardTotalPrice).replace(".", ",")}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -2052,6 +1936,7 @@ fun PastelWizardFullScreenContent(
                         .fillMaxSize()
                         .verticalScroll(scrollState)
                         .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .padding(bottom = 164.dp)
                 ) {
                     // STEP 0: Quantos Sabores?
                     if (currentStep == 0) {
@@ -2439,6 +2324,25 @@ fun PastelWizardFullScreenContent(
                     }
                 }
             }
+
+            PastelWizardSafeFooter(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 64.dp)
+                    .navigationBarsPadding()
+                    .imePadding(),
+                step = step,
+                targetFlavors = targetFlavors,
+                quantity = uiState.wizardQuantity,
+                totalPrice = uiState.wizardTotalPrice,
+                hasSelectionForCurrentFlavor = step !in 1..targetFlavors || uiState.wizardSelectedFlavors.getOrNull(step - 1) != null,
+                onNext = onNextStep,
+                onPrevious = onPrevStep,
+                onIncrement = onQuantityIncrement,
+                onDecrement = onQuantityDecrement,
+                onAdd = onAddToCartClick
+            )
         }
     }
 }
@@ -2590,87 +2494,19 @@ fun PizzaWizardFullScreenContent(
                 }
             }
         },
-        bottomBar = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding(),
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                ) {
-                    if (isFinalStep) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(
-                                onClick = onPrevious,
-                                modifier = Modifier.heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(12.dp)
-                            ) { Text("Anterior") }
-                            Spacer(Modifier.width(10.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 2.dp)
-                            ) {
-                                IconButton(onClick = onQuantityDecrement, enabled = uiState.pizzaWizardQuantity > 1) {
-                                    Icon(Icons.Default.Remove, contentDescription = "Diminuir")
-                                }
-                                Text("${uiState.pizzaWizardQuantity}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
-                                IconButton(onClick = onQuantityIncrement) {
-                                    Icon(Icons.Default.Add, contentDescription = "Aumentar")
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Button(
-                                onClick = onAddToCart,
-                                modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-                            ) {
-                                Text("Adicionar • ${money(uiState.pizzaWizardTotalPrice)}", fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (currentStep > 0) {
-                                OutlinedButton(
-                                    onClick = onPrevious,
-                                    modifier = Modifier.heightIn(min = 52.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) { Text("Anterior") }
-                                Spacer(Modifier.width(10.dp))
-                            }
-                            Button(
-                                onClick = onNext,
-                                enabled = canAdvance,
-                                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-                            ) {
-                                Text(
-                                    if (currentStep == 0) "Continuar" else "Próximo",
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(bottom = 164.dp)
+            ) {
             if (currentStep == 0) {
                 Text("Comece por aqui", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
@@ -2894,5 +2730,140 @@ fun PizzaWizardFullScreenContent(
             }
             Spacer(Modifier.height(110.dp))
         }
+
+        PizzaWizardSafeFooter(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 20.dp)
+                    .padding(bottom = 64.dp)
+                .navigationBarsPadding()
+                .imePadding(),
+            isFinalStep = isFinalStep,
+            canAdvance = canAdvance,
+            currentStep = currentStep,
+            quantity = uiState.pizzaWizardQuantity,
+            totalPrice = uiState.pizzaWizardTotalPrice,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onIncrement = onQuantityIncrement,
+            onDecrement = onQuantityDecrement,
+            onAdd = onAddToCart
+        )
+        }
+    }
+}
+
+
+@Composable
+private fun PastelWizardSafeFooter(
+    modifier: Modifier,
+    step: Int,
+    targetFlavors: Int,
+    quantity: Int,
+    totalPrice: Double,
+    hasSelectionForCurrentFlavor: Boolean,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onAdd: () -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+            if (step == 0) {
+                Button(
+                    onClick = onNext,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                ) { Text("Avançar", fontWeight = FontWeight.Bold) }
+            } else if (step in 1..targetFlavors) {
+                OutlinedButton(
+                    onClick = onPrevious,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Anterior") }
+                Button(
+                    onClick = onNext,
+                    enabled = hasSelectionForCurrentFlavor,
+                    modifier = Modifier.weight(1.5f).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                ) { Text(if (step == targetFlavors) "Complementos" else "Próximo", fontWeight = FontWeight.Bold) }
+            } else {
+                IconButton(onClick = onDecrement, enabled = quantity > 1, modifier = Modifier.border(1.dp, Color.LightGray, CircleShape)) {
+                    Icon(Icons.Default.Remove, contentDescription = "Diminuir")
+                }
+                Text("$quantity", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onIncrement, modifier = Modifier.border(1.dp, Color.LightGray, CircleShape)) {
+                    Icon(Icons.Default.Add, contentDescription = "Aumentar")
+                }
+                Button(
+                    onClick = onAdd,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                ) { Text("Adicionar • ${String.format("R$ %.2f", totalPrice).replace(".", ",")}", fontWeight = FontWeight.Bold, maxLines = 1) }
+            }
+    }
+}
+
+@Composable
+private fun PizzaWizardSafeFooter(
+    modifier: Modifier,
+    isFinalStep: Boolean,
+    canAdvance: Boolean,
+    currentStep: Int,
+    quantity: Int,
+    totalPrice: Double,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onAdd: () -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+            if (!isFinalStep) {
+                if (currentStep > 0) {
+                    OutlinedButton(
+                        onClick = onPrevious,
+                        modifier = Modifier.heightIn(min = 52.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Anterior") }
+                }
+                Button(
+                    onClick = onNext,
+                    enabled = canAdvance,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                ) { Text(if (currentStep == 0) "Continuar" else "Próximo", fontWeight = FontWeight.Bold) }
+            } else {
+                OutlinedButton(
+                    onClick = onPrevious,
+                    modifier = Modifier.heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Anterior") }
+                IconButton(onClick = onDecrement, enabled = quantity > 1, modifier = Modifier.border(1.dp, Color.LightGray, CircleShape)) {
+                    Icon(Icons.Default.Remove, contentDescription = "Diminuir")
+                }
+                Text("$quantity", fontWeight = FontWeight.Bold)
+                IconButton(onClick = onIncrement, modifier = Modifier.border(1.dp, Color.LightGray, CircleShape)) {
+                    Icon(Icons.Default.Add, contentDescription = "Aumentar")
+                }
+                Button(
+                    onClick = onAdd,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                ) { Text("Adicionar", fontWeight = FontWeight.Bold) }
+            }
     }
 }
