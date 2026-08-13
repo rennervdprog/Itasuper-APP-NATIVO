@@ -83,6 +83,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +106,7 @@ import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
 import com.example.data.model.LastOrder
 import com.example.data.model.Store
+import com.example.data.repository.UserSessionRepository
 import com.example.ui.navigation.ItaSuperBottomNavBar
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperHighlightText
@@ -117,6 +119,8 @@ import com.example.ui.theme.ItaSuperWarning
 
 import com.example.data.model.DiscoverProduct
 import com.example.ui.permissions.LocationAndPermissionsDialog
+import com.example.ui.permissions.LocationOnboardingPreferences
+import com.example.ui.permissions.LocationPermissionOnboarding
 import com.example.ui.permissions.PermissionUtils
 import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.SoraFontFamily
@@ -131,15 +135,31 @@ fun HomeScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val userSession by UserSessionRepository.userSession.collectAsState()
     var showPermissionsDialog by remember { mutableStateOf(false) }
+    var showLocationOnboarding by rememberSaveable(userSession.userId) {
+        mutableStateOf(
+            userSession.isLoggedIn &&
+                LocationOnboardingPreferences.shouldShow(context, userSession.userId)
+        )
+    }
+
+    if (showLocationOnboarding) {
+        LocationPermissionOnboarding(
+            userId = userSession.userId,
+            onFinished = { locationGranted ->
+                showLocationOnboarding = false
+                if (locationGranted) viewModel.fetchGpsLocation(context)
+            }
+        )
+        return
+    }
 
     LocationAndPermissionsDialog(
         showDialog = showPermissionsDialog,
         onDismiss = { showPermissionsDialog = false },
-        onPermissionsGranted = { locGranted, _ ->
-            if (locGranted) {
-                viewModel.fetchGpsLocation(context)
-            }
+        onLocationPermissionResult = { locationGranted ->
+            if (locationGranted) viewModel.fetchGpsLocation(context)
         }
     )
 

@@ -440,25 +440,6 @@ private fun LoginForm(
             }
         }
 
-        // Quick Guest Demo Button
-        TextButton(
-            onClick = {
-                viewModel.onLoginEmailChange("cliente@itasuper.com.br")
-                viewModel.onLoginPasswordChange("123456")
-                onLoginClick()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("demo_guest_button")
-        ) {
-            Text(
-                text = "Entrar sem senha (Modo Demo / Visitante)",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    color = ItaSuperHighlightText,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-        }
     }
 }
 

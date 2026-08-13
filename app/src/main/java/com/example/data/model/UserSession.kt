@@ -8,11 +8,11 @@ data class UserSession(
     val cpfCnpj: String = "",
     val whatsapp: String = "",
     val deliveryPin: String = "",
-    val addressStreet: String = "Rua Central",
-    val addressNumber: String = "100",
-    val addressNeighborhood: String = "Centro",
-    val addressCity: String = "Itaguaí",
-    val addressCep: String = "23810-000",
-    val pixKeyType: String = "CPF",
+    val addressStreet: String = "",
+    val addressNumber: String = "",
+    val addressNeighborhood: String = "",
+    val addressCity: String = "",
+    val addressCep: String = "",
+    val pixKeyType: String = "",
     val pixKey: String = ""
 )

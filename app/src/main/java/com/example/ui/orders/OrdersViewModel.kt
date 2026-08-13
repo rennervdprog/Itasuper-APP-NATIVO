@@ -59,11 +59,11 @@ class OrdersViewModel : ViewModel() {
         // Load default address from UserSession
         val session = UserSessionRepository.userSession.value
         _uiState.value = _uiState.value.copy(
-            cep = session.addressCep.ifBlank { "23810-000" },
-            street = session.addressStreet.ifBlank { "Rua Central" },
-            number = session.addressNumber.ifBlank { "100" },
-            neighborhood = session.addressNeighborhood.ifBlank { "Centro" },
-            city = session.addressCity.ifBlank { "Itaguaí" }
+            cep = session.addressCep,
+            street = session.addressStreet,
+            number = session.addressNumber,
+            neighborhood = session.addressNeighborhood,
+            city = session.addressCity
         )
     }
 

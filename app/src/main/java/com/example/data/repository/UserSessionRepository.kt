@@ -7,17 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 object UserSessionRepository {
 
-    private val _userSession = MutableStateFlow(
-        UserSession(
-            isLoggedIn = true,
-            userId = "user_demo_1",
-            name = "Cliente ItaSuper",
-            email = "cliente@itasuper.com.br",
-            cpfCnpj = "123.456.789-00",
-            whatsapp = "(21) 99999-8888",
-            deliveryPin = "1234"
-        )
-    )
+    private val _userSession = MutableStateFlow(UserSession())
     val userSession: StateFlow<UserSession> = _userSession.asStateFlow()
 
     fun setUserId(userId: String) {
