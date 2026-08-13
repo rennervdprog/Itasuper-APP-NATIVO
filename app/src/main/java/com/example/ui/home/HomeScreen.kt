@@ -295,6 +295,7 @@ fun HomeScreen(
                 isLoading = uiState.isLoadingStores,
                 errorMessage = uiState.errorMessage,
                 requiresAddress = uiState.requiresAddress,
+                activeCity = uiState.activeCity,
                 onRetry = viewModel::loadStores,
                 onInformAddress = viewModel::openLocationOrAddressDialog,
                 onStoreClick = onNavigateToStore
@@ -342,16 +343,14 @@ private fun HomeHeaderSection(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                if (uiState.streetName.isBlank()) {
+                val activeCity = uiState.activeCity.trim()
+                val addressLabel = listOf(uiState.streetName.trim(), uiState.streetNumber.trim())
+                    .filter { it.isNotBlank() }
+                    .joinToString(", ")
+                if (activeCity.isBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            if (!PermissionUtils.hasLocationPermission(context)) {
-                                onRequestPermissions()
-                            } else {
-                                viewModel.toggleEditNumber()
-                            }
-                        }
+                        modifier = Modifier.clickable { onRequestPermissions() }
                     ) {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
@@ -361,64 +360,50 @@ private fun HomeHeaderSection(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Adicione seu endereço",
+                            text = "Informe sua cidade",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = ItaSuperPrimary
                             )
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            color = ItaSuperPrimary.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = "Permissões",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperPrimary
-                                ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
                     }
                 } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { viewModel.toggleEditNumber() }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (uiState.streetNumber.isNotBlank()) "${uiState.streetName}, ${uiState.streetNumber}" else uiState.streetName,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        IconButton(
-                            onClick = viewModel::toggleEditNumber,
-                            modifier = Modifier.size(28.dp)
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { viewModel.openLocationOrAddressDialog() }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Editar número",
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
                                 tint = ItaSuperPrimary,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = activeCity,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Alterar cidade",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        if (addressLabel.isNotBlank()) {
+                            Text(
+                                text = addressLabel,
+                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 22.dp)
                             )
                         }
                     }
@@ -1561,6 +1546,7 @@ private fun HomeStoreListSection(
     isLoading: Boolean,
     errorMessage: String?,
     requiresAddress: Boolean,
+    activeCity: String,
     onRetry: () -> Unit,
     onInformAddress: () -> Unit,
     onStoreClick: (String) -> Unit
@@ -1572,22 +1558,38 @@ private fun HomeStoreListSection(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 14.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = ItaSuperPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "Destaques da região",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = ItaSuperPrimary,
+                    modifier = Modifier.size(20.dp)
                 )
-            )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (activeCity.isNotBlank()) "Todas as lojas em $activeCity" else "Todas as lojas",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (activeCity.isNotBlank()) {
+                Text(
+                    text = "${stores.size} ${if (stores.size == 1) "loja" else "lojas"}",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            }
         }
 
         if (isLoading) {
@@ -1691,7 +1693,11 @@ private fun HomeStoreListSection(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Nenhuma loja encontrada para esse filtro",
+                    text = if (activeCity.isNotBlank()) {
+                        "Nenhuma loja disponível em $activeCity"
+                    } else {
+                        "Nenhuma loja encontrada para esse filtro"
+                    },
                     style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
                 )
             }

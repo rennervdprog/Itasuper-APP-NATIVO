@@ -81,10 +81,6 @@ class HomeViewModel : ViewModel() {
         // Observe stores flow reactively
         viewModelScope.launch {
             StoreRepository.stores.collect { updatedStores ->
-                _uiState.value = _uiState.value.copy(
-                    stores = updatedStores,
-                    favoriteStores = updatedStores.take(2)
-                )
                 filterStores()
                 loadDiscoverProducts(updatedStores)
             }
@@ -127,9 +123,18 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun loadDiscoverProducts(stores: List<Store>) {
+        val activeCity = _uiState.value.activeCity.ifBlank { UserSessionRepository.userSession.value.addressCity }
+        val normalizedCity = normalizeForComparison(activeCity)
+        val cityStores = if (normalizedCity.isBlank()) {
+            emptyList()
+        } else {
+            stores.filter { store -> normalizeForComparison(store.addressCity) == normalizedCity }
+        }
         viewModelScope.launch {
-            val openStores = stores.filter { it.isOpen }
-            val products = SupabaseClient.fetchDiscoverProducts(openStores.ifEmpty { stores })
+            val openStores = cityStores.filter { it.isOpen }
+            val products = if (cityStores.isEmpty()) emptyList() else {
+                SupabaseClient.fetchDiscoverProducts(openStores.ifEmpty { cityStores })
+            }
             _uiState.value = _uiState.value.copy(discoverProducts = products)
         }
     }
@@ -190,7 +195,9 @@ class HomeViewModel : ViewModel() {
             val matchDirectDelivery = if (directDeliveryOnly) {
                 store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
             } else true
-            val matchCity = normalizeForComparison(store.address).contains(normalizedCity)
+            // A cidade é a fonte de verdade do catálogo. O endereço montado é apenas
+            // apresentação e pode estar incompleto, portanto não participa do filtro.
+            val matchCity = normalizeForComparison(store.addressCity) == normalizedCity
 
             matchCategory && matchQuery && matchFreeFee && matchDirectDelivery && matchCity
         }
@@ -200,7 +207,11 @@ class HomeViewModel : ViewModel() {
                 .thenBy { it.distanceKm ?: Double.MAX_VALUE }
                 .thenBy { it.name.lowercase() }
         )
-        _uiState.value = _uiState.value.copy(stores = sorted, requiresAddress = false)
+        _uiState.value = _uiState.value.copy(
+            stores = sorted,
+            favoriteStores = sorted.take(2),
+            requiresAddress = false
+        )
     }
 
     private fun storesWithCalculatedDistance(stores: List<Store>): List<Store> {
