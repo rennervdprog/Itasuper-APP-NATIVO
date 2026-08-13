@@ -5,6 +5,8 @@ import com.example.data.model.AddonGroup
 import com.example.data.model.AddonItem
 import com.example.data.model.MenuSection
 import com.example.data.model.Product
+import com.example.data.model.PizzaLegacySize
+import com.example.data.model.PizzaSizeCatalogItem
 import com.example.data.model.SavedAddress
 import com.example.data.model.Store
 import com.example.data.model.StoreSettings
@@ -826,6 +828,44 @@ object SupabaseClient {
                     val pizzaConfig = settingsObj?.optJSONObject("pizza_config")
                     val pastelConfig = settingsObj?.optJSONObject("pastel_config")
 
+                    val pizzaSizesCatalog = buildList {
+                        val sizes = settingsObj?.optJSONArray("pizza_sizes_catalog")
+                        if (sizes != null) {
+                            for (sizeIndex in 0 until sizes.length()) {
+                                val size = sizes.optJSONObject(sizeIndex) ?: continue
+                                val id = size.optString("id", "").trim()
+                                val name = size.optString("name", "").trim()
+                                if (id.isNotBlank() && name.isNotBlank()) {
+                                    add(PizzaSizeCatalogItem(
+                                        id = id,
+                                        name = name,
+                                        description = size.optString("description", "").trim(),
+                                        maxFlavors = size.optInt("maxFlavors", size.optInt("max_flavors", 4)).coerceIn(1, 4),
+                                        active = size.optBoolean("active", true)
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                    val pizzaPriceMatrix = buildMap<String, Map<String, Double>> {
+                        val matrix = settingsObj?.optJSONObject("pizza_price_matrix")
+                        if (matrix != null) {
+                            val categoryKeys = matrix.keys()
+                            while (categoryKeys.hasNext()) {
+                                val categoryId = categoryKeys.next()
+                                val categoryMatrix = matrix.optJSONObject(categoryId) ?: continue
+                                val prices = buildMap<String, Double> {
+                                    val sizeKeys = categoryMatrix.keys()
+                                    while (sizeKeys.hasNext()) {
+                                        val sizeId = sizeKeys.next()
+                                        val price = categoryMatrix.optDouble(sizeId, 0.0)
+                                        if (price > 0.0) put(sizeId, price)
+                                    }
+                                }
+                                if (prices.isNotEmpty()) put(categoryId, prices)
+                            }
+                        }
+                    }
                     val storeSettings = StoreSettings(
                         pizzaHalfEnabled = settingsObj?.optBoolean("pizza_half_enabled", true) ?: true,
                         pastelHalfEnabled = settingsObj?.optBoolean("pastel_half_enabled", true) ?: true,
@@ -833,6 +873,8 @@ object SupabaseClient {
                         pastelMaxFlavors = pastelConfig?.optInt("max_flavors", 4) ?: (settingsObj?.optInt("pastel_max_flavors", 4) ?: 4),
                         pastelMaxComplements = pastelConfig?.optInt("max_complements", 3) ?: (settingsObj?.optInt("pastel_max_complements", 3) ?: 3),
                         pizzaPriceMode = settingsObj?.optString("pizza_price_mode", "maior") ?: "maior",
+                        pizzaSizesCatalog = pizzaSizesCatalog,
+                        pizzaPriceMatrix = pizzaPriceMatrix,
                         pastelPriceMode = settingsObj?.optString("pastel_price_mode", "maior") ?: "maior",
                         pizzaSingleSize = settingsObj?.optBoolean("pizza_single_size", false) ?: false,
                         pastelSingleSize = settingsObj?.optBoolean("pastel_single_size", false) ?: false,
@@ -1178,15 +1220,24 @@ object SupabaseClient {
                     val soldByWeight = item.optBoolean("sold_by_weight", false)
                     if (soldByWeight) continue
 
-                    // Parse metadata for pdv_only, hidden, has_stuffed_crust, is_combo, is_pastel_flavor, is_beverage
+                    // Preserva a metadata completa necessária ao catálogo de pizza do Capacitor.
                     var isPdvOnly = false
                     var isHidden = false
                     var hasStuffedCrust = item.optBoolean("has_stuffed_crust", false)
                     var isCombo = item.optBoolean("is_combo", false)
                     var isPastelFlavor = item.optBoolean("is_pastel_flavor", false)
                     var isBeverage = item.optBoolean("is_beverage", false)
-
-                    val metadataObj = item.optJSONObject("metadata")
+                    var metadataObj = item.optJSONObject("metadata")
+                    if (metadataObj == null && item.has("metadata") && !item.isNull("metadata")) {
+                        val metaStr = item.optString("metadata", "")
+                        if (metaStr.isNotBlank() && metaStr.startsWith("{")) {
+                            try { metadataObj = JSONObject(metaStr) } catch (_: Exception) {}
+                        }
+                    }
+                    val pizzaSizeOverrides = mutableMapOf<String, Double>()
+                    val pizzaUnavailableSizeIds = mutableSetOf<String>()
+                    val legacyPizzaSizes = mutableListOf<PizzaLegacySize>()
+                    val pizzaCategoryId: String
                     if (metadataObj != null) {
                         isPdvOnly = metadataObj.optBoolean("pdv_only", false)
                         isHidden = metadataObj.optBoolean("hidden", false)
@@ -1194,19 +1245,33 @@ object SupabaseClient {
                         if (metadataObj.has("is_combo")) isCombo = metadataObj.optBoolean("is_combo", false)
                         if (metadataObj.has("is_pastel_flavor")) isPastelFlavor = metadataObj.optBoolean("is_pastel_flavor", false)
                         if (metadataObj.has("is_beverage")) isBeverage = metadataObj.optBoolean("is_beverage", false)
-                    } else if (item.has("metadata") && !item.isNull("metadata")) {
-                        val metaStr = item.optString("metadata", "")
-                        if (metaStr.isNotBlank() && metaStr.startsWith("{")) {
-                            try {
-                                val parsed = JSONObject(metaStr)
-                                isPdvOnly = parsed.optBoolean("pdv_only", false)
-                                isHidden = parsed.optBoolean("hidden", false)
-                                if (parsed.has("has_stuffed_crust")) hasStuffedCrust = parsed.optBoolean("has_stuffed_crust", false)
-                                if (parsed.has("is_combo")) isCombo = parsed.optBoolean("is_combo", false)
-                                if (parsed.has("is_pastel_flavor")) isPastelFlavor = parsed.optBoolean("is_pastel_flavor", false)
-                                if (parsed.has("is_beverage")) isBeverage = parsed.optBoolean("is_beverage", false)
-                            } catch (_: Exception) {}
+                        val overrides = metadataObj.optJSONObject("pizza_size_overrides")
+                        if (overrides != null) {
+                            val keys = overrides.keys()
+                            while (keys.hasNext()) {
+                                val sizeId = keys.next()
+                                val priceForSize = overrides.optDouble(sizeId, 0.0)
+                                if (priceForSize > 0.0) pizzaSizeOverrides[sizeId] = priceForSize
+                            }
                         }
+                        val unavailable = metadataObj.optJSONArray("pizza_unavailable_sizes")
+                        if (unavailable != null) {
+                            for (sizeIndex in 0 until unavailable.length()) {
+                                unavailable.optString(sizeIndex, "").trim().takeIf { it.isNotBlank() }?.let(pizzaUnavailableSizeIds::add)
+                            }
+                        }
+                        val legacySizes = metadataObj.optJSONArray("sizes")
+                        if (legacySizes != null) {
+                            for (sizeIndex in 0 until legacySizes.length()) {
+                                val legacySize = legacySizes.optJSONObject(sizeIndex) ?: continue
+                                val legacyName = legacySize.optString("name", "").trim()
+                                val legacyPrice = legacySize.optDouble("price", 0.0)
+                                if (legacyName.isNotBlank() && legacyPrice > 0.0) legacyPizzaSizes.add(PizzaLegacySize(legacyName, legacyPrice))
+                            }
+                        }
+                        pizzaCategoryId = metadataObj.optString("pizza_category_id", "").trim()
+                    } else {
+                        pizzaCategoryId = ""
                     }
 
                     if (isPdvOnly || isHidden) continue
@@ -1233,7 +1298,11 @@ object SupabaseClient {
                             hasStuffedCrust = hasStuffedCrust,
                             isCombo = isCombo,
                             isPastelFlavor = isPastelFlavor,
-                            isBeverage = isBeverage
+                            isBeverage = isBeverage,
+                            pizzaCategoryId = pizzaCategoryId,
+                            pizzaSizeOverrides = pizzaSizeOverrides,
+                            pizzaUnavailableSizeIds = pizzaUnavailableSizeIds,
+                            legacyPizzaSizes = legacyPizzaSizes
                         )
                     )
                 }

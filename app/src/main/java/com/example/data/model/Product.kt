@@ -55,6 +55,11 @@ data class PastelBorder(
     val sortOrder: Int = 0
 )
 
+data class PizzaLegacySize(
+    val name: String,
+    val price: Double
+)
+
 data class Product(
     val id: String,
     val storeId: String,
@@ -69,7 +74,11 @@ data class Product(
     val hasStuffedCrust: Boolean = false,
     val isCombo: Boolean = false,
     val isPastelFlavor: Boolean = false,
-    val isBeverage: Boolean = false
+    val isBeverage: Boolean = false,
+    val pizzaCategoryId: String = "",
+    val pizzaSizeOverrides: Map<String, Double> = emptyMap(),
+    val pizzaUnavailableSizeIds: Set<String> = emptySet(),
+    val legacyPizzaSizes: List<PizzaLegacySize> = emptyList()
 )
 
 data class CartItem(

@@ -143,6 +143,7 @@ fun StoreDetailScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val products by viewModel.filteredProducts.collectAsState()
+    val allStoreProducts by viewModel.allProducts.collectAsState()
     val cartState by viewModel.cartState.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -617,7 +618,7 @@ fun StoreDetailScreen(
                 ) {
                     PastelWizardFullScreenContent(
                         uiState = uiState,
-                        allProducts = products,
+                        allProducts = allStoreProducts,
                         onClose = { viewModel.closeBuilderModal() },
                         onSelectTargetFlavors = { viewModel.setWizardTargetFlavors(it) },
                         onSelectFlavorForStep = { slot, prod -> viewModel.selectWizardFlavor(slot, prod) },
@@ -631,22 +632,28 @@ fun StoreDetailScreen(
                     )
                 }
             } else {
-                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-                ModalBottomSheet(
+                Dialog(
                     onDismissRequest = { viewModel.closeBuilderModal() },
-                    sheetState = sheetState
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = true
+                    )
                 ) {
-                    CustomBuilderSheetContent(
+                    PizzaWizardFullScreenContent(
                         uiState = uiState,
-                        allProducts = products,
-                        onToggleFlavor = { viewModel.toggleBuilderFlavor(it) },
-                        onSelectSize = { viewModel.setBuilderSize(it) },
-                        onToggleComplement = { viewModel.toggleBuilderComplement(it) },
-                        onNotesChange = { viewModel.updateBuilderNotes(it) },
-                        onQuantityIncrement = { viewModel.incrementBuilderQuantity() },
-                        onQuantityDecrement = { viewModel.decrementBuilderQuantity() },
-                        onAddToCartClick = { viewModel.addBuilderToCart() }
+                        allProducts = allStoreProducts,
+                        onClose = { viewModel.closeBuilderModal() },
+                        onSelectSize = { id, name -> viewModel.setPizzaWizardSize(id, name) },
+                        onSelectTargetFlavors = { viewModel.setPizzaWizardTargetFlavors(it) },
+                        onSelectFlavor = { slot, product -> viewModel.selectPizzaWizardFlavor(slot, product) },
+                        onToggleAddon = { group, item -> viewModel.togglePizzaWizardAddon(group, item) },
+                        onSelectBorder = { viewModel.selectPizzaWizardBorder(it) },
+                        onNotesChange = { viewModel.updatePizzaWizardNotes(it) },
+                        onNext = { viewModel.nextPizzaWizardStep() },
+                        onPrevious = { viewModel.prevPizzaWizardStep() },
+                        onQuantityIncrement = { viewModel.incrementPizzaWizardQuantity() },
+                        onQuantityDecrement = { viewModel.decrementPizzaWizardQuantity() },
+                        onAddToCart = { viewModel.addPizzaWizardToCart() }
                     )
                 }
             }
@@ -2432,6 +2439,460 @@ fun PastelWizardFullScreenContent(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PizzaWizardFullScreenContent(
+    uiState: StoreDetailUiState,
+    allProducts: List<Product>,
+    onClose: () -> Unit,
+    onSelectSize: (String?, String?) -> Unit,
+    onSelectTargetFlavors: (Int) -> Unit,
+    onSelectFlavor: (Int, Product) -> Unit,
+    onToggleAddon: (AddonGroup, AddonItem) -> Unit,
+    onSelectBorder: (PastelBorder) -> Unit,
+    onNotesChange: (String) -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onQuantityIncrement: () -> Unit,
+    onQuantityDecrement: () -> Unit,
+    onAddToCart: () -> Unit
+) {
+    val store = uiState.store ?: return
+    val settings = store.settings
+    val scrollState = rememberScrollState()
+    val catalogSizes = remember(settings.pizzaSizesCatalog) {
+        settings.pizzaSizesCatalog.filter { it.active && it.maxFlavors >= 2 }
+    }
+    val legacySizes = remember(allProducts) {
+        allProducts.flatMap { it.legacyPizzaSizes }
+            .distinctBy { it.name }
+    }
+    val selectedCatalogSize = catalogSizes.firstOrNull { it.id == uiState.pizzaWizardSelectedSizeId }
+    val selectedSizeMax = selectedCatalogSize?.maxFlavors ?: settings.pizzaMaxFlavors
+    val maxFlavors = minOf(4, settings.pizzaMaxFlavors, selectedSizeMax).coerceAtLeast(2)
+    val targetFlavors = uiState.pizzaWizardTargetFlavors.coerceIn(2, maxFlavors)
+    val currentStep = uiState.pizzaWizardStep
+    val activeBorders = uiState.pizzaBorders.filter { it.isAvailable }
+    val hasAddons = uiState.pizzaWizardAddonGroups.isNotEmpty()
+    val addonsStep = if (hasAddons) targetFlavors + 1 else -1
+    val borderStep = if (activeBorders.isNotEmpty()) targetFlavors + if (hasAddons) 2 else 1 else -1
+    val totalSteps = targetFlavors + if (hasAddons) 1 else 0 + if (activeBorders.isNotEmpty()) 1 else 0
+    val lastContentStep = when {
+        borderStep > 0 -> borderStep
+        addonsStep > 0 -> addonsStep
+        else -> targetFlavors
+    }
+    val isFinalStep = currentStep == lastContentStep
+    val allFlavors = uiState.pizzaWizardSelectedFlavors.filterNotNull()
+    val fraction = when (targetFlavors) {
+        2 -> "½"
+        3 -> "⅓"
+        else -> "¼"
+    }
+
+    val menuSections = remember(uiState.menuSections) { uiState.menuSections.associateBy { it.id } }
+    val pizzaProducts = remember(allProducts, uiState.pizzaWizardSelectedSizeId, menuSections) {
+        val beverageKeywords = listOf("bebida", "drink", "suco", "refrigerante", "água", "agua", "cerveja", "energético", "energetico")
+        allProducts.filter { product ->
+            val sectionName = product.sectionId?.let { menuSections[it]?.name }.orEmpty()
+            val isBeverageSection = beverageKeywords.any { keyword ->
+                sectionName.contains(keyword, ignoreCase = true) || product.category.contains(keyword, ignoreCase = true)
+            }
+            product.isAvailable &&
+                !product.isBeverage &&
+                !isBeverageSection &&
+                !product.pizzaUnavailableSizeIds.contains(uiState.pizzaWizardSelectedSizeId)
+        }
+    }
+    val currentFlavorIndex = if (currentStep in 1..targetFlavors) currentStep - 1 else -1
+    val currentSelectedId = uiState.pizzaWizardSelectedFlavors.getOrNull(currentFlavorIndex)?.id
+    val alreadySelectedElsewhere = uiState.pizzaWizardSelectedFlavors
+        .mapIndexedNotNull { index, product -> product?.id?.takeIf { index != currentFlavorIndex } }
+        .toSet()
+    val visibleFlavorProducts = pizzaProducts.filter { it.id !in alreadySelectedElsewhere }
+    val flavorsBySection = remember(visibleFlavorProducts, menuSections) {
+        visibleFlavorProducts.groupBy { product ->
+            product.sectionId?.let { menuSections[it]?.name }
+                ?.takeIf { it.isNotBlank() }
+                ?: product.category.ifBlank { "Sabores" }
+        }
+    }
+
+    fun money(value: Double): String = "R$ %.2f".format(value).replace('.', ',')
+    val canAdvance = when {
+        currentStep == 0 -> true
+        currentStep in 1..targetFlavors -> uiState.pizzaWizardSelectedFlavors.getOrNull(currentStep - 1) != null
+        currentStep == addonsStep -> uiState.pizzaWizardAddonGroups.all { group ->
+            uiState.pizzaWizardSelectedAddonsMap[group.id].orEmpty().size >= group.minSelect
+        }
+        else -> true
+    }
+
+    BackHandler { onPrevious() }
+
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding()
+            ) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("Monte sua Pizza", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = store.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onPrevious) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onClose) {
+                            Icon(Icons.Default.Close, contentDescription = "Fechar")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+                if (currentStep > 0) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        repeat(totalSteps) { index ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(5.dp)
+                                    .background(
+                                        if (index + 1 <= currentStep) ItaSuperPrimary else Color.LightGray.copy(alpha = 0.45f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding(),
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    if (isFinalStep) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = onPrevious,
+                                modifier = Modifier.heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text("Anterior") }
+                            Spacer(Modifier.width(10.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 2.dp)
+                            ) {
+                                IconButton(onClick = onQuantityDecrement, enabled = uiState.pizzaWizardQuantity > 1) {
+                                    Icon(Icons.Default.Remove, contentDescription = "Diminuir")
+                                }
+                                Text("${uiState.pizzaWizardQuantity}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+                                IconButton(onClick = onQuantityIncrement) {
+                                    Icon(Icons.Default.Add, contentDescription = "Aumentar")
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Button(
+                                onClick = onAddToCart,
+                                modifier = Modifier.weight(1f).heightIn(min = 50.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                            ) {
+                                Text("Adicionar • ${money(uiState.pizzaWizardTotalPrice)}", fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (currentStep > 0) {
+                                OutlinedButton(
+                                    onClick = onPrevious,
+                                    modifier = Modifier.heightIn(min = 52.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) { Text("Anterior") }
+                                Spacer(Modifier.width(10.dp))
+                            }
+                            Button(
+                                onClick = onNext,
+                                enabled = canAdvance,
+                                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                            ) {
+                                Text(
+                                    if (currentStep == 0) "Continuar" else "Próximo",
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            if (currentStep == 0) {
+                Text("Comece por aqui", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Escolha o tamanho e quantos sabores diferentes você quer na sua pizza.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+                Spacer(Modifier.height(20.dp))
+
+                if (!settings.pizzaSingleSize && (catalogSizes.isNotEmpty() || legacySizes.isNotEmpty())) {
+                    Text("Tamanho", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (catalogSizes.isNotEmpty()) {
+                            catalogSizes.forEach { size ->
+                                val selected = size.id == uiState.pizzaWizardSelectedSizeId
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().clickable { onSelectSize(size.id, size.name) },
+                                    colors = CardDefaults.cardColors(containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(selected = selected, onClick = { onSelectSize(size.id, size.name) }, colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary))
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(size.name, fontWeight = FontWeight.Bold)
+                                            val detail = listOf(size.description.takeIf { it.isNotBlank() }, "até ${size.maxFlavors} sabores").filterNotNull().joinToString(" • ")
+                                            Text(detail, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            legacySizes.forEach { size ->
+                                val selected = size.name == uiState.pizzaWizardSelectedSizeName
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().clickable { onSelectSize(null, size.name) },
+                                    colors = CardDefaults.cardColors(containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(selected = selected, onClick = { onSelectSize(null, size.name) }, colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(size.name, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                }
+
+                Text("Quantos sabores?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("Cada parte terá a mesma proporção na pizza.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    (2..maxFlavors).forEach { count ->
+                        val selected = targetFlavors == count
+                        Card(
+                            modifier = Modifier.weight(1f).clickable { onSelectTargetFlavors(count) },
+                            colors = CardDefaults.cardColors(containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("$count", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                                Text(if (count == 2) "Meio a meio" else "$count sabores", style = MaterialTheme.typography.labelMedium)
+                                Text(if (count == 2) "½ cada" else if (count == 3) "⅓ cada" else "¼ cada", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            } else {
+                if (allFlavors.isNotEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = ItaSuperPrimary.copy(alpha = 0.08f)),
+                        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Sua pizza", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                            Spacer(Modifier.height(5.dp))
+                            allFlavors.forEach { flavor ->
+                                Text("$fraction ${flavor.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            }
+                            uiState.pizzaWizardSelectedBorder?.let { border ->
+                                Text("Borda: ${border.name}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            }
+                            if (allFlavors.size == targetFlavors) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Total unitário: ${money(uiState.pizzaWizardUnitPrice)}", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
+                }
+
+                when {
+                    currentStep in 1..targetFlavors -> {
+                        val ordinal = when (currentStep) { 1 -> "1º"; 2 -> "2º"; 3 -> "3º"; else -> "4º" }
+                        Text("Escolha o $ordinal sabor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("$fraction da pizza", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                        Spacer(Modifier.height(14.dp))
+                        if (flavorsBySection.isEmpty()) {
+                            Text("Nenhum sabor disponível para este tamanho.", color = Color.Gray, modifier = Modifier.padding(vertical = 32.dp))
+                        } else {
+                            flavorsBySection.forEach { (section, sectionProducts) ->
+                                Text(section.uppercase(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = ItaSuperPrimary, modifier = Modifier.padding(vertical = 6.dp))
+                                sectionProducts.forEach { product ->
+                                    val selected = product.id == currentSelectedId
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onSelectFlavor(currentFlavorIndex, product) },
+                                        colors = CardDefaults.cardColors(containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                                        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            RadioButton(selected = selected, onClick = { onSelectFlavor(currentFlavorIndex, product) }, colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary))
+                                            if (product.imageUrl.isNotBlank()) {
+                                                AsyncImage(model = product.imageUrl, contentDescription = null, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
+                                                Spacer(Modifier.width(10.dp))
+                                            } else {
+                                                Spacer(Modifier.width(6.dp))
+                                            }
+                                            Column(Modifier.weight(1f)) {
+                                                Text(product.name, fontWeight = FontWeight.Bold)
+                                                if (product.description.isNotBlank()) Text(product.description, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            }
+                                            Text(money(product.price), fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    currentStep == addonsStep -> {
+                        Text("Adicionais", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Escolha as opções para sua pizza.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                        Spacer(Modifier.height(12.dp))
+                        uiState.pizzaWizardAddonGroups.forEach { group ->
+                            val selectedItems = uiState.pizzaWizardSelectedAddonsMap[group.id].orEmpty()
+                            Text(
+                                text = buildString {
+                                    append(group.name)
+                                    if (group.minSelect > 0) append(" • mínimo ${group.minSelect}")
+                                    if (group.maxSelect > 0) append(" • ${selectedItems.size}/${group.maxSelect}")
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 5.dp)
+                            )
+                            uiState.pizzaWizardAddonItemsMap[group.id].orEmpty().forEach { item ->
+                                val checked = selectedItems.any { it.id == item.id }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onToggleAddon(group, item) },
+                                    colors = CardDefaults.cardColors(containerColor = if (checked) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(if (checked) 2.dp else 1.dp, if (checked) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = checked, onCheckedChange = { onToggleAddon(group, item) }, colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(item.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                                        Text(if (item.price > 0) "+ ${money(item.price)}" else "Grátis", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    currentStep == borderStep -> {
+                        Text("Escolha a borda", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(12.dp))
+                        activeBorders.forEach { border ->
+                            val selected = uiState.pizzaWizardSelectedBorder?.id == border.id
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onSelectBorder(border) },
+                                colors = CardDefaults.cardColors(containerColor = if (selected) ItaSuperPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E0DD)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(selected = selected, onClick = { onSelectBorder(border) }, colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(border.name, Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                                    Text(if (border.price > 0) "+ ${money(border.price)}" else "Grátis", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isFinalStep) {
+                    Spacer(Modifier.height(20.dp))
+                    OutlinedTextField(
+                        value = uiState.pizzaWizardNotes,
+                        onValueChange = onNotesChange,
+                        modifier = Modifier.fillMaxWidth().testTag("pizza_wizard_notes_input"),
+                        label = { Text("Observações") },
+                        placeholder = { Text("Ex: Sem cebola, massa bem assada...") },
+                        maxLines = 3,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
+            if (!uiState.pizzaWizardErrorMessage.isNullOrBlank()) {
+                Spacer(Modifier.height(14.dp))
+                Text(uiState.pizzaWizardErrorMessage!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(110.dp))
         }
     }
 }

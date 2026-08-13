@@ -1,5 +1,13 @@
 package com.example.data.model
 
+data class PizzaSizeCatalogItem(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val maxFlavors: Int = 4,
+    val active: Boolean = true
+)
+
 data class StoreSettings(
     val pizzaHalfEnabled: Boolean = true,
     val pastelHalfEnabled: Boolean = true,
@@ -7,6 +15,8 @@ data class StoreSettings(
     val pastelMaxFlavors: Int = 4,
     val pastelMaxComplements: Int = 3,
     val pizzaPriceMode: String = "maior",
+    val pizzaSizesCatalog: List<PizzaSizeCatalogItem> = emptyList(),
+    val pizzaPriceMatrix: Map<String, Map<String, Double>> = emptyMap(),
     val pastelPriceMode: String = "maior",
     val pizzaSingleSize: Boolean = false,
     val pastelSingleSize: Boolean = false,

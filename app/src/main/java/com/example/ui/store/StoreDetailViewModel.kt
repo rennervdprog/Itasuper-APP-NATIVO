@@ -48,7 +48,7 @@ data class StoreDetailUiState(
     val wizardQuantity: Int = 1,
     val wizardNotes: String = "",
     val wizardErrorMessage: String? = null,
-    // Pizza builder state
+    // Legado do construtor simples, mantido apenas para compatibilidade interna.
     val builderSelectedFlavors: List<Product> = emptyList(),
     val builderQuantity: Int = 1,
     val builderNotes: String = "",
@@ -57,6 +57,19 @@ data class StoreDetailUiState(
     val builderSelectedComplements: List<AddonItem> = emptyList(),
     val builderIsCombo: Boolean = false,
     val builderErrorMessage: String? = null,
+    // Wizard de pizza: mesma sequência da versão Capacitor.
+    val pizzaWizardStep: Int = 0,
+    val pizzaWizardTargetFlavors: Int = 2,
+    val pizzaWizardSelectedFlavors: List<Product?> = listOf(null, null),
+    val pizzaWizardSelectedSizeId: String? = null,
+    val pizzaWizardSelectedSizeName: String? = null,
+    val pizzaWizardAddonGroups: List<AddonGroup> = emptyList(),
+    val pizzaWizardAddonItemsMap: Map<String, List<AddonItem>> = emptyMap(),
+    val pizzaWizardSelectedAddonsMap: Map<String, List<AddonItem>> = emptyMap(),
+    val pizzaWizardSelectedBorder: PastelBorder? = null,
+    val pizzaWizardQuantity: Int = 1,
+    val pizzaWizardNotes: String = "",
+    val pizzaWizardErrorMessage: String? = null,
     val snackbarMessage: String? = null
 ) {
     val canAddToCart: Boolean
@@ -115,6 +128,33 @@ data class StoreDetailUiState(
     val builderTotalPrice: Double
         get() = builderUnitPrice * builderQuantity
 
+    val pizzaWizardUnitPrice: Double
+        get() {
+            val selected = pizzaWizardSelectedFlavors.filterNotNull()
+            if (selected.isEmpty()) return 0.0
+            val settings = store?.settings ?: return 0.0
+            val prices = selected.map { flavor ->
+                val sizeId = pizzaWizardSelectedSizeId
+                val sizeName = pizzaWizardSelectedSizeName
+                when {
+                    !sizeId.isNullOrBlank() && flavor.pizzaSizeOverrides[sizeId] ?: 0.0 > 0.0 -> flavor.pizzaSizeOverrides.getValue(sizeId)
+                    !sizeId.isNullOrBlank() && flavor.pizzaCategoryId.isNotBlank() && settings.pizzaPriceMatrix[flavor.pizzaCategoryId]?.get(sizeId) ?: 0.0 > 0.0 -> settings.pizzaPriceMatrix[flavor.pizzaCategoryId]!!.getValue(sizeId)
+                    !sizeName.isNullOrBlank() -> flavor.legacyPizzaSizes.firstOrNull { it.name == sizeName }?.price ?: flavor.price
+                    else -> flavor.price
+                }
+            }
+            val pizzaBase = when (settings.pizzaPriceMode.lowercase()) {
+                "media", "soma" -> prices.average()
+                else -> prices.maxOrNull() ?: 0.0
+            }
+            val border = pizzaWizardSelectedBorder?.price ?: 0.0
+            val addons = pizzaWizardSelectedAddonsMap.values.flatten().sumOf { it.price }
+            return pizzaBase + border + addons
+        }
+
+    val pizzaWizardTotalPrice: Double
+        get() = pizzaWizardUnitPrice * pizzaWizardQuantity
+
     val modalUnitPrice: Double
         get() {
             val product = selectedProductForModal ?: return 0.0
@@ -157,6 +197,7 @@ class StoreDetailViewModel : ViewModel() {
     private var allAddonItems: List<AddonItem> = emptyList()
 
     val cartState: StateFlow<CartState> = CartRepository.cartState
+    val allProducts: StateFlow<List<Product>> = _rawProducts.asStateFlow()
 
     val filteredProducts: StateFlow<List<Product>> = combine(
         _rawProducts,
@@ -414,17 +455,24 @@ class StoreDetailViewModel : ViewModel() {
                 wizardErrorMessage = null
             )
         } else {
+            val activeCatalogSizes = store.settings.pizzaSizesCatalog.filter { it.active && it.maxFlavors >= 2 }
+            val initialCatalogSize = activeCatalogSizes.firstOrNull()
+            val initialLegacySize = products.flatMap { it.legacyPizzaSizes }.firstOrNull()?.name
             _uiState.value = _uiState.value.copy(
                 showBuilderModal = true,
-                builderType = type,
-                builderSelectedFlavors = emptyList(),
-                builderQuantity = 1,
-                builderNotes = "",
-                builderSelectedSize = "Média",
-                builderStuffedCrust = null,
-                builderSelectedComplements = emptyList(),
-                builderIsCombo = false,
-                builderErrorMessage = null
+                builderType = "pizza",
+                pizzaWizardStep = if (store.settings.pizzaMaxFlavors <= 2) 1 else 0,
+                pizzaWizardTargetFlavors = 2,
+                pizzaWizardSelectedFlavors = listOf(null, null),
+                pizzaWizardSelectedSizeId = initialCatalogSize?.id,
+                pizzaWizardSelectedSizeName = initialCatalogSize?.name ?: initialLegacySize,
+                pizzaWizardAddonGroups = emptyList(),
+                pizzaWizardAddonItemsMap = emptyMap(),
+                pizzaWizardSelectedAddonsMap = emptyMap(),
+                pizzaWizardSelectedBorder = pizzaBordersDefault(),
+                pizzaWizardQuantity = 1,
+                pizzaWizardNotes = "",
+                pizzaWizardErrorMessage = null
             )
         }
     }
@@ -562,6 +610,205 @@ class StoreDetailViewModel : ViewModel() {
             selectedAddons = selectedAddons
         )
 
+        closeBuilderModal()
+    }
+
+    private fun pizzaBordersDefault(): PastelBorder? {
+        return _uiState.value.pizzaBorders.firstOrNull { border ->
+            border.isAvailable && (border.name.contains("tradicional", ignoreCase = true) || border.price <= 0.0)
+        }
+    }
+
+    private fun pizzaWizardGroupsFor(flavors: List<Product?>): Pair<List<AddonGroup>, Map<String, List<AddonItem>>> {
+        val flavorIds = flavors.filterNotNull().map { it.id }.toSet()
+        if (flavorIds.isEmpty()) return emptyList<AddonGroup>() to emptyMap()
+        val directGroups = allAddonGroups.filter { it.productId in flavorIds }
+        val mappedIds = flavorIds.flatMap { productAddonGroupsMap[it].orEmpty() }.toSet()
+        val groups = (directGroups + allAddonGroups.filter { it.id in mappedIds })
+            .distinctBy { it.id }
+            .sortedBy { it.sortOrder }
+        val items = groups.associate { group ->
+            group.id to allAddonItems.filter { it.groupId == group.id && it.isAvailable }.sortedBy { it.sortOrder }
+        }
+        return groups to items
+    }
+
+    fun setPizzaWizardSize(sizeId: String?, sizeName: String?) {
+        val state = _uiState.value
+        val store = state.store ?: return
+        val selectedSize = store.settings.pizzaSizesCatalog.firstOrNull { it.id == sizeId }
+        val effectiveMax = minOf(store.settings.pizzaMaxFlavors, selectedSize?.maxFlavors ?: store.settings.pizzaMaxFlavors)
+        val target = state.pizzaWizardTargetFlavors.coerceAtMost(effectiveMax.coerceAtLeast(2))
+        _uiState.value = state.copy(
+            pizzaWizardSelectedSizeId = sizeId,
+            pizzaWizardSelectedSizeName = sizeName,
+            pizzaWizardTargetFlavors = target,
+            pizzaWizardSelectedFlavors = List(target) { null },
+            pizzaWizardAddonGroups = emptyList(),
+            pizzaWizardAddonItemsMap = emptyMap(),
+            pizzaWizardSelectedAddonsMap = emptyMap(),
+            pizzaWizardErrorMessage = null
+        )
+    }
+
+    fun setPizzaWizardTargetFlavors(target: Int) {
+        val state = _uiState.value
+        val store = state.store ?: return
+        val selectedSizeMax = state.pizzaWizardSelectedSizeId?.let { id ->
+            store.settings.pizzaSizesCatalog.firstOrNull { it.id == id }?.maxFlavors
+        } ?: store.settings.pizzaMaxFlavors
+        val effectiveTarget = target.coerceIn(2, minOf(4, store.settings.pizzaMaxFlavors, selectedSizeMax))
+        _uiState.value = state.copy(
+            pizzaWizardTargetFlavors = effectiveTarget,
+            pizzaWizardSelectedFlavors = List(effectiveTarget) { null },
+            pizzaWizardAddonGroups = emptyList(),
+            pizzaWizardAddonItemsMap = emptyMap(),
+            pizzaWizardSelectedAddonsMap = emptyMap(),
+            pizzaWizardSelectedBorder = pizzaBordersDefault(),
+            pizzaWizardErrorMessage = null
+        )
+    }
+
+    fun selectPizzaWizardFlavor(slotIndex: Int, product: Product) {
+        val state = _uiState.value
+        if (!product.isAvailable || product.isBeverage || product.pizzaUnavailableSizeIds.contains(state.pizzaWizardSelectedSizeId)) return
+        val current = state.pizzaWizardSelectedFlavors.toMutableList()
+        if (slotIndex !in current.indices) return
+        if (current.anyIndexed { index, flavor -> index != slotIndex && flavor?.id == product.id }) {
+            _uiState.value = state.copy(pizzaWizardErrorMessage = "Escolha um sabor diferente em cada parte da pizza.")
+            return
+        }
+        current[slotIndex] = product
+        val (groups, itemsMap) = pizzaWizardGroupsFor(current)
+        val validSelections = state.pizzaWizardSelectedAddonsMap.filterKeys { groupId -> groups.any { it.id == groupId } }
+        _uiState.value = state.copy(
+            pizzaWizardSelectedFlavors = current,
+            pizzaWizardAddonGroups = groups,
+            pizzaWizardAddonItemsMap = itemsMap,
+            pizzaWizardSelectedAddonsMap = validSelections,
+            pizzaWizardErrorMessage = null
+        )
+    }
+
+    private fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean = any { item -> predicate(indexOf(item), item) }
+
+    fun togglePizzaWizardAddon(group: AddonGroup, item: AddonItem) {
+        val state = _uiState.value
+        val next = state.pizzaWizardSelectedAddonsMap.toMutableMap()
+        val current = next[group.id].orEmpty().toMutableList()
+        if (current.any { it.id == item.id }) {
+            current.removeAll { it.id == item.id }
+        } else if (group.maxSelect <= 0 || current.size < group.maxSelect) {
+            current.add(item)
+        } else {
+            _uiState.value = state.copy(pizzaWizardErrorMessage = "Você pode selecionar no máximo ${group.maxSelect} opção(ões) em ${group.name}.")
+            return
+        }
+        next[group.id] = current
+        _uiState.value = state.copy(pizzaWizardSelectedAddonsMap = next, pizzaWizardErrorMessage = null)
+    }
+
+    fun selectPizzaWizardBorder(border: PastelBorder) {
+        _uiState.value = _uiState.value.copy(pizzaWizardSelectedBorder = border, pizzaWizardErrorMessage = null)
+    }
+
+    fun updatePizzaWizardNotes(notes: String) {
+        _uiState.value = _uiState.value.copy(pizzaWizardNotes = notes.take(200))
+    }
+
+    fun incrementPizzaWizardQuantity() {
+        _uiState.value = _uiState.value.copy(pizzaWizardQuantity = _uiState.value.pizzaWizardQuantity + 1)
+    }
+
+    fun decrementPizzaWizardQuantity() {
+        if (_uiState.value.pizzaWizardQuantity > 1) {
+            _uiState.value = _uiState.value.copy(pizzaWizardQuantity = _uiState.value.pizzaWizardQuantity - 1)
+        }
+    }
+
+    private fun pizzaWizardAddonsValid(state: StoreDetailUiState): Boolean = state.pizzaWizardAddonGroups.all { group ->
+        state.pizzaWizardSelectedAddonsMap[group.id].orEmpty().size >= group.minSelect
+    }
+
+    fun nextPizzaWizardStep() {
+        val state = _uiState.value
+        if (state.pizzaWizardStep == 0) {
+            _uiState.value = state.copy(pizzaWizardStep = 1, pizzaWizardErrorMessage = null)
+            return
+        }
+        if (state.pizzaWizardStep in 1..state.pizzaWizardTargetFlavors) {
+            val selected = state.pizzaWizardSelectedFlavors.getOrNull(state.pizzaWizardStep - 1)
+            if (selected == null) {
+                _uiState.value = state.copy(pizzaWizardErrorMessage = "Escolha o ${state.pizzaWizardStep}º sabor para continuar.")
+                return
+            }
+            if (state.pizzaWizardStep < state.pizzaWizardTargetFlavors) {
+                _uiState.value = state.copy(pizzaWizardStep = state.pizzaWizardStep + 1, pizzaWizardErrorMessage = null)
+                return
+            }
+            if (state.pizzaWizardAddonGroups.isNotEmpty() || state.pizzaBorders.any { it.isAvailable }) {
+                _uiState.value = state.copy(pizzaWizardStep = state.pizzaWizardStep + 1, pizzaWizardErrorMessage = null)
+            }
+            return
+        }
+        val addonStep = state.pizzaWizardTargetFlavors + 1
+        if (state.pizzaWizardStep == addonStep && state.pizzaWizardAddonGroups.isNotEmpty()) {
+            if (!pizzaWizardAddonsValid(state)) {
+                _uiState.value = state.copy(pizzaWizardErrorMessage = "Complete as opções obrigatórias antes de continuar.")
+                return
+            }
+            if (state.pizzaBorders.any { it.isAvailable }) {
+                _uiState.value = state.copy(pizzaWizardStep = addonStep + 1, pizzaWizardErrorMessage = null)
+            }
+        }
+    }
+
+    fun prevPizzaWizardStep() {
+        val state = _uiState.value
+        when {
+            state.pizzaWizardStep == 0 -> closeBuilderModal()
+            state.pizzaWizardStep == 1 -> _uiState.value = state.copy(pizzaWizardStep = 0, pizzaWizardErrorMessage = null)
+            else -> _uiState.value = state.copy(pizzaWizardStep = state.pizzaWizardStep - 1, pizzaWizardErrorMessage = null)
+        }
+    }
+
+    fun addPizzaWizardToCart() {
+        val state = _uiState.value
+        val store = state.store ?: return
+        val flavors = state.pizzaWizardSelectedFlavors.filterNotNull()
+        if (flavors.size != state.pizzaWizardTargetFlavors) {
+            _uiState.value = state.copy(pizzaWizardErrorMessage = "Selecione todos os ${state.pizzaWizardTargetFlavors} sabores.")
+            return
+        }
+        if (!pizzaWizardAddonsValid(state)) {
+            _uiState.value = state.copy(pizzaWizardErrorMessage = "Complete as opções obrigatórias antes de adicionar.")
+            return
+        }
+        val fraction = when (state.pizzaWizardTargetFlavors) { 2 -> "½"; 3 -> "⅓"; else -> "¼" }
+        val selectedAddons = mutableListOf<SelectedAddonItem>()
+        state.pizzaWizardSelectedSizeName?.let { size ->
+            selectedAddons.add(SelectedAddonItem("pizza_size_${state.pizzaWizardSelectedSizeId ?: size}", "Tamanho: $size", 0.0, "pizza_size", "Tamanho"))
+        }
+        flavors.forEachIndexed { index, flavor ->
+            selectedAddons.add(SelectedAddonItem("pizza_flavor_${index}_${flavor.id}", "$fraction ${flavor.name}", 0.0, "pizza_flavors", "Sabores"))
+        }
+        state.pizzaWizardSelectedBorder?.let { border ->
+            selectedAddons.add(SelectedAddonItem(border.id, "Borda: ${border.name}", border.price, "pizza_border", "Borda"))
+        }
+        state.pizzaWizardAddonGroups.forEach { group ->
+            state.pizzaWizardSelectedAddonsMap[group.id].orEmpty().forEach { item ->
+                selectedAddons.add(SelectedAddonItem(item.id, item.name, item.price, group.id, group.name, group.priceReplacesBase))
+            }
+        }
+        val basePrice = state.pizzaWizardUnitPrice - (state.pizzaWizardSelectedBorder?.price ?: 0.0) - state.pizzaWizardSelectedAddonsMap.values.flatten().sumOf { it.price }
+        val title = if (state.pizzaWizardTargetFlavors == 2) "Pizza Meio a Meio" else "Pizza ${state.pizzaWizardTargetFlavors} Sabores"
+        val flavorsText = flavors.joinToString(" / ") { it.name }
+        val product = flavors.first().copy(
+            name = state.pizzaWizardSelectedSizeName?.let { "$title: $flavorsText ($it)" } ?: "$title: $flavorsText",
+            description = "Sabores: $flavorsText",
+            price = basePrice.coerceAtLeast(0.0)
+        )
+        CartRepository.addProduct(product, store.name, state.pizzaWizardQuantity, state.pizzaWizardNotes.trim(), selectedAddons)
         closeBuilderModal()
     }
 
