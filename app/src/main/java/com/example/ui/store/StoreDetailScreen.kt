@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -694,24 +695,46 @@ private fun StoreInfoMetric(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     valueColor: Color = ItaSuperTextPrimary
 ) {
-    Card(
-        modifier = Modifier.heightIn(min = 92.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
-        border = BorderStroke(1.dp, Color(0xFFF0EFEC)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 92.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        Surface(
+            modifier = Modifier.size(32.dp),
+            shape = CircleShape,
+            color = ItaSuperPrimary.copy(alpha = 0.10f)
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(17.dp))
-            Spacer(modifier = Modifier.height(5.dp))
-            Text(text = label.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7A7A7A), textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = ItaSuperPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = label.uppercase(),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF7A7A7A),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -725,51 +748,382 @@ fun StoreHeaderSection(
     var isHoursExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Banner & Overlapping Logo Container
+        // Banner compacto, mantendo a fotografia como pano de fundo do bloco editorial.
         Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.TopCenter
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp)
+                .background(ItaSuperSecondary)
         ) {
-            // 1. Banner Image
-            Box(
+            if (!store?.bannerUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = store?.bannerUrl,
+                    contentDescription = store?.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ItaSuperPrimary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ShoppingBag,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = ItaSuperPrimary
+                    )
+                }
+            }
+        }
+
+        // Uma única superfície agrupa todas as informações; as divisórias substituem cartões redundantes.
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(118.dp)
-                    .background(ItaSuperSecondary)
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFFFFFEFC),
+                border = BorderStroke(1.dp, Color(0xFFECEBE8)),
+                shadowElevation = 1.dp
             ) {
-                if (!store?.bannerUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = store?.bannerUrl,
-                        contentDescription = store?.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 60.dp, end = 16.dp, bottom = 20.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        text = store?.name ?: "Loja ItaSuper",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Start
                     )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(ItaSuperPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ShoppingBag,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = ItaSuperPrimary
+                        Text(
+                            text = store?.category ?: "Alimentação",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = "Nota",
+                                tint = ItaSuperWarning,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "${store?.rating ?: 5.0}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        val isOpen = store?.isOpen ?: true
+                        Surface(
+                            color = if (isOpen) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (isOpen) "Aberto" else "Fechado",
+                                color = if (isOpen) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
+
+                    val addressText = store?.address?.ifBlank { "Endereço não informado" } ?: "Endereço não informado"
+                    val hasMapsTarget = store?.latitude != null && store.longitude != null || store?.address?.isNotBlank() == true
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.LocationOn,
+                                contentDescription = null,
+                                tint = ItaSuperPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = addressText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ItaSuperTextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            modifier = Modifier
+                                .clickable(enabled = hasMapsTarget) {
+                                    val lat = store?.latitude
+                                    val lng = store?.longitude
+                                    val mapsQuery = if (lat != null && lng != null) "$lat,$lng" else addressText
+                                    val gmmIntentUri = Uri.parse("geo:0,0?q=${Uri.encode(mapsQuery)}")
+                                    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+                                    mapIntent.setPackage("com.google.android.apps.maps")
+                                    try {
+                                        context.startActivity(mapIntent)
+                                    } catch (_: Exception) {
+                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(mapsQuery)}"))
+                                        context.startActivity(browserIntent)
+                                    }
+                                }
+                                .testTag("open_maps_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            color = ItaSuperPrimary.copy(alpha = 0.10f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Navigation,
+                                    contentDescription = null,
+                                    tint = ItaSuperPrimary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "MAPS",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = ItaSuperPrimary,
+                                        fontSize = 11.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
+                    val deliveryFeeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+                    val deliveryTimeText = store?.deliveryTime?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+                    val minimumOrderText = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
+                        String.format("R$ %.2f", value).replace('.', ',')
+                    } ?: "—"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            StoreInfoMetric("Taxa", deliveryFeeText, Icons.Default.Navigation, if (store?.isFreeDelivery == true) Color(0xFF17803D) else ItaSuperTextPrimary)
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StoreInfoMetric("Tempo", deliveryTimeText, Icons.Outlined.Schedule)
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StoreInfoMetric("Pedido mín.", minimumOrderText, Icons.Default.ShoppingBag)
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isHoursExpanded = !isHoursExpanded }
+                            .testTag("expand_hours_button")
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Schedule,
+                                    contentDescription = null,
+                                    tint = ItaSuperPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Horários",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                            Icon(
+                                imageVector = if (isHoursExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isHoursExpanded) "Recolher" else "Expandir",
+                                tint = Color.Gray
+                            )
+                        }
+
+                        if (isHoursExpanded) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val hoursList = store?.openingHours
+                            if (!hoursList.isNullOrEmpty()) {
+                                hoursList.forEach { oh ->
+                                    val dayLabel = when {
+                                        oh.dayOfWeekStr.isNotBlank() -> oh.dayOfWeekStr.replaceFirstChar { it.uppercase() }
+                                        oh.dayOfWeek == 1 -> "Domingo"
+                                        oh.dayOfWeek == 2 -> "Segunda-feira"
+                                        oh.dayOfWeek == 3 -> "Terça-feira"
+                                        oh.dayOfWeek == 4 -> "Quarta-feira"
+                                        oh.dayOfWeek == 5 -> "Quinta-feira"
+                                        oh.dayOfWeek == 6 -> "Sexta-feira"
+                                        oh.dayOfWeek == 7 -> "Sábado"
+                                        else -> "Dia da Semana"
+                                    }
+                                    val timeLabel = if (oh.isClosedAllDay) "Fechado" else "${oh.openTime} às ${oh.closeTime}"
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(text = dayLabel, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                                        Text(
+                                            text = timeLabel,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (oh.isClosedAllDay) Color.Red else ItaSuperPrimary
+                                            )
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "Horários não informados.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "Pagamento",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val settings = store?.settings
+                        val paymentMethods = buildList {
+                            if (settings?.acceptPixOnline == true) add("PIX Online")
+                            if (settings?.acceptPixMachine == true) add("PIX")
+                            if (settings?.acceptCard == true) add("Cartão")
+                            if (settings?.acceptCash == true) add("Dinheiro")
+                        }
+                        if (paymentMethods.isEmpty()) {
+                            Text(
+                                text = "Consulte a loja",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                paymentMethods.chunked(2).forEach { rowMethods ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        rowMethods.forEach { method ->
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = ItaSuperPrimary.copy(alpha = 0.06f)
+                                            ) {
+                                                Text(
+                                                    text = method,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = ItaSuperTextPrimary,
+                                                        fontSize = 11.sp
+                                                    ),
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = ItaSuperPrimary.copy(alpha = 0.06f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$productsCount Produtos",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperHighlightText,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "•",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperHighlightText
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "$categoriesCount Categorias",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperHighlightText,
+                                    fontSize = 12.sp
+                                )
+                            )
+                        }
                     }
                 }
             }
 
-            // 2. Overlapping Circular Logo (100dp)
+            // O logo cruza a borda entre banner e bloco informativo, como na composição aprovada.
             Surface(
                 modifier = Modifier
-                    .padding(top = 72.dp)
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-44).dp)
                     .size(88.dp)
                     .testTag("store_logo_overlay"),
                 shape = CircleShape,
                 color = Color.White,
-                shadowElevation = 3.dp,
+                shadowElevation = 4.dp,
                 border = BorderStroke(3.dp, Color.White)
             ) {
                 if (!store?.logoUrl.isNullOrBlank()) {
@@ -798,356 +1152,7 @@ fun StoreHeaderSection(
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(38.dp))
-
-        // Store Details Body
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Store Title
-            Text(
-                text = store?.name ?: "Loja ItaSuper",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Subtitle Row: Category, Rating, Status
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = store?.category ?: "Alimentação",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = "Nota",
-                        tint = ItaSuperWarning,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = "${store?.rating ?: 5.0}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                val isOpen = store?.isOpen ?: true
-                Surface(
-                    color = if (isOpen) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = if (isOpen) "Aberto" else "Fechado",
-                        color = if (isOpen) Color(0xFF2E7D32) else Color(0xFFC62828),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 1. Address Line + MAPS Button
-            val addressText = store?.address?.ifBlank { "Endereço não informado" } ?: "Endereço não informado"
-            val hasMapsTarget = store?.latitude != null && store.longitude != null || store?.address?.isNotBlank() == true
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
-                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.LocationOn,
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = addressText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ItaSuperTextPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        modifier = Modifier
-                            .clickable(enabled = hasMapsTarget) {
-                                val lat = store?.latitude
-                                val lng = store?.longitude
-                                val mapsQuery = if (lat != null && lng != null) "$lat,$lng" else addressText
-                                val gmmIntentUri = Uri.parse("geo:0,0?q=${Uri.encode(mapsQuery)}")
-                                val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
-                                mapIntent.setPackage("com.google.android.apps.maps")
-                                try {
-                                    context.startActivity(mapIntent)
-                                } catch (_: Exception) {
-                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(mapsQuery)}"))
-                                    context.startActivity(browserIntent)
-                                }
-                            }
-                            .testTag("open_maps_button"),
-                        shape = RoundedCornerShape(8.dp),
-                        color = ItaSuperPrimary
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Navigation,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "MAPS",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 11.sp
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 2. Métricas comerciais com a mesma semântica do Capacitor.
-            val deliveryFeeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
-            val deliveryTimeText = store?.deliveryTime?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
-            val minimumOrderText = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
-                String.format("R$ %.2f", value).replace('.', ',')
-            } ?: "—"
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    StoreInfoMetric("Taxa", deliveryFeeText, Icons.Default.Navigation, if (store?.isFreeDelivery == true) Color(0xFF17803D) else ItaSuperTextPrimary)
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    StoreInfoMetric("Tempo", deliveryTimeText, Icons.Outlined.Schedule)
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    StoreInfoMetric("Pedido mín.", minimumOrderText, Icons.Default.ShoppingBag)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 3. Seção expansível "Horários"
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isHoursExpanded = !isHoursExpanded }
-                    .testTag("expand_hours_button"),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
-                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Outlined.Schedule,
-                                contentDescription = null,
-                                tint = ItaSuperPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Horários",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                        Icon(
-                            imageVector = if (isHoursExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (isHoursExpanded) "Recolher" else "Expandir",
-                            tint = Color.Gray
-                        )
-                    }
-
-                    if (isHoursExpanded) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        val hoursList = store?.openingHours
-                        if (!hoursList.isNullOrEmpty()) {
-                            hoursList.forEach { oh ->
-                                val dayLabel = when {
-                                    oh.dayOfWeekStr.isNotBlank() -> oh.dayOfWeekStr.replaceFirstChar { it.uppercase() }
-                                    oh.dayOfWeek == 1 -> "Domingo"
-                                    oh.dayOfWeek == 2 -> "Segunda-feira"
-                                    oh.dayOfWeek == 3 -> "Terça-feira"
-                                    oh.dayOfWeek == 4 -> "Quarta-feira"
-                                    oh.dayOfWeek == 5 -> "Quinta-feira"
-                                    oh.dayOfWeek == 6 -> "Sexta-feira"
-                                    oh.dayOfWeek == 7 -> "Sábado"
-                                    else -> "Dia da Semana"
-                                }
-                                val timeLabel = if (oh.isClosedAllDay) "Fechado" else "${oh.openTime} às ${oh.closeTime}"
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = dayLabel, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
-                                    Text(
-                                        text = timeLabel,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (oh.isClosedAllDay) Color.Red else ItaSuperPrimary
-                                        )
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Horários não informados.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 4. Seção "Pagamento" com chips (Cartão, Dinheiro, PIX)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFEFC)),
-                border = BorderStroke(1.dp, Color(0xFFEDEDEA))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Pagamento",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val settings = store?.settings
-                    val paymentMethods = buildList {
-                        if (settings?.acceptPixOnline == true) add("PIX Online")
-                        if (settings?.acceptPixMachine == true) add("PIX")
-                        if (settings?.acceptCard == true) add("Cartão")
-                        if (settings?.acceptCash == true) add("Dinheiro")
-                    }
-                    if (paymentMethods.isEmpty()) {
-                        Text(
-                            text = "Consulte a loja",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            paymentMethods.chunked(2).forEach { rowMethods ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    rowMethods.forEach { method ->
-                                        Surface(
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = ItaSuperSecondary.copy(alpha = 0.5f)
-                                        ) {
-                                            Text(
-                                                text = method,
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = ItaSuperTextPrimary,
-                                                    fontSize = 11.sp
-                                                ),
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 5. Contador "X Produtos" e "Y Categorias" no rodapé da seção Info
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = ItaSuperHighlightBg
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "$productsCount Produtos",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperHighlightText,
-                            fontSize = 12.sp
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperHighlightText
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "$categoriesCount Categorias",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = ItaSuperHighlightText,
-                            fontSize = 12.sp
-                        )
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-        }
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 
