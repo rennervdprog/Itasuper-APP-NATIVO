@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LocalBar
 import androidx.compose.material.icons.filled.LocalPizza
 import androidx.compose.material.icons.filled.LocationOn
@@ -200,23 +201,6 @@ fun HomeScreen(
                 onNavigateToRoute = onNavigateToRoute
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = viewModel::openSupportSheet,
-                containerColor = ItaSuperPrimary,
-                contentColor = Color.White,
-                shape = CircleShape,
-                modifier = Modifier
-                    .padding(bottom = 8.dp)
-                    .testTag("support_fab")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhoneInTalk,
-                    contentDescription = "Suporte",
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
@@ -240,56 +224,18 @@ fun HomeScreen(
                 onFilterClick = viewModel::onFiltersClick
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 2. Hero (banner + 2 filtros)
-            HomeHeroBentoSection(
-                banners = uiState.banners,
-                isFreeFeeActive = uiState.isFreeFeeFilterActive,
-                isDirectDeliveryActive = uiState.isDirectDeliveryFilterActive,
-                onToggleFreeFee = viewModel::toggleFreeFeeFilter,
-                onToggleDirectDelivery = viewModel::toggleDirectDeliveryFilter,
-                onStoreClick = onNavigateToStore
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // 3. Categorias
-            HomeCategoryChipsSection(
-                categories = uiState.categories,
-                selectedCategory = uiState.selectedCategory,
-                onCategorySelect = viewModel::onCategorySelect
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 4. Destaques (bento de lojas)
-            HomeHighlightsBentoSection(
-                stores = uiState.stores,
-                onStoreClick = onNavigateToStore
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 5. Descubra (grid de produtos)
-            HomeDiscoverProductsSection(
-                products = uiState.discoverProducts,
-                onProductClick = { storeId -> onNavigateToStore(storeId) }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Último Pedido Card (se houver)
-            uiState.lastOrder?.let { lastOrder ->
-                HomeLastOrderSection(
-                    lastOrder = lastOrder,
-                    onViewStore = { onNavigateToStore(lastOrder.storeId) },
-                    onReorder = viewModel::onRepeatLastOrder
+            // Atalhos de lojas realmente compradas pelo cliente.
+            if (uiState.recentStores.isNotEmpty()) {
+                HomeFavoriteStoresSection(
+                    favoriteStores = uiState.recentStores,
+                    onStoreClick = onNavigateToStore
                 )
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(26.dp))
             }
 
-            // 6. Lista normal de lojas abaixo
+            // Lista regional principal.
             HomeStoreListSection(
                 stores = uiState.stores,
                 regionalStoreCount = uiState.regionalStoreCount,
@@ -325,7 +271,6 @@ private fun HomeHeaderSection(
     onNavigateToOrders: () -> Unit,
     onRequestPermissions: () -> Unit
 ) {
-    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,9 +294,6 @@ private fun HomeHeaderSection(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 val activeCity = uiState.activeCity.trim()
-                val addressLabel = listOf(uiState.streetName.trim(), uiState.streetNumber.trim())
-                    .filter { it.isNotBlank() }
-                    .joinToString(", ")
                 if (activeCity.isBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -374,75 +316,37 @@ private fun HomeHeaderSection(
                         )
                     }
                 } else {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { viewModel.openLocationOrAddressDialog() }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = ItaSuperPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = activeCity,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Alterar cidade",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        if (addressLabel.isNotBlank()) {
-                            Text(
-                                text = addressLabel,
-                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 22.dp)
-                            )
-                        }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { viewModel.openLocationOrAddressDialog() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = activeCity,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Alterar cidade",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // GPS Refresh
-                IconButton(
-                    onClick = {
-                        if (!PermissionUtils.hasLocationPermission(context)) {
-                            onRequestPermissions()
-                        } else {
-                            viewModel.fetchGpsLocation(context)
-                        }
-                    },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    if (uiState.isRefreshingLocation) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Atualizar localização",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
                 // Support Icon
                 IconButton(
                     onClick = viewModel::openSupportSheet,
@@ -537,7 +441,7 @@ private fun HomeSearchSection(
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Buscar marmita, mercado, pizza...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            placeholder = { Text("Buscar açaí...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
             leadingIcon = {
                 Icon(Icons.Default.Search, contentDescription = null, tint = ItaSuperPrimary)
             },
@@ -1510,24 +1414,33 @@ private fun HomeFavoriteStoresSection(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(88.dp)
+                        .width(82.dp)
                         .clickable { onStoreClick(store.id) }
                         .testTag("fav_store_${store.id}")
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(68.dp)
                             .clip(CircleShape)
                             .background(ItaSuperHighlightBg)
-                            .border(2.dp, ItaSuperPrimary.copy(alpha = 0.3f), CircleShape),
+                            .border(2.dp, ItaSuperPrimary.copy(alpha = 0.22f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Storefront,
-                            contentDescription = store.name,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        if (store.logoUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = store.logoUrl,
+                                contentDescription = store.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                            )
+                        } else {
+                            Text(
+                                text = store.name.trim().take(1).uppercase().ifBlank { "I" },
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                color = ItaSuperPrimary
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -1571,13 +1484,6 @@ private fun HomeStoreListSection(
                 .padding(bottom = 14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = ItaSuperPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (activeCity.isNotBlank()) "Todas as lojas em $activeCity" else "Todas as lojas",
                     style = MaterialTheme.typography.titleMedium.copy(
@@ -1723,98 +1629,189 @@ private fun HomeStoreListSection(
     }
 }
 
+private fun nextStoreOpeningLabel(store: Store): String {
+    if (store.isOpen || store.openingHours.isEmpty()) return ""
+    val now = java.util.Calendar.getInstance()
+    val today = now.get(java.util.Calendar.DAY_OF_WEEK)
+    val currentMinutes = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+
+    fun startMinutes(value: String): Int? {
+        val parts = value.trim().split(":")
+        val hours = parts.getOrNull(0)?.toIntOrNull() ?: return null
+        val minutes = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        return hours * 60 + minutes
+    }
+
+    for (offset in 0..7) {
+        val day = ((today - 1 + offset) % 7) + 1
+        val nextHour = store.openingHours
+            .filter { it.dayOfWeek == day && !it.isClosedAllDay }
+            .sortedBy { startMinutes(it.openTime) ?: Int.MAX_VALUE }
+            .firstOrNull { offset > 0 || (startMinutes(it.openTime) ?: Int.MAX_VALUE) > currentMinutes }
+            ?: continue
+        val prefix = when (offset) {
+            0 -> "Abre hoje às"
+            1 -> "Abre amanhã às"
+            else -> "Abre"
+        }
+        return "$prefix ${nextHour.openTime}"
+    }
+    return ""
+}
+
 @Composable
 private fun StoreCardItem(
     store: Store,
     onClick: () -> Unit
 ) {
+    val categoryLabel = store.category.replace("_", " ").ifBlank { "Loja" }
+    val ratingVisible = store.rating > 0.0
+    val secondaryInfo = buildList {
+        add(categoryLabel)
+        store.distanceKm?.takeIf { it >= 0.0 }?.let { distance ->
+            add(String.format("%.1f km", distance).replace('.', ','))
+        }
+        if (!ratingVisible) add("Novo")
+    }.joinToString(" • ")
+    val deliveryTime = store.deliveryTime.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+    val rawDeliveryFee = store.deliveryFee.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+    val deliveryFee = when {
+        rawDeliveryFee == "—" || rawDeliveryFee.equals("Grátis", true) || rawDeliveryFee.equals("Retirada", true) -> rawDeliveryFee
+        rawDeliveryFee.startsWith("A partir", true) -> rawDeliveryFee
+        else -> "A partir de $rawDeliveryFee"
+    }
+    val openingMessage = nextStoreOpeningLabel(store)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .testTag("store_card_${store.id}"),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Store Logo Container
             Box(
                 modifier = Modifier
                     .size(68.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(ItaSuperHighlightBg),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Storefront,
-                    contentDescription = null,
-                    tint = ItaSuperPrimary,
-                    modifier = Modifier.size(36.dp)
-                )
+                if (store.logoUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = store.logoUrl,
+                        contentDescription = store.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = store.name.trim().take(1).uppercase().ifBlank { "I" },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        color = ItaSuperPrimary
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(13.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = store.name,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = ItaSuperWarning,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "${store.rating}",
-                        style = MaterialTheme.typography.labelMedium.copy(
+                        text = store.name,
+                        style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = ItaSuperWarning
-                        )
+                            fontSize = 17.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "•   ${store.category}",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (ratingVisible) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Avaliação",
+                            tint = ItaSuperWarning,
+                            modifier = Modifier.size(14.dp)
                         )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = String.format("%.1f", store.rating),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperWarning
+                            )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = secondaryInfo,
+                    style = MaterialTheme.typography.bodySmall.copy(color = ItaSuperTextSecondary),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = deliveryTime, style = MaterialTheme.typography.bodySmall.copy(color = ItaSuperTextSecondary))
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(text = "•", style = MaterialTheme.typography.bodySmall.copy(color = ItaSuperTextSecondary.copy(alpha = 0.55f)))
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        text = deliveryFee,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = if (store.isFreeDelivery) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (store.isFreeDelivery) ItaSuperSuccess else ItaSuperTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = store.deliveryTime,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "•   ${store.deliveryFee}",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = if (store.isFreeDelivery) FontWeight.Bold else FontWeight.Normal,
-                            color = if (store.isFreeDelivery) ItaSuperSuccess else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    )
+                if (!store.isOpen) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = Color(0xFFFFE7EB), shape = RoundedCornerShape(6.dp)) {
+                            Text(
+                                text = "FECHADA",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFBA3048),
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+                        if (openingMessage.isNotBlank()) {
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = openingMessage,
+                                style = MaterialTheme.typography.labelSmall.copy(color = ItaSuperTextSecondary),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowRight,
+                contentDescription = "Abrir loja",
+                tint = if (store.isOpen) ItaSuperTextSecondary else ItaSuperTextSecondary.copy(alpha = 0.45f),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

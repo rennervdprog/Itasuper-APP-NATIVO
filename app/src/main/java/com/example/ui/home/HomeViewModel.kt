@@ -41,6 +41,7 @@ data class HomeUiState(
     val stores: List<Store> = emptyList(),
     val regionalStoreCount: Int = 0,
     val favoriteStores: List<Store> = emptyList(),
+    val recentStores: List<Store> = emptyList(),
     val banners: List<Banner> = emptyList(),
     val discoverProducts: List<DiscoverProduct> = emptyList(),
     val isFreeFeeFilterActive: Boolean = false,
@@ -83,7 +84,9 @@ class HomeViewModel : ViewModel() {
         // Observe stores flow reactively
         viewModelScope.launch {
             StoreRepository.stores.collect { updatedStores ->
-                refreshRegionalCatalog(storesWithCalculatedDistance(updatedStores))
+                val storesWithDistance = storesWithCalculatedDistance(updatedStores)
+                refreshRegionalCatalog(storesWithDistance)
+                refreshRecentStores(storesWithDistance)
             }
         }
 
@@ -151,6 +154,29 @@ class HomeViewModel : ViewModel() {
             requiresAddress = normalizedCity.isBlank()
         )
         loadDiscoverProducts(regionalStores, generation)
+    }
+
+    /**
+     * A Home web monta “Suas lojas” pelas lojas de pedidos reais do cliente.
+     * Aqui reutilizamos a consulta autenticada já usada na área de pedidos e
+     * cruzamos os IDs com o catálogo público para obter logo e metadados atuais.
+     */
+    private fun refreshRecentStores(sourceStores: List<Store>) {
+        val session = UserSessionRepository.userSession.value
+        if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(recentStores = emptyList())
+            return
+        }
+        viewModelScope.launch {
+            val recentStoreIds = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
+                .map { it.storeId }
+                .distinct()
+                .take(6)
+            val storesById = sourceStores.associateBy { it.id }
+            _uiState.value = _uiState.value.copy(
+                recentStores = recentStoreIds.mapNotNull { storesById[it] }
+            )
+        }
     }
 
     private fun loadDiscoverProducts(regionalStores: List<Store>, generation: Int) {
