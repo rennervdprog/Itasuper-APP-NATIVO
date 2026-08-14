@@ -89,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.theme.ItaSuperError
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperHighlightText
@@ -122,72 +123,63 @@ fun AuthScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color(0xFFFFFBF8)
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
         ) {
-            Column(
+            AuthHeader()
+
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 4.dp, bottom = 32.dp)
+                    .border(1.dp, Color(0xFFF2E7E0), RoundedCornerShape(28.dp)),
+                shape = RoundedCornerShape(28.dp),
+                color = Color.White,
+                shadowElevation = 0.dp
             ) {
-                // Top Brand Banner
-                AuthHeader()
-
-                // Auth Card Container
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 32.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                Column(
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // Custom Tab Switcher
-                        AuthTabRow(
-                            selectedMode = uiState.authMode,
-                            onModeSelected = { viewModel.setAuthMode(it) }
+                    AuthTabRow(
+                        selectedMode = uiState.authMode,
+                        onModeSelected = { viewModel.setAuthMode(it) }
+                    )
+
+                    Spacer(modifier = Modifier.height(22.dp))
+                    AuthModeIntro(mode = uiState.authMode)
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    uiState.errorMessage?.let { error ->
+                        ErrorBanner(message = error)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    if (uiState.authMode is AuthMode.Login) {
+                        LoginForm(
+                            uiState = uiState,
+                            viewModel = viewModel,
+                            onLoginClick = {
+                                focusManager.clearFocus()
+                                viewModel.handleLogin(onSuccess = onAuthSuccess)
+                            }
                         )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // Error Banner if present
-                        uiState.errorMessage?.let { error ->
-                            ErrorBanner(message = error)
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-
-                        // Form Content based on mode
-                        if (uiState.authMode is AuthMode.Login) {
-                            LoginForm(
-                                uiState = uiState,
-                                viewModel = viewModel,
-                                onLoginClick = {
-                                    focusManager.clearFocus()
-                                    viewModel.handleLogin(onSuccess = onAuthSuccess)
-                                }
-                            )
-                        } else {
-                            RegisterForm(
-                                uiState = uiState,
-                                viewModel = viewModel,
-                                onRegisterClick = {
-                                    focusManager.clearFocus()
-                                    viewModel.handleRegister(onSuccess = onAuthSuccess)
-                                }
-                            )
-                        }
+                    } else {
+                        RegisterForm(
+                            uiState = uiState,
+                            viewModel = viewModel,
+                            onRegisterClick = {
+                                focusManager.clearFocus()
+                                viewModel.handleRegister(onSuccess = onAuthSuccess)
+                            }
+                        )
                     }
                 }
             }
@@ -221,10 +213,10 @@ private fun AuthHeader() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(238.dp)
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(ItaSuperPrimary, ItaSuperPrimary.copy(alpha = 0.85f))
+                    colors = listOf(Color(0xFFFFEEE4), Color(0xFFFFFAF7))
                 )
             ),
         contentAlignment = Alignment.Center
@@ -232,38 +224,48 @@ private fun AuthHeader() {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 8.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.ShoppingBag,
-                        contentDescription = "ItaSuper Logo",
-                        tint = ItaSuperPrimary,
-                        modifier = Modifier.size(42.dp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "ItaSuper",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 1.sp
-                )
+            Image(
+                painter = painterResource(id = R.drawable.itasuper_brand_icon),
+                contentDescription = "Ícone oficial ItaSuper",
+                modifier = Modifier.size(78.dp)
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            Image(
+                painter = painterResource(id = R.drawable.itasuper_brand_wordmark_cropped),
+                contentDescription = "ItaSuper",
+                modifier = Modifier
+                    .width(208.dp)
+                    .height(48.dp)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "Supermercado & Delivery na sua mão",
+                text = "Seu mercado e delivery em um só app",
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    color = Color.White.copy(alpha = 0.9f)
+                    color = Color(0xFF6C5B53),
+                    fontWeight = FontWeight.Medium
                 )
             )
         }
     }
+}
+
+@Composable
+private fun AuthModeIntro(mode: AuthMode) {
+    val isLogin = mode is AuthMode.Login
+    Text(
+        text = if (isLogin) "Que bom ter você de volta" else "Sua próxima compra começa aqui",
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontWeight = FontWeight.ExtraBold,
+            color = Color(0xFF251A15)
+        ),
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Text(
+        text = if (isLogin) "Entre para encontrar suas lojas favoritas e acompanhar seus pedidos." else "Crie sua conta para pedir com rapidez, segurança e praticidade.",
+        style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF796860)),
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable
@@ -276,7 +278,7 @@ private fun AuthTabRow(
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(26.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(Color(0xFFFFF1E8))
             .padding(4.dp)
     ) {
         val isLogin = selectedMode is AuthMode.Login
@@ -295,7 +297,7 @@ private fun AuthTabRow(
                 text = "Entrar",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = if (isLogin) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isLogin) Color.White else Color(0xFF6C5B53)
                 )
             )
         }
@@ -314,7 +316,7 @@ private fun AuthTabRow(
                 text = "Criar conta",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    color = if (!isLogin) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (!isLogin) Color.White else Color(0xFF6C5B53)
                 )
             )
         }
