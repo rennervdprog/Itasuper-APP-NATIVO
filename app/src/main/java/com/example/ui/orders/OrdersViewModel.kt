@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.CartItem
 import com.example.data.model.Order
+import com.example.data.model.LoyaltyConfig
 import com.example.data.model.SavedAddress
 import com.example.data.remote.SupabaseClient
 import com.example.data.repository.CartRepository
@@ -43,6 +44,19 @@ data class OrdersUiState(
     val couponCode: String = "",
     val couponLoading: Boolean = false,
     val couponError: String? = null,
+
+    // Benefícios financeiros do cliente
+    val benefitsStoreId: String? = null,
+    val isLoadingBenefits: Boolean = false,
+    val walletBalance: Double = 0.0,
+    val useWallet: Boolean = false,
+    val walletDiscount: Double = 0.0,
+    val loyaltyConfig: LoyaltyConfig? = null,
+    val loyaltyPointsAvailable: Int = 0,
+    val loyaltyPointsToUse: Int = 0,
+    val loyaltyMaxPointsUsable: Int = 0,
+    val loyaltyDiscount: Double = 0.0,
+    val finalTotal: Double = 0.0,
     
     // Address state
     val cep: String = "",
@@ -88,6 +102,7 @@ class OrdersViewModel : ViewModel() {
     )
 
     private var addressEditedByCustomer = false
+    private var benefitsLoadingStoreId: String? = null
 
     init {
         applySavedAddress(UserSessionRepository.userSession.value)
@@ -95,10 +110,20 @@ class OrdersViewModel : ViewModel() {
             UserSessionRepository.userSession.collect { session ->
                 if (!addressEditedByCustomer) applySavedAddress(session)
                 loadSavedAddresses(session)
+                loadCheckoutBenefits(force = true)
             }
         }
         refreshOrders()
         validateRestoredCart()
+        viewModelScope.launch {
+            cartState.collect { cart ->
+                if (cart.storeId != _uiState.value.benefitsStoreId && cart.storeId != benefitsLoadingStoreId) {
+                    loadCheckoutBenefits(force = true)
+                } else {
+                    recalculateBenefits(cart)
+                }
+            }
+        }
     }
 
     private fun validateRestoredCart() {
@@ -117,6 +142,107 @@ class OrdersViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    private fun loadCheckoutBenefits(force: Boolean = false) {
+        val session = UserSessionRepository.userSession.value
+        val cart = cartState.value
+        val storeId = cart.storeId
+        if (storeId.isNullOrBlank() || !session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            benefitsLoadingStoreId = null
+            _uiState.value = _uiState.value.copy(
+                benefitsStoreId = storeId,
+                isLoadingBenefits = false,
+                walletBalance = 0.0,
+                useWallet = false,
+                walletDiscount = 0.0,
+                loyaltyConfig = null,
+                loyaltyPointsAvailable = 0,
+                loyaltyPointsToUse = 0,
+                loyaltyMaxPointsUsable = 0,
+                loyaltyDiscount = 0.0,
+                finalTotal = cart.total
+            )
+            return
+        }
+        val current = _uiState.value
+        if (!force && current.benefitsStoreId == storeId && !current.isLoadingBenefits) {
+            recalculateBenefits(cart)
+            return
+        }
+        val wasSameStore = current.benefitsStoreId == storeId
+        benefitsLoadingStoreId = storeId
+        _uiState.value = current.copy(isLoadingBenefits = true, benefitsStoreId = storeId)
+        viewModelScope.launch {
+            val wallet = SupabaseClient.fetchWalletBalance(session.userId, session.accessToken)
+            val config = SupabaseClient.fetchLoyaltyConfig(storeId, session.accessToken)
+            val loyalty = config?.let {
+                SupabaseClient.fetchLoyaltyBalance(session.userId, storeId, session.accessToken)
+            }
+            val previous = _uiState.value
+            _uiState.value = previous.copy(
+                benefitsStoreId = storeId,
+                isLoadingBenefits = false,
+                walletBalance = wallet.balance.coerceAtLeast(0.0),
+                useWallet = if (wasSameStore) current.useWallet else false,
+                loyaltyConfig = config,
+                loyaltyPointsAvailable = loyalty?.points ?: 0,
+                loyaltyPointsToUse = if (wasSameStore) current.loyaltyPointsToUse else 0,
+                loyaltyMaxPointsUsable = 0,
+                loyaltyDiscount = 0.0
+            )
+            benefitsLoadingStoreId = null
+            recalculateBenefits(cartState.value)
+        }
+    }
+
+    private fun recalculateBenefits(cart: CartState = cartState.value) {
+        val state = _uiState.value
+        val config = state.loyaltyConfig?.takeIf { it.isEnabled && state.benefitsStoreId == cart.storeId }
+        val maxPoints = if (config == null || config.discountPerPoint <= 0.0) {
+            0
+        } else {
+            val maxByPercent = cart.subtotal * (config.maxDiscountPercent / 100.0)
+            val maxByBalance = state.loyaltyPointsAvailable * config.discountPerPoint
+            kotlin.math.floor(minOf(maxByPercent, maxByBalance, cart.subtotal) / config.discountPerPoint)
+                .toInt()
+                .coerceAtLeast(0)
+        }
+        val pointsToUse = state.loyaltyPointsToUse.coerceAtMost(maxPoints).takeIf {
+            config != null && it >= config.minPointsRedeem
+        } ?: 0
+        val loyaltyDiscount = if (config != null) pointsToUse * config.discountPerPoint else 0.0
+        val afterLoyalty = (cart.total - loyaltyDiscount).coerceAtLeast(0.0)
+        val walletDiscount = if (state.useWallet) minOf(state.walletBalance, afterLoyalty).coerceAtLeast(0.0) else 0.0
+        _uiState.value = state.copy(
+            loyaltyPointsToUse = pointsToUse,
+            loyaltyMaxPointsUsable = maxPoints,
+            loyaltyDiscount = loyaltyDiscount,
+            walletDiscount = walletDiscount,
+            finalTotal = (afterLoyalty - walletDiscount).coerceAtLeast(0.0)
+        )
+    }
+
+    fun setUseWallet(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(useWallet = enabled, errorMessage = null)
+        recalculateBenefits()
+    }
+
+    fun applyLoyaltyPoints(points: Int) {
+        val state = _uiState.value
+        val config = state.loyaltyConfig
+        if (config == null || state.loyaltyMaxPointsUsable < config.minPointsRedeem) {
+            _uiState.value = state.copy(errorMessage = "Você ainda não possui pontos suficientes para resgatar nesta loja.")
+            return
+        }
+        val normalized = points.coerceIn(config.minPointsRedeem, state.loyaltyMaxPointsUsable)
+        _uiState.value = state.copy(loyaltyPointsToUse = normalized, errorMessage = null)
+        recalculateBenefits()
+    }
+
+    fun removeLoyaltyPoints() {
+        _uiState.value = _uiState.value.copy(loyaltyPointsToUse = 0, errorMessage = null)
+        recalculateBenefits()
     }
 
     private fun applySavedAddress(session: com.example.data.model.UserSession) {
@@ -570,6 +696,7 @@ class OrdersViewModel : ViewModel() {
             "dinheiro", "dinheiro na entrega" -> "dinheiro"
             else -> _uiState.value.paymentMethod.lowercase()
         }
+        val checkoutTotal = if (_uiState.value.benefitsStoreId == storeId) _uiState.value.finalTotal else cart.total
         val changeRaw = _uiState.value.changeForAmount.replace(",", ".").trim()
         val changeDouble = changeRaw.toDoubleOrNull()
         if (normalizedPaymentMethod == "dinheiro") {
@@ -577,8 +704,8 @@ class OrdersViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(errorMessage = "Informe o valor do troco para pagamento em dinheiro.")
                 return
             }
-            if (changeDouble < cart.total) {
-                val formattedTotal = String.format("R$ %.2f", cart.total).replace(".", ",")
+            if (changeDouble < checkoutTotal) {
+                val formattedTotal = String.format("R$ %.2f", checkoutTotal).replace(".", ",")
                 _uiState.value = _uiState.value.copy(errorMessage = "O valor para troco deve ser igual ou maior que o total do pedido ($formattedTotal).")
                 return
             }
@@ -624,7 +751,10 @@ class OrdersViewModel : ViewModel() {
                 changeFor = if (normalizedPaymentMethod == "dinheiro") changeDouble else null,
                 clientLatitude = cart.deliveryLatitude,
                 clientLongitude = cart.deliveryLongitude,
-                coupon = cart.appliedCoupon
+                coupon = cart.appliedCoupon,
+                walletDiscount = _uiState.value.walletDiscount,
+                loyaltyPointsUsed = _uiState.value.loyaltyPointsToUse,
+                loyaltyDiscount = _uiState.value.loyaltyDiscount
             )
 
             result.onSuccess { newOrder ->

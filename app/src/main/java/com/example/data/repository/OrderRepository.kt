@@ -38,7 +38,10 @@ object OrderRepository {
         changeFor: Double? = null,
         clientLatitude: Double? = null,
         clientLongitude: Double? = null,
-        coupon: Coupon? = null
+        coupon: Coupon? = null,
+        walletDiscount: Double = 0.0,
+        loyaltyPointsUsed: Int = 0,
+        loyaltyDiscount: Double = 0.0
     ): Result<Order> {
         if (storeId.isBlank() || clientId.isBlank() || accessToken.isBlank()) {
             return Result.failure(IllegalStateException("Sua sessão expirou. Entre novamente para finalizar o pedido."))
@@ -47,7 +50,7 @@ object OrderRepository {
             return Result.failure(IllegalStateException("Sua sacola está vazia."))
         }
 
-        val total = (subtotal + deliveryFee - discount).coerceAtLeast(0.0)
+        val total = (subtotal + deliveryFee - discount - walletDiscount - loyaltyDiscount).coerceAtLeast(0.0)
         val initialStatus = when (paymentMethod) {
             "pix" -> "aguardando_pagamento"
             "pix_direto" -> "aguardando_comprovante"
@@ -61,6 +64,9 @@ object OrderRepository {
             subtotal = subtotal,
             deliveryFee = deliveryFee,
             discount = discount,
+            walletDiscount = walletDiscount,
+            loyaltyPointsUsed = loyaltyPointsUsed,
+            loyaltyDiscount = loyaltyDiscount,
             total = total,
             paymentMethod = paymentMethod,
             deliveryAddress = deliveryAddress,
@@ -86,7 +92,13 @@ object OrderRepository {
             id = response.orderId,
             createdAt = response.createdAt ?: draft.createdAt
         )
-        // O uso do cupom não bloqueia o pedido; reproduz o registro assíncrono do Capacitor.
+        // Benefícios e cupom são processados após o pedido, como no checkout Capacitor.
+        if (loyaltyPointsUsed > 0 && loyaltyDiscount > 0) {
+            SupabaseClient.redeemLoyaltyPoints(response.orderId, storeId, loyaltyPointsUsed, accessToken)
+        }
+        if (walletDiscount > 0) {
+            SupabaseClient.applyWalletDiscount(response.orderId, clientId, walletDiscount, accessToken)
+        }
         coupon?.id?.takeIf { it.isNotBlank() }?.let { couponId ->
             SupabaseClient.registerCouponUse(couponId, clientId, response.orderId, accessToken)
         }

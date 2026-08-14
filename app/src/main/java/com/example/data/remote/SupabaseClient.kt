@@ -1690,6 +1690,119 @@ object SupabaseClient {
         }
     }
 
+    /** Lê o saldo disponível da carteira do cliente autenticado. */
+    suspend fun fetchWalletBalance(userId: String, accessToken: String): com.example.data.model.WalletBalance = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank()) return@withContext com.example.data.model.WalletBalance()
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/user_wallet?select=balance&user_id=eq.$userId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext com.example.data.model.WalletBalance()
+                val array = JSONArray(response.body?.string().orEmpty())
+                com.example.data.model.WalletBalance(array.optJSONObject(0)?.optDouble("balance", 0.0) ?: 0.0)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Não foi possível carregar a carteira", error)
+            com.example.data.model.WalletBalance()
+        }
+    }
+
+    /** Lê a configuração de fidelidade habilitada para a loja. */
+    suspend fun fetchLoyaltyConfig(storeId: String, accessToken: String): com.example.data.model.LoyaltyConfig? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/loyalty_config?select=store_id,is_enabled,min_points_redeem,discount_per_point,max_discount_percent,points_per_real&store_id=eq.$storeId&is_enabled=eq.true&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val obj = JSONArray(response.body?.string().orEmpty()).optJSONObject(0) ?: return@withContext null
+                com.example.data.model.LoyaltyConfig(
+                    storeId = obj.optString("store_id", storeId),
+                    isEnabled = obj.optBoolean("is_enabled", false),
+                    minPointsRedeem = obj.optInt("min_points_redeem", 0).takeIf { it > 0 } ?: 50,
+                    discountPerPoint = obj.optDouble("discount_per_point", 0.0).takeIf { it > 0 } ?: 0.10,
+                    maxDiscountPercent = obj.optDouble("max_discount_percent", 0.0).takeIf { it > 0 } ?: 20.0,
+                    pointsPerReal = obj.optInt("points_per_real", 0).takeIf { it > 0 } ?: 1
+                )
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Não foi possível carregar a fidelidade", error)
+            null
+        }
+    }
+
+    /** Lê os pontos do cliente autenticado na loja informada. */
+    suspend fun fetchLoyaltyBalance(userId: String, storeId: String, accessToken: String): com.example.data.model.LoyaltyBalance = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || storeId.isBlank() || accessToken.isBlank()) return@withContext com.example.data.model.LoyaltyBalance()
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/loyalty_points?select=points&user_id=eq.$userId&store_id=eq.$storeId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext com.example.data.model.LoyaltyBalance()
+                val points = JSONArray(response.body?.string().orEmpty()).optJSONObject(0)?.optInt("points", 0) ?: 0
+                com.example.data.model.LoyaltyBalance(points.coerceAtLeast(0))
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Não foi possível carregar os pontos de fidelidade", error)
+            com.example.data.model.LoyaltyBalance()
+        }
+    }
+
+    suspend fun applyWalletDiscount(orderId: String, userId: String, discountAmount: Double, accessToken: String): Result<Unit> =
+        callCheckoutRpc(
+            functionName = "apply_wallet_discount",
+            body = JSONObject().apply {
+                put("_order_id", orderId)
+                put("_user_id", userId)
+                put("_discount_amount", discountAmount)
+            },
+            accessToken = accessToken
+        )
+
+    suspend fun redeemLoyaltyPoints(orderId: String, storeId: String, pointsToUse: Int, accessToken: String): Result<Unit> =
+        callCheckoutRpc(
+            functionName = "redeem_loyalty_points",
+            body = JSONObject().apply {
+                put("_order_id", orderId)
+                put("_store_id", storeId)
+                put("_points_to_use", pointsToUse)
+            },
+            accessToken = accessToken
+        )
+
+    private suspend fun callCheckoutRpc(functionName: String, body: JSONObject, accessToken: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) return@withContext Result.failure(IllegalStateException("Sua sessão expirou."))
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/$functionName")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (response.isSuccessful) Result.success(Unit)
+                else Result.failure(IllegalStateException(parseErrorMessage(responseBody, "Não foi possível aplicar o benefício.")))
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao executar $functionName", error)
+            Result.failure(IllegalStateException("Falha de conexão ao aplicar o benefício."))
+        }
+    }
+
     // 7. VIA CEP ADDRESS LOOKUP
     data class CepAddress(
         val cep: String = "",
@@ -1876,6 +1989,10 @@ object SupabaseClient {
                     items = itemsByOrder[id].orEmpty(),
                     subtotal = item.optDouble("subtotal", 0.0),
                     deliveryFee = item.optDouble("delivery_fee", 0.0),
+                    discount = item.optDouble("discount", item.optDouble("coupon_discount", 0.0)),
+                    walletDiscount = item.optDouble("wallet_discount", 0.0),
+                    loyaltyPointsUsed = item.optInt("loyalty_points_used", 0),
+                    loyaltyDiscount = item.optDouble("loyalty_discount", 0.0),
                     total = item.optDouble("total_price", 0.0),
                     paymentMethod = item.optString("payment_method", ""),
                     deliveryAddress = item.optString("address_details", ""),
@@ -2013,6 +2130,9 @@ object SupabaseClient {
                 put("store_id", order.storeId)
                 put("subtotal", order.subtotal)
                 put("delivery_fee", order.deliveryFee)
+                put("wallet_discount", order.walletDiscount)
+                put("loyalty_points_used", order.loyaltyPointsUsed)
+                put("loyalty_discount", order.loyaltyDiscount)
                 put("total_price", order.total)
                 put("payment_method", order.paymentMethod)
                 put("neighborhood", neighborhood)

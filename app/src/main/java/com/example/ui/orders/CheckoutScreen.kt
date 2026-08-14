@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +76,7 @@ fun CheckoutScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val cart by viewModel.cartState.collectAsState()
+    val checkoutTotal = if (uiState.benefitsStoreId == cart.storeId && !uiState.isLoadingBenefits) uiState.finalTotal else cart.total
 
     if (uiState.showGpsAddressConfirmation && cart.deliveryType == "DELIVERY") {
         AlertDialog(
@@ -534,6 +537,116 @@ fun CheckoutScreen(
                 }
             }
 
+            // 3. Carteira e fidelidade
+            if (uiState.isLoadingBenefits || uiState.loyaltyConfig != null || uiState.walletBalance > 0) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Benefícios ItaSuper", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            if (uiState.isLoadingBenefits) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Carregando carteira e fidelidade...", style = MaterialTheme.typography.bodySmall)
+                                }
+                            } else {
+                                uiState.loyaltyConfig?.let { config ->
+                                    val canRedeem = uiState.loyaltyMaxPointsUsable >= config.minPointsRedeem
+                                    Text(
+                                        text = "Fidelidade nesta loja",
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ItaSuperPrimary
+                                    )
+                                    Text(
+                                        text = "Você tem ${uiState.loyaltyPointsAvailable} pontos disponíveis.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    if (canRedeem) {
+                                        val selectedPoints = uiState.loyaltyPointsToUse.takeIf { it > 0 } ?: config.minPointsRedeem
+                                        val selectedDiscount = selectedPoints * config.discountPerPoint
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            androidx.compose.material3.TextButton(
+                                                enabled = selectedPoints > config.minPointsRedeem,
+                                                onClick = { viewModel.applyLoyaltyPoints(selectedPoints - 10) }
+                                            ) { Text("− 10") }
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("$selectedPoints pontos", fontWeight = FontWeight.Bold)
+                                                Text("= R$ ${String.format("%.2f", selectedDiscount).replace(".", ",")}", color = ItaSuperSuccess, style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            androidx.compose.material3.TextButton(
+                                                enabled = selectedPoints < uiState.loyaltyMaxPointsUsable,
+                                                onClick = { viewModel.applyLoyaltyPoints(selectedPoints + 10) }
+                                            ) { Text("+ 10") }
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Button(
+                                            onClick = { viewModel.applyLoyaltyPoints(selectedPoints) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text(
+                                                if (uiState.loyaltyPointsToUse > 0) "Atualizar resgate" else "Aplicar $selectedPoints pontos",
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (uiState.loyaltyPointsToUse > 0) {
+                                            androidx.compose.material3.TextButton(
+                                                onClick = viewModel::removeLoyaltyPoints,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) { Text("Remover pontos aplicados") }
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "Você precisa de pelo menos ${config.minPointsRedeem} pontos para resgatar. Este pedido acumula novos pontos.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+                                if (uiState.walletBalance > 0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().selectable(
+                                            selected = uiState.useWallet,
+                                            onClick = { viewModel.setUseWallet(!uiState.useWallet) }
+                                        ).padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = uiState.useWallet,
+                                            onCheckedChange = viewModel::setUseWallet,
+                                            colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Usar crédito da carteira", fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                if (uiState.useWallet) "Usando R$ ${String.format("%.2f", uiState.walletDiscount).replace(".", ",")}" else "Saldo disponível: R$ ${String.format("%.2f", uiState.walletBalance).replace(".", ",")}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (uiState.useWallet) ItaSuperSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Error message banner
             if (uiState.errorMessage != null) {
                 item {
@@ -600,8 +713,22 @@ fun CheckoutScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Desconto", color = ItaSuperSuccess)
+                                Text("Cupom", color = ItaSuperSuccess)
                                 Text("- R$ ${String.format("%.2f", cart.discountAmount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (uiState.loyaltyDiscount > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Fidelidade (${uiState.loyaltyPointsToUse} pontos)", color = ItaSuperSuccess)
+                                Text("- R$ ${String.format("%.2f", uiState.loyaltyDiscount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (uiState.walletDiscount > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Carteira ItaSuper", color = ItaSuperSuccess)
+                                Text("- R$ ${String.format("%.2f", uiState.walletDiscount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -614,7 +741,7 @@ fun CheckoutScreen(
                         ) {
                             Text("Total a pagar", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                text = "R$ ${String.format("%.2f", cart.total).replace(".", ",")}",
+                                text = "R$ ${String.format("%.2f", checkoutTotal).replace(".", ",")}",
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 22.sp,
                                 color = ItaSuperPrimary
@@ -650,7 +777,7 @@ fun CheckoutScreen(
                         Text("Enviando pedido ao Supabase...", fontWeight = FontWeight.Bold)
                     } else {
                         Text(
-                            text = "Confirmar e Enviar Pedido • R$ ${String.format("%.2f", cart.total).replace(".", ",")}",
+                            text = "Confirmar e Enviar Pedido • R$ ${String.format("%.2f", checkoutTotal).replace(".", ",")}",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
