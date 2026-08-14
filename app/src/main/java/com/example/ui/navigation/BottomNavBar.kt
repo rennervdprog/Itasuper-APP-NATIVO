@@ -3,13 +3,17 @@ package com.example.ui.navigation
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -36,18 +40,21 @@ sealed class BottomNavItem(
     object Home : BottomNavItem("home", "Home", Icons.Filled.Home, Icons.Outlined.Home, "nav_home")
     object Search : BottomNavItem("busca", "Busca", Icons.Filled.Search, Icons.Outlined.Search, "nav_busca")
     object Orders : BottomNavItem("pedidos", "Pedidos", Icons.Filled.Receipt, Icons.Outlined.Receipt, "nav_pedidos")
+    object Notifications : BottomNavItem("notificacoes", "Avisos", Icons.Filled.Notifications, Icons.Outlined.NotificationsNone, "nav_notificacoes")
     object Profile : BottomNavItem("perfil", "Perfil", Icons.Filled.Person, Icons.Outlined.Person, "nav_perfil")
 }
 
 @Composable
 fun ItaSuperBottomNavBar(
     currentRoute: String,
+    unreadNotificationsCount: Int = 0,
     onNavigateToRoute: (String) -> Unit
 ) {
     val items = listOf(
         BottomNavItem.Home,
         BottomNavItem.Search,
         BottomNavItem.Orders,
+        BottomNavItem.Notifications,
         BottomNavItem.Profile
     )
 
@@ -63,10 +70,18 @@ fun ItaSuperBottomNavBar(
                 selected = isSelected,
                 onClick = { onNavigateToRoute(item.route) },
                 icon = {
-                    Icon(
-                        imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                        contentDescription = item.title
-                    )
+                    BadgedBox(
+                        badge = {
+                            if (item == BottomNavItem.Notifications && unreadNotificationsCount > 0) {
+                                Badge { Text(if (unreadNotificationsCount > 9) "9+" else unreadNotificationsCount.toString()) }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                            contentDescription = item.title
+                        )
+                    }
                 },
                 label = {
                     Text(

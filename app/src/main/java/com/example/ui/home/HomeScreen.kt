@@ -123,6 +123,8 @@ import com.example.data.model.DiscoverProduct
 import com.example.ui.permissions.LocationAndPermissionsDialog
 import com.example.ui.permissions.LocationOnboardingPreferences
 import com.example.ui.permissions.LocationPermissionOnboarding
+import com.example.ui.permissions.NotificationOnboardingPreferences
+import com.example.ui.permissions.NotificationPermissionOnboarding
 import com.example.ui.permissions.PermissionUtils
 import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.SoraFontFamily
@@ -145,6 +147,12 @@ fun HomeScreen(
                 LocationOnboardingPreferences.shouldShow(context, userSession.userId)
         )
     }
+    var showNotificationOnboarding by rememberSaveable(userSession.userId) {
+        mutableStateOf(
+            userSession.isLoggedIn &&
+                NotificationOnboardingPreferences.shouldShow(context, userSession.userId)
+        )
+    }
 
     if (showLocationOnboarding) {
         LocationPermissionOnboarding(
@@ -153,6 +161,14 @@ fun HomeScreen(
                 showLocationOnboarding = false
                 if (locationGranted) viewModel.fetchGpsLocation(context)
             }
+        )
+        return
+    }
+
+    if (showNotificationOnboarding) {
+        NotificationPermissionOnboarding(
+            userId = userSession.userId,
+            onFinished = { showNotificationOnboarding = false }
         )
         return
     }

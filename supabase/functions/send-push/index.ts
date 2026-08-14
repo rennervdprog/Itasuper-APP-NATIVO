@@ -1,0 +1,627 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// Google OAuth2 JWT for FCM v1 API
+async function getAccessToken(serviceAccount: any): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const encode = (obj: any) => btoa(JSON.stringify(obj)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const unsignedToken = `${encode(header)}.${encode(payload)}`;
+
+  const pemContents = serviceAccount.private_key
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\n/g, "");
+  const binaryKey = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    binaryKey,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsignedToken)
+  );
+
+  const signedToken = `${unsignedToken}.${btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")}`;
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${signedToken}`,
+  });
+
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) {
+    throw new Error(`Failed to get access token: ${JSON.stringify(tokenData)}`);
+  }
+  return tokenData.access_token;
+}
+
+// Send via OneSignal REST API using external_user_id (PRIMARY method)
+async function sendOneSignalByExternalId(
+  userIds: string[],
+  title: string,
+  body: string,
+  data: Record<string, string> | undefined,
+  appId: string,
+  restApiKey: string
+): Promise<{ sent: number; failed: number; debug: string }> {
+  if (userIds.length === 0) return { sent: 0, failed: 0, debug: "no_user_ids" };
+
+  console.log("[OneSignal] Sending via external_id:", JSON.stringify({ app_id: appId, user_ids: userIds, title }));
+
+  const strategies = [
+    {
+      name: "aliases_v2",
+      payload: {
+        app_id: appId,
+        include_aliases: { external_id: userIds },
+        target_channel: "push",
+        headings: { en: title },
+        contents: { en: body || " " },
+        data: data || {},
+      },
+    },
+    {
+      name: "external_user_ids_legacy",
+      payload: {
+        app_id: appId,
+        include_external_user_ids: userIds,
+        channel_for_external_user_ids: "push",
+        headings: { en: title },
+        contents: { en: body || " " },
+        data: data || {},
+      },
+    },
+  ];
+
+  for (const strategy of strategies) {
+    try {
+      console.log(`[OneSignal] Trying strategy: ${strategy.name}`);
+      const res = await fetch("https://api.onesignal.com/notifications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${restApiKey}`,
+        },
+        body: JSON.stringify(strategy.payload),
+      });
+
+      const responseText = await res.text();
+      console.log(`[OneSignal] ${strategy.name} status=${res.status}, body=${responseText}`);
+
+      let result: any;
+      try { result = JSON.parse(responseText); } catch {
+        console.log(`[OneSignal] ${strategy.name} parse error, trying next...`);
+        continue;
+      }
+
+      if (res.ok && !result.errors?.length && (result.recipients || 0) > 0) {
+        const recipients = result.recipients || 0;
+        console.log(`[OneSignal] ✅ ${strategy.name} sent to ${recipients} recipients`);
+        return { sent: recipients, failed: 0, debug: `${strategy.name}: recipients=${recipients}, id=${result.id}` };
+      } else {
+        console.log(`[OneSignal] ${strategy.name} failed: ${responseText.slice(0, 200)}, trying next...`);
+      }
+    } catch (e) {
+      console.log(`[OneSignal] ${strategy.name} exception: ${e}, trying next...`);
+    }
+  }
+
+  console.error("[OneSignal] ❌ All strategies failed");
+  return { sent: 0, failed: userIds.length, debug: "all_strategies_failed" };
+}
+
+// Send via OneSignal REST API using player_ids (fallback)
+async function sendOneSignalByPlayerIds(
+  playerIds: string[],
+  title: string,
+  body: string,
+  data: Record<string, string> | undefined,
+  appId: string,
+  restApiKey: string
+): Promise<{ sent: number; failed: number }> {
+  if (playerIds.length === 0) return { sent: 0, failed: 0 };
+
+  try {
+    const res = await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${restApiKey}`,
+      },
+      body: JSON.stringify({
+        app_id: appId,
+        include_player_ids: playerIds,
+        headings: { en: title },
+        contents: { en: body || " " },
+        data: data || {},
+      }),
+    });
+
+    const result = await res.json();
+    if (res.ok && !result.errors) {
+      return { sent: result.recipients || playerIds.length, failed: 0 };
+    } else {
+      console.error("[OneSignal] player_ids error:", JSON.stringify(result));
+      return { sent: 0, failed: playerIds.length };
+    }
+  } catch (e) {
+    console.error("[OneSignal] player_ids request error:", e);
+    return { sent: 0, failed: playerIds.length };
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const token = authHeader.replace("Bearer ", "").trim();
+
+    // Internal calls (DB triggers, cron) use the service-role key directly. A RPC
+    // identifica o claim de serviço para não depender de comparação de segredo entre
+    // ambientes de execução distintos.
+    const serviceProbe = createClient(supabaseUrl, supabaseAnon, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: tokenHasServiceRole } = await serviceProbe.rpc("is_service_role_token");
+    const isServiceRole = token === supabaseServiceKey || tokenHasServiceRole === true;
+    let callerUserId = "service_role";
+
+    if (!isServiceRole) {
+      const supabaseAuth = createClient(supabaseUrl, supabaseAnon);
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+      if (authError || !user) {
+        console.error("[send-push] Auth failed:", authError?.message || "no user");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      callerUserId = user.id;
+    }
+    console.log(`[send-push] Authenticated: ${isServiceRole ? "service_role" : callerUserId}`);
+
+    const body = await req.json();
+    const { user_ids, title, body: msgBody, data } = body;
+
+    if (!user_ids || !Array.isArray(user_ids) || !title) {
+      return new Response(JSON.stringify({ error: "user_ids (array) and title are required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // ── ROLE CHECK: Only admin, store owners, or drivers can send push ──
+    // Service-role internal calls bypass the role check.
+    const { data: isAdmin } = isServiceRole
+      ? { data: true }
+      : await supabaseAdmin.rpc("is_platform_admin", { _user_id: callerUserId });
+
+    if (!isAdmin) {
+      // Check if caller is a store owner or driver
+      const { data: callerProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("user_id", callerUserId)
+        .maybeSingle();
+
+      const callerRole = callerProfile?.role;
+      // A propriedade da loja é a fonte de verdade. Uma mesma conta pode atuar como
+      // suporte e ser dona de uma loja; nesse caso ela precisa continuar podendo
+      // notificar clientes dos próprios pedidos.
+      const { data: ownedStores } = await supabaseAdmin
+        .from("stores")
+        .select("id")
+        .eq("owner_id", callerUserId);
+      const ownedStoreIds = (ownedStores || []).map((store: any) => store.id).filter(Boolean);
+      const { data: driverInfo } = await supabaseAdmin
+        .from("drivers")
+        .select("id")
+        .eq("user_id", callerUserId)
+        .maybeSingle();
+      const effectiveRole = ownedStoreIds.length > 0 || callerRole === "lojista"
+        ? "lojista"
+        : (driverInfo || callerRole === "motoboy" ? "motoboy" : callerRole);
+
+      if (effectiveRole !== "lojista" && effectiveRole !== "motoboy") {
+        return new Response(JSON.stringify({ error: "Sem permissão para enviar notificações." }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Validate that target user_ids are related to caller's orders
+      const requestedUserIds = [...new Set((user_ids as string[]).filter(Boolean))];
+      let allowedUserIds: Set<string>;
+
+      if (effectiveRole === "lojista") {
+        // Store owner can notify clients, already-assigned drivers, and linked store drivers from their own stores
+
+        const { data: storeOrders } = ownedStoreIds.length > 0
+          ? await supabaseAdmin
+              .from("orders")
+              .select("client_id, driver_id")
+              .in("store_id", ownedStoreIds)
+          : { data: [] as Array<{ client_id: string | null; driver_id: string | null }> };
+
+        const { data: linkedDrivers } = ownedStoreIds.length > 0
+          ? await supabaseAdmin
+              .from("store_drivers")
+              .select("driver_user_id")
+              .in("store_id", ownedStoreIds)
+          : { data: [] as Array<{ driver_user_id: string | null }> };
+
+        allowedUserIds = new Set<string>();
+        for (const o of storeOrders || []) {
+          if (o.client_id) allowedUserIds.add(o.client_id);
+          if (o.driver_id) allowedUserIds.add(o.driver_id);
+        }
+        for (const d of linkedDrivers || []) {
+          if (d.driver_user_id) allowedUserIds.add(d.driver_user_id);
+        }
+      } else {
+        // Driver can only notify clients/store owners from their assigned orders
+        const { data: driverOrders } = await supabaseAdmin
+          .from("orders")
+          .select("client_id, store_id")
+          .eq("driver_id", callerUserId);
+
+        allowedUserIds = new Set<string>();
+        for (const o of driverOrders || []) {
+          if (o.client_id) allowedUserIds.add(o.client_id);
+        }
+        // Also get store owners
+        if (driverOrders?.length) {
+          const storeIds = [...new Set(driverOrders.map((o: any) => o.store_id).filter(Boolean))];
+          const { data: stores } = await supabaseAdmin
+            .from("stores")
+            .select("owner_id")
+            .in("id", storeIds);
+          for (const s of stores || []) {
+            if (s.owner_id) allowedUserIds.add(s.owner_id);
+          }
+        }
+      }
+
+      // Filter to only allowed targets
+      const filteredUserIds = requestedUserIds.filter((id) => allowedUserIds.has(id));
+      if (filteredUserIds.length === 0) {
+        return new Response(JSON.stringify({ error: "Nenhum destinatário autorizado." }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Replace user_ids with filtered list
+      body.user_ids = filteredUserIds;
+    }
+
+    const requestedUserIds = [...new Set((body.user_ids as string[]).filter(Boolean))];
+
+    // Histórico sincronizado é exclusivo do cliente. O registro acontece uma vez por
+    // destinatário antes da entrega FCM/OneSignal, portanto também fica disponível quando
+    // o aparelho estiver offline ou o push for exibido pelo sistema.
+    let clientHistoryCreated = 0;
+    const skippedClientPushUserIds = new Set<string>();
+    const payload = data && typeof data === "object" ? data : {};
+    const inferredNotificationType = typeof payload.type === "string"
+      ? payload.type
+      : title.includes("Pedido aceito")
+        ? "preparando"
+        : title.includes("Pedido pronto")
+          ? "pronto_para_entrega"
+          : title.includes("Saiu para entrega")
+            ? "saiu_entrega"
+            : title.includes("Pedido entregue")
+              ? "entregue"
+              : "order_update";
+    const rawOrderId = typeof payload.order_id === "string" ? payload.order_id : null;
+    const orderId = rawOrderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawOrderId)
+      ? rawOrderId
+      : null;
+    // Para avisos de pedido, a relação orders.client_id tem prioridade sobre o papel
+    // do perfil: a mesma conta pode ser cliente e, ao mesmo tempo, suporte ou lojista.
+    let clientUserIds: string[] = [];
+    if (orderId) {
+      const { data: orderRecipient, error: orderRecipientError } = await supabaseAdmin
+        .from("orders")
+        .select("client_id")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (orderRecipientError) {
+        console.error("[send-push] order recipient lookup error:", orderRecipientError.message);
+      } else if (orderRecipient?.client_id && requestedUserIds.includes(orderRecipient.client_id)) {
+        clientUserIds = [orderRecipient.client_id];
+      }
+    } else {
+      const { data: roleRecipients, error: roleRecipientsError } = requestedUserIds.length > 0
+        ? await supabaseAdmin
+            .from("profiles")
+            .select("user_id")
+            .in("user_id", requestedUserIds)
+            .eq("role", "cliente")
+        : { data: [], error: null };
+      if (roleRecipientsError) {
+        console.error("[send-push] client recipients lookup error:", roleRecipientsError.message);
+      } else {
+        clientUserIds = [...new Set((roleRecipients || []).map((profile: any) => profile.user_id).filter(Boolean))];
+      }
+    }
+    if (clientUserIds.length > 0) {
+        const { data: createdHistory, error: historyError } = await supabaseAdmin
+          .from("client_notifications")
+          .upsert(
+            clientUserIds.map((userId: string) => ({
+              user_id: userId,
+              order_id: orderId,
+              notification_type: inferredNotificationType,
+              title,
+              body: msgBody || "",
+              payload,
+            })),
+            { onConflict: "user_id,order_id,notification_type", ignoreDuplicates: true }
+          )
+          .select("user_id");
+        if (historyError) {
+          console.error("[send-push] client notification history error:", historyError.message);
+        } else {
+          const createdUserIds = new Set((createdHistory || []).map((row: any) => row.user_id));
+          clientHistoryCreated = createdUserIds.size;
+          for (const userId of clientUserIds) {
+            if (!createdUserIds.has(userId)) skippedClientPushUserIds.add(userId);
+          }
+        }
+      }
+
+    const { data: osPlayers } = await supabaseAdmin
+      .from("onesignal_players")
+      .select("user_id, player_id, device_info")
+      .in("user_id", requestedUserIds);
+
+    const oneSignalUserIds = [...new Set((osPlayers || []).map((player: any) => player.user_id).filter(Boolean))];
+    const oneSignalUserSet = new Set(oneSignalUserIds);
+
+    // ── Firebase Web Push (send to ALL users with FCM tokens, including Capacitor native) ──
+    let fcmSent = 0;
+    let fcmFailed = 0;
+    const staleTokens: string[] = [];
+
+    const serviceAccountJson = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
+    const onesignalAppId = Deno.env.get("ONESIGNAL_APP_ID");
+    const onesignalApiKey = Deno.env.get("ONESIGNAL_REST_API_KEY");
+    // Send FCM to ALL target users (don't skip users with OneSignal — they may also have Capacitor FCM tokens)
+    const fcmTargetUserIds = requestedUserIds.filter((userId) => !skippedClientPushUserIds.has(userId));
+
+    const { data: fcmTokens } = fcmTargetUserIds.length > 0
+      ? await supabaseAdmin
+          .from("fcm_tokens")
+          .select("token, user_id, device_info, updated_at")
+          .in("user_id", fcmTargetUserIds)
+      : { data: [] as Array<{ token: string; user_id: string }> };
+
+    console.log(`[send-push] 🔍 DEBUG: All FCM tokens from DB for target users:`, JSON.stringify(
+      (fcmTokens || []).map((t: any) => ({
+        user_id: t.user_id,
+        token_prefix: t.token?.slice(0, 12) + "...",
+        device_info: t.device_info,
+        updated_at: t.updated_at,
+      }))
+    ));
+
+    const latestFcmTokens = Object.values(
+      (fcmTokens || []).reduce((acc, row: any) => {
+        const key = row.device_info || `token:${row.token}`;
+        const current = acc[key];
+        if (!current || new Date(row.updated_at || 0).getTime() >= new Date(current.updated_at || 0).getTime()) {
+          acc[key] = row;
+        }
+        return acc;
+      }, {} as Record<string, any>)
+    ) as Array<{ token: string; user_id: string; device_info?: string | null; updated_at?: string | null }>;
+
+    console.log(`[send-push] 🔍 DEBUG: After dedup (latest per device):`, JSON.stringify(
+      latestFcmTokens.map((t: any) => ({
+        user_id: t.user_id,
+        token_prefix: t.token?.slice(0, 12) + "...",
+        device_info: t.device_info,
+        updated_at: t.updated_at,
+      }))
+    ));
+    console.log(`[send-push] 🔍 DEBUG: Target user_ids=${JSON.stringify(requestedUserIds)}, FCM tokens selected=${latestFcmTokens.length}`);
+
+    if (latestFcmTokens.length > 0 && serviceAccountJson) {
+      const serviceAccount = JSON.parse(serviceAccountJson);
+      const accessToken = await getAccessToken(serviceAccount);
+      const projectId = serviceAccount.project_id;
+
+      // FCM data must be Record<string, string>
+      const stringifiedData: Record<string, string> = {};
+      if (data && typeof data === "object") {
+        for (const [k, v] of Object.entries(data)) {
+          if (v === null || v === undefined) continue;
+          stringifiedData[k] = typeof v === "string" ? v : String(v);
+        }
+      }
+      // Ensure link is always present so tap handler knows where to go
+      if (!stringifiedData.link) stringifiedData.link = "/";
+
+      for (const { token: fcmToken } of latestFcmTokens) {
+        try {
+          const res = await fetch(
+            `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                message: {
+                  token: fcmToken,
+                  notification: { title, body: msgBody || "" },
+                  webpush: {
+                    notification: {
+                      icon: "/icon-192x192.png",
+                      badge: "/icon-192x192.png",
+                      vibrate: [200, 100, 200, 100, 200, 100, 200],
+                      tag: stringifiedData.order_id ? `order-${stringifiedData.order_id}` : undefined,
+                      renotify: true,
+                      requireInteraction: true,
+                    },
+                    fcm_options: { link: stringifiedData.link || "/" },
+                  },
+                  android: {
+                    priority: "high",
+                    notification: {
+                      icon: "ic_notification",
+                      sound: "order_bell",
+                      channel_id: "itasuper_orders",
+                      // NOTE: Removed click_action "FCM_PLUGIN_ACTIVITY" — that was
+                      // a Cordova FCM plugin constant. Capacitor uses the default
+                      // launcher activity, and the tap is captured by the
+                      // pushNotificationActionPerformed listener.
+                      default_vibrate_timings: false,
+                      vibrate_timings: ["0s", "0.3s", "0.2s", "0.3s", "0.2s", "0.3s", "0.2s", "0.3s"],
+                      default_sound: true,
+                      notification_priority: "PRIORITY_MAX",
+                      visibility: "PUBLIC",
+                    },
+                  },
+                  apns: {
+                    payload: {
+                      aps: {
+                        sound: {
+                          critical: 1,
+                          name: "order_bell.caf",
+                          volume: 1.0,
+                        },
+                        "interruption-level": "time-sensitive",
+                        badge: 1,
+                      },
+                    },
+                    headers: {
+                      "apns-priority": "10",
+                    },
+                  },
+                  // CRITICAL: data must be flat Record<string,string> for Capacitor
+                  // pushNotificationActionPerformed listener to receive it correctly
+                  data: stringifiedData,
+                },
+              }),
+            }
+          );
+
+          const result = await res.json();
+          if (res.ok) {
+            fcmSent++;
+          } else {
+            fcmFailed++;
+            if (result?.error?.code === 404 || result?.error?.code === 400) {
+              staleTokens.push(fcmToken);
+            }
+            console.error("[FCM] send error:", JSON.stringify(result));
+          }
+        } catch (e) {
+          fcmFailed++;
+          console.error("[FCM] request error:", e);
+        }
+      }
+
+      if (staleTokens.length > 0) {
+        await supabaseAdmin.from("fcm_tokens").delete().in("token", staleTokens);
+      }
+    }
+
+    // ── OneSignal Native Push ──
+    let osSent = 0;
+    let osFailed = 0;
+    let osDebug = "not_configured";
+
+    console.log(`[OneSignal] Config: appId=${onesignalAppId ? "SET" : "MISSING"}, apiKey=${onesignalApiKey ? "SET" : "MISSING"}`);
+
+    const oneSignalTargetUserIds = oneSignalUserIds.filter((userId) => !skippedClientPushUserIds.has(userId));
+    if (onesignalAppId && onesignalApiKey && oneSignalTargetUserIds.length > 0) {
+      if (osPlayers && osPlayers.length > 0) {
+        const latestPlayers = Object.values(
+          osPlayers.filter((row: any) => oneSignalTargetUserIds.includes(row.user_id)).reduce((acc: Record<string, any>, row: any) => {
+            const key = row.device_info || `player:${row.player_id}`;
+            if (!acc[key]) acc[key] = row;
+            return acc;
+          }, {})
+        );
+        const playerIds = [...new Set(latestPlayers.map((p: any) => p.player_id).filter(Boolean))];
+        console.log(`[OneSignal] Sending only via player_ids for ${playerIds.length} target(s)`);
+        const pidResult = await sendOneSignalByPlayerIds(
+          playerIds, title, msgBody || "", data, onesignalAppId, onesignalApiKey
+        );
+        osSent = pidResult.sent;
+        osFailed = pidResult.failed;
+        osDebug = `player_ids_only: sent=${pidResult.sent}`;
+      } else {
+        console.log("[OneSignal] No player_ids in DB; skipping native push send");
+        osDebug = "no_player_ids_in_db";
+      }
+    } else if (onesignalAppId && onesignalApiKey) {
+      osDebug = "no_native_targets";
+    }
+
+    const response = {
+      fcm: { sent: fcmSent, failed: fcmFailed, stale_cleaned: staleTokens.length },
+      onesignal: { sent: osSent, failed: osFailed, debug: osDebug },
+      total_sent: fcmSent + osSent,
+      client_history_created: clientHistoryCreated,
+    };
+
+    console.log("[send-push] Final response:", JSON.stringify(response));
+
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[send-push] error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+

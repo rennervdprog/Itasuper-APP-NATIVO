@@ -2056,6 +2056,75 @@ object SupabaseClient {
         }
     }
 
+    /** Carrega até 100 notificações da conta autenticada por uma função que valida a sessão. */
+    suspend fun fetchClientNotifications(accessToken: String): List<com.example.data.model.ClientNotification> = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) throw IllegalStateException("Sua sessão não possui autorização para carregar notificações.")
+        val request = Request.Builder()
+            .url("$SUPABASE_URL/functions/v1/client-notifications")
+            .addHeader("apikey", SUPABASE_ANON_KEY)
+            .addHeader("Authorization", "Bearer $accessToken")
+            .get()
+            .build()
+        try {
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Client notifications request failed: ${response.code} $text")
+                throw IllegalStateException(parseErrorMessage(text, "Não foi possível carregar as notificações."))
+            }
+            val array = JSONObject(text).optJSONArray("notifications") ?: JSONArray()
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id", "")
+                    if (id.isBlank()) continue
+                    val payloadJson = item.optJSONObject("payload")
+                    val payload = buildMap {
+                        payloadJson?.keys()?.forEach { key ->
+                            put(key, payloadJson.optString(key, ""))
+                        }
+                    }
+                    add(
+                        com.example.data.model.ClientNotification(
+                            id = id,
+                            orderId = item.optString("order_id", "").takeIf { it.isNotBlank() },
+                            type = item.optString("notification_type", "order_update"),
+                            title = item.optString("title", "ItaSuper"),
+                            body = item.optString("body", ""),
+                            payload = payload,
+                            readAt = item.optString("read_at", "").takeIf { it.isNotBlank() },
+                            createdAt = item.optString("created_at", "")
+                        )
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Error fetching client notifications", error)
+            throw error
+        }
+    }
+
+    /** Marca uma notificação própria como lida; o RLS impede alteração de outros clientes. */
+    suspend fun markClientNotificationRead(notificationId: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (notificationId.isBlank() || accessToken.isBlank()) return@withContext false
+        try {
+            val body = JSONObject().put("read_at", java.time.Instant.now().toString())
+                .toString().toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/client_notifications?id=eq.$notificationId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(body)
+                .build()
+            httpClient.newCall(request).execute().use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.w(TAG, "Error marking client notification as read", error)
+            false
+        }
+    }
+
     private fun fetchStoreNames(storeIds: List<String>, bearer: String): Map<String, String> {
         if (storeIds.isEmpty()) return emptyMap()
         return try {

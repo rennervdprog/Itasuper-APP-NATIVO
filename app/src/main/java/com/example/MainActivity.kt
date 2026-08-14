@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,11 +32,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.data.repository.CartRepository
 import com.example.data.repository.UserSessionRepository
+import com.example.notifications.PushNotificationManager
 import com.example.ui.auth.AuthScreen
 import com.example.ui.auth.AuthViewModel
 import com.example.ui.home.HomeScreen
 import com.example.ui.home.HomeViewModel
 import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.notifications.NotificationsScreen
+import com.example.ui.notifications.NotificationsViewModel
 import com.example.ui.profile.ProfileScreen
 import com.example.ui.orders.CartScreen
 import com.example.ui.orders.CheckoutScreen
@@ -51,6 +55,8 @@ import com.example.ui.theme.ItaSuperTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PushNotificationManager.createOrderNotificationChannel(applicationContext)
+        PushNotificationManager.captureLaunchIntent(applicationContext, intent)
         try {
             enableEdgeToEdge()
         } catch (e: Exception) {
@@ -67,12 +73,19 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         UserSessionRepository.refreshSession()
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        PushNotificationManager.captureLaunchIntent(applicationContext, intent)
+    }
 }
 
 @Composable
 fun ItaSuperApp() {
     val context = LocalContext.current
     val userSession by UserSessionRepository.userSession.collectAsState()
+    val pendingPushDestination by PushNotificationManager.pendingDestination.collectAsState()
 
     LaunchedEffect(Unit) {
         UserSessionRepository.initialize(context)
@@ -82,6 +95,9 @@ fun ItaSuperApp() {
             context = context,
             userId = if (userSession.isLoggedIn) userSession.userId else ""
         )
+        if (userSession.isLoggedIn) {
+            PushNotificationManager.registerCurrentDevice(context)
+        }
     }
 
     if (!userSession.isSessionRestored) {
@@ -100,6 +116,15 @@ fun ItaSuperApp() {
 
     val navController = rememberNavController()
     val startDestination = if (userSession.isLoggedIn) "home" else "auth"
+
+    LaunchedEffect(pendingPushDestination, userSession.isLoggedIn) {
+        if (userSession.isLoggedIn && pendingPushDestination == PushNotificationManager.DESTINATION_ORDERS) {
+            PushNotificationManager.consumePendingDestination(context)
+            navController.navigate("pedidos") {
+                launchSingleTop = true
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -205,6 +230,20 @@ fun ItaSuperApp() {
                 },
                 onExploreClick = {
                     navController.navigate("home") {
+                        popUpTo("home") { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+
+        composable("notificacoes") {
+            val notificationsViewModel: NotificationsViewModel = viewModel()
+            NotificationsScreen(
+                viewModel = notificationsViewModel,
+                onNavigateToRoute = { route ->
+                    navController.navigate(route) {
                         popUpTo("home") { saveState = true }
                         launchSingleTop = true
                         restoreState = true
