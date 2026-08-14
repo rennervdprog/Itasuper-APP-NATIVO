@@ -70,8 +70,12 @@ fun SearchScreen(
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
-            viewModel.requestGpsLocation(context)
+            viewModel.synchronizeLocation(context)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.synchronizeLocation(context)
     }
 
     Scaffold(
@@ -151,8 +155,9 @@ fun SearchScreen(
                         )
                     )
 
-                    // Banner/Botão "Ative sua localização" se não tiver coordenadas GPS
-                    if (uiState.userLocation == null) {
+                    // Só solicita ativação quando a permissão realmente ainda não foi concedida.
+                    // Com permissão ativa, a aba reutiliza a localização persistida e atualiza o GPS sozinha.
+                    if (!uiState.isLocationPermissionGranted && uiState.userLocation == null) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Surface(
                             shape = RoundedCornerShape(12.dp),

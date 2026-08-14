@@ -1,6 +1,8 @@
 package com.example.ui.orders
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,12 +52,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -112,6 +116,7 @@ fun CheckoutScreen(
     }
 
     Scaffold(
+        containerColor = Color(0xFFFAFAFA),
         topBar = {
             TopAppBar(
                 title = {
@@ -133,7 +138,7 @@ fun CheckoutScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color(0xFFFAFAFA)
                 )
             )
         }
@@ -144,20 +149,15 @@ fun CheckoutScreen(
                 .padding(innerPadding)
                 .imePadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(bottom = 32.dp),
+            contentPadding = PaddingValues(bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
             // 1. Delivery Address / Pickup Section
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = if (cart.deliveryType == "RETIRADA") Icons.Default.Storefront else Icons.Default.LocationOn,
@@ -168,8 +168,8 @@ fun CheckoutScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (cart.deliveryType == "RETIRADA") "Local de Retirada" else "Endereço de Entrega",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleLarge
                             )
                         }
 
@@ -187,21 +187,32 @@ fun CheckoutScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (selected) ItaSuperHighlightBg else Color.Transparent)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(if (selected) Color(0xFFFFF0E6) else Color.White)
+                                        .border(if (selected) 2.dp else 1.dp, if (selected) ItaSuperPrimary else Color(0xFFE2E2E2), RoundedCornerShape(16.dp))
                                         .selectable(
                                             selected = selected,
                                             onClick = { viewModel.selectSavedAddress(address) }
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    RadioButton(
-                                        selected = selected,
-                                        onClick = null,
-                                        colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
+                                    if (selected) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = "Endereço selecionado",
+                                            tint = ItaSuperPrimary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .border(1.dp, Color(0xFFBDAEA5), CircleShape)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = address.label,
@@ -241,9 +252,10 @@ fun CheckoutScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(ItaSuperHighlightBg)
-                                    .padding(12.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFFFF0E6))
+                                .border(1.dp, Color(0xFFF7CBAE), RoundedCornerShape(16.dp))
+                                .padding(14.dp)
                             ) {
                                 Column {
                                     Text(
@@ -262,16 +274,14 @@ fun CheckoutScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(ItaSuperHighlightBg)
-                                    .padding(14.dp)
+                                    .padding(vertical = 2.dp)
                             ) {
                                 Text(
                                     text = listOf(uiState.street, uiState.number)
                                         .filter { it.isNotBlank() }
                                         .joinToString(", "),
                                     fontWeight = FontWeight.Bold,
-                                    color = ItaSuperPrimary,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 Text(
@@ -309,7 +319,7 @@ fun CheckoutScreen(
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary
                                     ),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .testTag("checkout_cep_input")
@@ -321,7 +331,7 @@ fun CheckoutScreen(
                                     onClick = { viewModel.searchAddressByCep() },
                                     enabled = !uiState.isSearchingCep && uiState.cep.isNotBlank(),
                                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .height(54.dp)
                                         .testTag("checkout_search_cep_button")
@@ -359,8 +369,13 @@ fun CheckoutScreen(
                                     onValueChange = { viewModel.updateStreet(it) },
                                     label = { Text("Rua / Logradouro") },
                                     singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(2f)
                                         .testTag("checkout_street_input")
@@ -372,8 +387,13 @@ fun CheckoutScreen(
                                     label = { Text("Nº") },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .testTag("checkout_number_input")
@@ -389,8 +409,13 @@ fun CheckoutScreen(
                                     onValueChange = { viewModel.updateNeighborhood(it) },
                                     label = { Text("Bairro") },
                                     singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .testTag("checkout_neighborhood_input")
@@ -401,8 +426,13 @@ fun CheckoutScreen(
                                     onValueChange = { viewModel.updateCity(it) },
                                     label = { Text("Cidade") },
                                     singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .testTag("checkout_city_input")
@@ -416,8 +446,13 @@ fun CheckoutScreen(
                                 onValueChange = { viewModel.updateComplement(it) },
                                 label = { Text("Complemento / Ponto de Referência (opcional)") },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("checkout_complement_input")
@@ -435,17 +470,12 @@ fun CheckoutScreen(
 
             // 2. Payment Method Section
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                         Text(
-                            text = "Forma de Pagamento",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
+                            text = "Forma de pagamento",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleLarge
                         )
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -460,6 +490,12 @@ fun CheckoutScreen(
                             if (settings?.acceptCash == true) add("Dinheiro")
                         }
 
+                        LaunchedEffect(paymentOptions.joinToString("|"), uiState.paymentMethod) {
+                            if (paymentOptions.isNotEmpty() && uiState.paymentMethod !in paymentOptions) {
+                                viewModel.setPaymentMethod(paymentOptions.first())
+                            }
+                        }
+
                         if (paymentOptions.isEmpty()) {
                             Text(
                                 text = "A loja não possui uma forma de pagamento disponível no momento.",
@@ -469,44 +505,11 @@ fun CheckoutScreen(
                         } else {
                             paymentOptions.forEach { method ->
                                 val isSelected = uiState.paymentMethod == method
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .selectable(
-                                            selected = isSelected,
-                                            onClick = { viewModel.setPaymentMethod(method) }
-                                        )
-                                        .background(
-                                            if (isSelected) ItaSuperHighlightBg.copy(alpha = 0.5f) else Color.Transparent
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = { viewModel.setPaymentMethod(method) },
-                                        colors = RadioButtonDefaults.colors(selectedColor = ItaSuperPrimary)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Icon(
-                                        imageVector = when {
-                                            method.contains("PIX", ignoreCase = true) -> Icons.Default.Pix
-                                            method.contains("Cartão", ignoreCase = true) -> Icons.Default.CreditCard
-                                            else -> Icons.Default.AttachMoney
-                                        },
-                                        contentDescription = null,
-                                        tint = if (isSelected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = method,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
+                                PaymentSelectionCard(
+                                    method = method,
+                                    selected = isSelected,
+                                    onClick = { viewModel.setPaymentMethod(method) }
+                                )
                             }
                         }
 
@@ -520,8 +523,13 @@ fun CheckoutScreen(
                                 placeholder = { Text("Ex: 50,00 ou 100,00") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary),
-                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ItaSuperPrimary,
+                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("checkout_cash_change_input")
@@ -540,14 +548,9 @@ fun CheckoutScreen(
             // 3. Carteira e fidelidade
             if (uiState.isLoadingBenefits || uiState.loyaltyConfig != null || uiState.walletBalance > 0) {
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(2.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Benefícios ItaSuper", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                            Text("Benefícios ItaSuper", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                             Spacer(modifier = Modifier.height(10.dp))
                             if (uiState.isLoadingBenefits) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -593,9 +596,9 @@ fun CheckoutScreen(
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Button(
                                             onClick = { viewModel.applyLoyaltyPoints(selectedPoints) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                                            shape = RoundedCornerShape(12.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                                        shape = RoundedCornerShape(14.dp)
                                         ) {
                                             Text(
                                                 if (uiState.loyaltyPointsToUse > 0) "Atualizar resgate" else "Aplicar $selectedPoints pontos",
@@ -619,24 +622,47 @@ fun CheckoutScreen(
                                 }
                                 if (uiState.walletBalance > 0) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().selectable(
-                                            selected = uiState.useWallet,
-                                            onClick = { viewModel.setUseWallet(!uiState.useWallet) }
-                                        ).padding(vertical = 4.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(if (uiState.useWallet) Color(0xFFFFF0E6) else Color.White)
+                                            .border(if (uiState.useWallet) 2.dp else 1.dp, if (uiState.useWallet) ItaSuperPrimary else Color(0xFFE2E2E2), RoundedCornerShape(16.dp))
+                                            .selectable(
+                                                selected = uiState.useWallet,
+                                                onClick = { viewModel.setUseWallet(!uiState.useWallet) }
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Checkbox(
-                                            checked = uiState.useWallet,
-                                            onCheckedChange = viewModel::setUseWallet,
-                                            colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(13.dp))
+                                                .background(if (uiState.useWallet) Color(0xFFFFE8DA) else Color(0xFFF5F5F5)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CreditCard,
+                                                contentDescription = null,
+                                                tint = if (uiState.useWallet) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text("Usar crédito da carteira", fontWeight = FontWeight.SemiBold)
                                             Text(
                                                 if (uiState.useWallet) "Usando R$ ${String.format("%.2f", uiState.walletDiscount).replace(".", ",")}" else "Saldo disponível: R$ ${String.format("%.2f", uiState.walletBalance).replace(".", ",")}",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = if (uiState.useWallet) ItaSuperSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        if (uiState.useWallet) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Carteira selecionada",
+                                                tint = ItaSuperPrimary,
+                                                modifier = Modifier.size(24.dp)
                                             )
                                         }
                                     }
@@ -668,17 +694,12 @@ fun CheckoutScreen(
 
             // 3. Order Summary
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                         Text(
-                            text = "Resumo Final do Pedido",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
+                            text = "Resumo final do pedido",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleLarge
                         )
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -732,18 +753,25 @@ fun CheckoutScreen(
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                        HorizontalDivider(color = Color(0xFFE8DCD4), modifier = Modifier.padding(vertical = 14.dp))
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFFFEEDF))
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Total a pagar", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Column {
+                                Text("Total a pagar", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+                                Text("Revise os dados antes de confirmar", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                            }
                             Text(
                                 text = "R$ ${String.format("%.2f", checkoutTotal).replace(".", ",")}",
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp,
+                                fontSize = 24.sp,
                                 color = ItaSuperPrimary
                             )
                         }
@@ -761,10 +789,10 @@ fun CheckoutScreen(
                     },
                     enabled = !uiState.isPlacingOrder,
                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
+                        .height(60.dp)
                         .testTag("confirm_place_order_button")
                 ) {
                     if (uiState.isPlacingOrder) {
@@ -790,6 +818,75 @@ fun CheckoutScreen(
 }
 
 @Composable
+private fun PaymentSelectionCard(
+    method: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val icon: ImageVector = when {
+        method.contains("PIX", ignoreCase = true) -> Icons.Default.Pix
+        method.contains("Cartão", ignoreCase = true) -> Icons.Default.CreditCard
+        else -> Icons.Default.AttachMoney
+    }
+    val description = when {
+        method.equals("PIX Online", ignoreCase = true) -> "Pagamento confirmado no aplicativo"
+        method.equals("PIX Direto", ignoreCase = true) -> "Envie o comprovante depois do pedido"
+        method.equals("PIX na Maquininha", ignoreCase = true) -> "Pague na entrega"
+        method.equals("Cartão", ignoreCase = true) -> "Pague na entrega"
+        else -> "Informe o valor para troco"
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (selected) Color(0xFFFFF3EC) else Color.Transparent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(38.dp)
+                    .background(if (selected) ItaSuperPrimary else Color.Transparent)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = method,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (selected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selecionado",
+                    tint = ItaSuperPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        HorizontalDivider(color = Color(0xFFEAEAEA))
+    }
+}
+
+@Composable
 fun OrderSuccessDialog(
     order: Order,
     onDismiss: () -> Unit
@@ -800,7 +897,7 @@ fun OrderSuccessDialog(
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("success_modal_track_button")

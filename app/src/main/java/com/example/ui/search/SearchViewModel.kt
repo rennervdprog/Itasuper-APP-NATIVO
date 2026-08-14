@@ -49,6 +49,7 @@ data class SearchUiState(
     val debouncedQuery: String = "",
     val selectedCategoryId: String? = null,
     val userLocation: Pair<Double, Double>? = null,
+    val isLocationPermissionGranted: Boolean = false,
     val isFetchingGps: Boolean = false
 )
 
@@ -78,6 +79,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 .collect { debounced ->
                     _uiState.value = _uiState.value.copy(debouncedQuery = debounced)
                 }
+        }
+
+        // A Busca acompanha a mesma localização ativa usada pela Home e pelo checkout.
+        // Isso evita solicitar novamente uma permissão que o cliente já concedeu.
+        viewModelScope.launch {
+            UserSessionRepository.userSession.collect { session ->
+                val latitude = session.activeLocationLatitude
+                val longitude = session.activeLocationLongitude
+                if (latitude != null && longitude != null) {
+                    _uiState.value = _uiState.value.copy(userLocation = latitude to longitude)
+                }
+            }
         }
 
         // Trigger store load
@@ -204,6 +217,26 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             searchHistoryRepo.clearHistory()
         }
+    }
+
+    /**
+     * Atualiza a permissão ao entrar na Busca e tenta usar uma posição recente sem exigir toque.
+     * A última posição persistida pela Home permanece disponível mesmo se o Android ainda não
+     * entregar uma nova leitura de GPS.
+     */
+    fun synchronizeLocation(context: Context) {
+        val hasFine = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val granted = hasFine || hasCoarse
+
+        _uiState.value = _uiState.value.copy(isLocationPermissionGranted = granted)
+        if (granted) requestGpsLocation(context)
     }
 
     fun requestGpsLocation(context: Context) {
