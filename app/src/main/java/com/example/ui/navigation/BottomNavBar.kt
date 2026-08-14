@@ -54,8 +54,7 @@ fun ItaSuperBottomNavBar(
     NavigationBar(
         modifier = Modifier.fillMaxWidth(),
         containerColor = ItaSuperBackground,
-        tonalElevation = 0.dp,
-        windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
+        tonalElevation = 0.dp
     ) {
         items.forEach { item ->
             val isSelected = currentRoute == item.route
