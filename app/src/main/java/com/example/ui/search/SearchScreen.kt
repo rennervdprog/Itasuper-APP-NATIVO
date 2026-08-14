@@ -884,6 +884,12 @@ private fun StoreSearchResultCard(
     }
 }
 
+private const val URBAN_DISTANCE_FACTOR = 1.3
+
+/**
+ * Mantém a distância exibida no catálogo na mesma escala urbana do Capacitor e da Home.
+ * A taxa de entrega continua sendo calculada separadamente no checkout.
+ */
 private fun getFormattedDistance(store: Store, userLocation: Pair<Double, Double>?): String {
     if (userLocation != null && store.latitude != null && store.longitude != null) {
         val distKm = calculateHaversineDistanceKm(
@@ -891,7 +897,7 @@ private fun getFormattedDistance(store: Store, userLocation: Pair<Double, Double
             userLocation.second,
             store.latitude,
             store.longitude
-        )
+        ) * URBAN_DISTANCE_FACTOR
         return if (distKm < 1.0) {
             "${(distKm * 1000).toInt()} m"
         } else {
