@@ -936,7 +936,18 @@ object SupabaseClient {
                     )
                     storeList.add(store)
                 }
-                storeList
+
+                // Mesma regra de vitrine do Capacitor: lojas exclusivas de PDV não recebem
+                // pedidos de delivery. Quando a RPC responder, só ficam as lojas com pelo
+                // menos um entregador online vinculado. Em falha temporária da RPC, preserva
+                // o catálogo elegível para não esvaziar a Home por erro de rede.
+                val deliveryEligibleStores = storeList.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
+                val onlineDriverStoreIds = fetchStoreIdsWithOnlineDrivers()
+                if (onlineDriverStoreIds == null) {
+                    deliveryEligibleStores
+                } else {
+                    deliveryEligibleStores.filter { it.id in onlineDriverStoreIds }
+                }
             } else {
                 Log.e(TAG, "Failed fetching stores_public: code=${response.code}, body=$responseText")
                 emptyList()
@@ -944,6 +955,40 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
             emptyList()
+        }
+    }
+
+    /**
+     * Retorna os IDs de lojas com pelo menos um entregador online, usando a mesma RPC
+     * pública da vitrine Capacitor. `null` significa indisponibilidade temporária da RPC
+     * e permite que o chamador mantenha o catálogo para não produzir uma Home vazia.
+     */
+    private fun fetchStoreIdsWithOnlineDrivers(): Set<String>? {
+        return try {
+            val payload = "{}".toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/stores_with_online_drivers")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(payload)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) {
+                Log.w(TAG, "RPC stores_with_online_drivers indisponível: HTTP ${response.code}")
+                null
+            } else {
+                val array = JSONArray(text)
+                buildSet {
+                    for (index in 0 until array.length()) {
+                        array.optString(index, "").trim().takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível filtrar lojas por entregador online", e)
+            null
         }
     }
 

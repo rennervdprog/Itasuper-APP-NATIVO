@@ -5,9 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
-import com.example.data.model.LastOrder
+import com.example.data.model.Order
 import com.example.data.model.Store
 import com.example.data.remote.SupabaseClient
+import com.example.data.repository.CartRepository
 import com.example.data.repository.StoreRepository
 import com.example.data.repository.UserSessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,8 @@ data class HomeUiState(
     val discoverProducts: List<DiscoverProduct> = emptyList(),
     val isFreeFeeFilterActive: Boolean = false,
     val isDirectDeliveryFilterActive: Boolean = false,
-    val lastOrder: LastOrder? = null,
+    val recentCompletedOrder: Order? = null,
+    val isReordering: Boolean = false,
     val showSupportSheet: Boolean = false,
     val showAddressChoiceDialog: Boolean = false,
     val showAddressForm: Boolean = false,
@@ -70,6 +72,7 @@ class HomeViewModel : ViewModel() {
     private var currentLatitude: Double? = null
     private var currentLongitude: Double? = null
     private var catalogGeneration = 0
+    private var lastLoadedOrderUserId = ""
 
     init {
         val userSession = UserSessionRepository.userSession.value
@@ -78,8 +81,7 @@ class HomeViewModel : ViewModel() {
             streetName = userSession.activeLocationStreet.ifBlank { userSession.addressStreet },
             streetNumber = userSession.activeLocationNumber.ifBlank { userSession.addressNumber },
             activeCity = initialCity,
-            requiresAddress = initialCity.isBlank(),
-            lastOrder = StoreRepository.lastOrder.value
+            requiresAddress = initialCity.isBlank()
         )
 
         // A cidade usada no catálogo é GPS quando ativo; sem GPS, usa o endereço cadastrado.
@@ -92,6 +94,15 @@ class HomeViewModel : ViewModel() {
                     activeCity = effectiveCity,
                     requiresAddress = effectiveCity.isBlank()
                 )
+                if (session.isLoggedIn && session.userId.isNotBlank() && session.accessToken.isNotBlank() &&
+                    session.userId != lastLoadedOrderUserId
+                ) {
+                    lastLoadedOrderUserId = session.userId
+                    loadLatestCompletedOrder(session.userId, session.accessToken)
+                } else if (!session.isLoggedIn) {
+                    lastLoadedOrderUserId = ""
+                    _uiState.value = _uiState.value.copy(recentCompletedOrder = null)
+                }
                 refreshRegionalCatalog()
             }
         }
@@ -585,8 +596,79 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    fun onRepeatLastOrder() {
-        _uiState.value = _uiState.value.copy(snackbarMessage = "Itens do último pedido adicionados ao carrinho!")
+    /** Carrega apenas o pedido concluído mais recente, com itens reais do Supabase. */
+    private fun loadLatestCompletedOrder(userId: String, accessToken: String) {
+        viewModelScope.launch {
+            val lastCompleted = SupabaseClient.fetchOrdersForClient(userId, accessToken)
+                .firstOrNull { order ->
+                    order.status.trim().lowercase() in setOf("entregue", "finalizado") && order.items.isNotEmpty()
+                }
+            _uiState.value = _uiState.value.copy(recentCompletedOrder = lastCompleted)
+        }
+    }
+
+    /**
+     * Recria a sacola usando o cardápio atual. Itens removidos ou indisponíveis não são
+     * adicionados, para que o cliente nunca tente comprar produto que a loja não vende mais.
+     */
+    fun reorderLatestCompletedOrder(onCartReady: () -> Unit) {
+        val order = _uiState.value.recentCompletedOrder ?: return
+        val session = UserSessionRepository.userSession.value
+        val store = StoreRepository.getStoreById(order.storeId)
+        if (!session.isLoggedIn || session.userId.isBlank()) {
+            _uiState.value = _uiState.value.copy(snackbarMessage = "Entre novamente para repetir este pedido.")
+            return
+        }
+        if (store == null || !store.isOpen) {
+            _uiState.value = _uiState.value.copy(snackbarMessage = "Esta loja não está disponível no momento.")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isReordering = true)
+        viewModelScope.launch {
+            try {
+                val availableProducts = SupabaseClient.fetchProductsForStore(order.storeId)
+                    .filter { it.isAvailable }
+                    .associateBy { it.id }
+                val validItems = order.items.mapNotNull { previousItem ->
+                    val currentProduct = availableProducts[previousItem.product.id] ?: return@mapNotNull null
+                    previousItem.copy(product = currentProduct)
+                }
+
+                if (validItems.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        isReordering = false,
+                        snackbarMessage = "Os itens deste pedido não estão mais disponíveis."
+                    )
+                    return@launch
+                }
+
+                CartRepository.setDeliveryCoordinates(
+                    session.activeLocationLatitude,
+                    session.activeLocationLongitude
+                )
+                CartRepository.replaceWithOrder(
+                    storeId = order.storeId,
+                    storeName = store.name.ifBlank { order.storeName },
+                    items = validItems
+                )
+                val unavailableCount = order.items.size - validItems.size
+                _uiState.value = _uiState.value.copy(
+                    isReordering = false,
+                    snackbarMessage = if (unavailableCount > 0) {
+                        "$unavailableCount item(ns) indisponível(is) foram removidos da sacola."
+                    } else {
+                        "Itens do último pedido adicionados ao carrinho!"
+                    }
+                )
+                onCartReady()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isReordering = false,
+                    snackbarMessage = "Não foi possível repetir o pedido. Tente novamente."
+                )
+            }
+        }
     }
 
     fun clearSnackbar() {

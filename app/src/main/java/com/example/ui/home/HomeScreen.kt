@@ -106,7 +106,7 @@ import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
 import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
-import com.example.data.model.LastOrder
+import com.example.data.model.Order
 import com.example.data.model.Store
 import com.example.data.repository.UserSessionRepository
 import com.example.ui.navigation.ItaSuperBottomNavBar
@@ -232,6 +232,21 @@ fun HomeScreen(
                 HomeFavoriteStoresSection(
                     favoriteStores = uiState.recentStores,
                     onStoreClick = onNavigateToStore
+                )
+                Spacer(modifier = Modifier.height(26.dp))
+            }
+
+            uiState.recentCompletedOrder?.let { order ->
+                Spacer(modifier = Modifier.height(4.dp))
+                HomeLastOrderSection(
+                    order = order,
+                    isReordering = uiState.isReordering,
+                    onViewStore = { onNavigateToStore(order.storeId) },
+                    onReorder = {
+                        viewModel.reorderLatestCompletedOrder {
+                            onNavigateToRoute("carrinho")
+                        }
+                    }
                 )
                 Spacer(modifier = Modifier.height(26.dp))
             }
@@ -1231,7 +1246,8 @@ private fun HomeCategoryChipsSection(
 
 @Composable
 private fun HomeLastOrderSection(
-    lastOrder: LastOrder,
+    order: Order,
+    isReordering: Boolean,
     onViewStore: () -> Unit,
     onReorder: () -> Unit
 ) {
@@ -1296,14 +1312,14 @@ private fun HomeLastOrderSection(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = lastOrder.storeName,
+                            text = order.storeName,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
                         )
                         Text(
-                            text = lastOrder.dateText,
+                            text = order.createdAt.take(10).ifBlank { "Pedido anterior" },
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1311,7 +1327,7 @@ private fun HomeLastOrderSection(
                     }
 
                     Text(
-                        text = "R$ %.2f".format(lastOrder.totalPrice).replace('.', ','),
+                        text = "R$ %.2f".format(order.total).replace('.', ','),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = ItaSuperHighlightText
@@ -1352,6 +1368,7 @@ private fun HomeLastOrderSection(
 
                     Button(
                         onClick = onReorder,
+                        enabled = !isReordering,
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp)
@@ -1367,7 +1384,7 @@ private fun HomeLastOrderSection(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Pedir de novo",
+                            text = if (isReordering) "Adicionando..." else "Pedir de novo",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White

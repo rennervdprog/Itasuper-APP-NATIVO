@@ -156,6 +156,25 @@ object CartRepository {
         publish(current.copy(storeId = product.storeId, storeName = storeName, items = updatedItems))
     }
 
+    /**
+     * Substitui a sacola atual pelos itens validados de um pedido anterior.
+     * A operação preserva a regra de uma loja por sacola e remove cupom/desconto
+     * anterior, que precisa ser recalculado no novo checkout.
+     */
+    fun replaceWithOrder(storeId: String, storeName: String, items: List<CartItem>) {
+        if (storeId.isBlank() || items.isEmpty()) return
+        publish(
+            CartState(
+                storeId = storeId,
+                storeName = storeName,
+                items = items,
+                deliveryType = _cartState.value.deliveryType,
+                deliveryLatitude = _cartState.value.deliveryLatitude,
+                deliveryLongitude = _cartState.value.deliveryLongitude
+            )
+        )
+    }
+
     fun updateQuantity(productId: String, newQuantity: Int) {
         val current = _cartState.value
         if (newQuantity <= 0) {
