@@ -16,3 +16,11 @@
 local.properties
 .env
 debug.keystore
+
+# Google Play release signing — nunca versionar chaves ou senhas
+keystore.properties
+*.jks
+*.keystore
+*.pem
+*.der
+release-signing/

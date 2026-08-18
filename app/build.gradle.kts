@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.android)
@@ -22,13 +24,32 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  val signingProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.exists()) {
+      propertiesFile.inputStream().use(::load)
+    }
+  }
+
+  fun signingValue(propertyName: String, environmentName: String): String? =
+    System.getenv(environmentName) ?: signingProperties.getProperty(propertyName)
+
+  val releaseStoreFilePath = signingValue("storeFile", "KEYSTORE_PATH")
+  val releaseStorePassword = signingValue("storePassword", "STORE_PASSWORD")
+  val releaseKeyAlias = signingValue("keyAlias", "KEY_ALIAS") ?: "itasuper_upload"
+  val releaseKeyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+  val isReleaseSigningConfigured = !releaseStoreFilePath.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank()
+
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      if (isReleaseSigningConfigured) {
+        storeFile = file(releaseStoreFilePath!!)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -43,9 +64,19 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      if (isReleaseSigningConfigured) {
+        signingConfig = signingConfigs.getByName("release")
+      }
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
+  }
+
+  tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    doFirst {
+      check(isReleaseSigningConfigured) {
+        "Assinatura de release ausente. Crie keystore.properties a partir de keystore.properties.example ou defina KEYSTORE_PATH, STORE_PASSWORD, KEY_ALIAS e KEY_PASSWORD."
+      }
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
