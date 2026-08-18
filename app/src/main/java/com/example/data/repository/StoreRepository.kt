@@ -15,6 +15,12 @@ data class SearchCategory(
     val matchingTerms: List<String>
 )
 
+/** Separa falha de comunicação de uma resposta válida sem lojas elegíveis. */
+data class StoreRefreshResult(
+    val isSuccess: Boolean,
+    val stores: List<Store>
+)
+
 object StoreRepository {
 
     val searchCategories = listOf(
@@ -34,16 +40,17 @@ object StoreRepository {
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()
 
     /**
-     * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda,
-     * timeout ou resposta temporariamente vazia do backend.
+     * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda ou timeout.
+     * Uma resposta remota vazia e bem-sucedida é aplicada, pois pode indicar que não há
+     * entregadores disponíveis para as lojas próprias naquele instante.
      */
-    suspend fun refreshStoresFromSupabase(): Boolean {
-        val activeStores = SupabaseClient.fetchActiveStores()
-        if (activeStores.isNotEmpty()) {
-            _stores.value = activeStores
-            return true
+    suspend fun refreshStoresFromSupabase(): StoreRefreshResult {
+        val catalog = SupabaseClient.fetchActiveStores()
+        if (catalog.isSuccess) {
+            _stores.value = catalog.stores
+            return StoreRefreshResult(isSuccess = true, stores = catalog.stores)
         }
-        return _stores.value.isNotEmpty()
+        return StoreRefreshResult(isSuccess = false, stores = _stores.value)
     }
 
     private val _lastOrder = MutableStateFlow<LastOrder?>(null)

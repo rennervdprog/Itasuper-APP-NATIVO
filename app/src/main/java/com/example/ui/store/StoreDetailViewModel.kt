@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
@@ -208,6 +210,7 @@ class StoreDetailViewModel : ViewModel() {
     private var productAddonGroupsMap: Map<String, List<String>> = emptyMap()
     private var allAddonItems: List<AddonItem> = emptyList()
     private var loadStoreJob: Job? = null
+    private var deliveryAvailabilityJob: Job? = null
 
     val cartState: StateFlow<CartState> = CartRepository.cartState
     val allProducts: StateFlow<List<Product>> = _rawProducts.asStateFlow()
@@ -297,6 +300,7 @@ class StoreDetailViewModel : ViewModel() {
                     pizzaBorders = if (pizzaBordersList.isNotEmpty()) pizzaBordersList else previous.pizzaBorders,
                     selectedSectionName = previous.selectedSectionName.ifBlank { "Todos" }
                 )
+                observeDeliveryAvailability(store.id)
                 }
             } catch (error: TimeoutCancellationException) {
                 _uiState.value = _uiState.value.copy(
@@ -317,6 +321,7 @@ class StoreDetailViewModel : ViewModel() {
     /** Interrompe a busca remota imediatamente quando o Android informa que não há internet. */
     fun showOffline(storeId: String) {
         loadStoreJob?.cancel()
+        deliveryAvailabilityJob?.cancel()
         val cachedStore = _uiState.value.store ?: StoreRepository.getStoreById(storeId)
         _uiState.value = _uiState.value.copy(
             store = cachedStore,
@@ -328,6 +333,31 @@ class StoreDetailViewModel : ViewModel() {
             },
             snackbarMessage = if (cachedStore != null) "Sem internet. Exibindo informações já carregadas." else null
         )
+    }
+
+    /** Atualiza a disponibilidade de entrega no detalhe sem esconder o cardápio ou bloquear retirada. */
+    private fun observeDeliveryAvailability(storeId: String) {
+        deliveryAvailabilityJob?.cancel()
+        val currentStore = _uiState.value.store ?: return
+        if (!currentStore.deliveryMode.equals("own", ignoreCase = true)) return
+
+        deliveryAvailabilityJob = viewModelScope.launch {
+            while (isActive) {
+                val availability = runCatching {
+                    SupabaseClient.fetchStoreDeliveryAvailability(storeId)
+                }.getOrNull()
+                val state = _uiState.value
+                if (availability != null && state.store?.id == storeId) {
+                    _uiState.value = state.copy(
+                        store = state.store.copy(
+                            hasAvailableDriver = availability.canAcceptDeliveryOrders,
+                            deliveryAvailabilityMessage = availability.reasonMessage
+                        )
+                    )
+                }
+                delay(30_000L)
+            }
+        }
     }
 
     fun selectSection(sectionName: String) {

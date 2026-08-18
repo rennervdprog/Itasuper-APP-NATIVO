@@ -86,6 +86,10 @@ fun CartScreen(
     val belowMinimum = minimumOrder > 0.0 && cart.subtotal < minimumOrder
     val minimumMissing = (minimumOrder - cart.subtotal).coerceAtLeast(0.0)
     val deliveryQuoteReady = cart.deliveryType == "RETIRADA" || cart.hasOfficialDeliveryQuote
+    val isDeliveryUnavailable = store?.let {
+        it.deliveryMode.equals("own", ignoreCase = true) && it.hasAvailableDriver == false
+    } == true
+    val deliveryBlockedForCurrentSelection = isDeliveryUnavailable && cart.deliveryType == "DELIVERY"
 
     Scaffold(
         containerColor = Color(0xFFFAFAFA),
@@ -330,6 +334,34 @@ fun CartScreen(
                             }
                         }
                     }
+                    if (isDeliveryUnavailable) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ItaSuperHighlightBg)
+                                .border(1.dp, ItaSuperPrimary.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocalShipping,
+                                contentDescription = null,
+                                tint = ItaSuperPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = store?.deliveryAvailabilityMessage?.ifBlank {
+                                    "Entrega indisponível no momento. Selecione retirada para continuar."
+                                } ?: "Entrega indisponível no momento. Selecione retirada para continuar.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
 
                 // Cart Items
@@ -540,7 +572,7 @@ fun CartScreen(
                         }
                     }
 
-                if (isStoreClosed || belowMinimum) {
+                if (isStoreClosed || belowMinimum || deliveryBlockedForCurrentSelection) {
                     item {
                         Card(
                             colors = CardDefaults.cardColors(
@@ -550,10 +582,12 @@ fun CartScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = if (isStoreClosed) {
-                                    "Esta loja está fechada no momento. O pedido não pode ser finalizado agora."
-                                } else {
-                                    "Pedido mínimo: R$ ${String.format("%.2f", minimumOrder).replace(".", ",")}. Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}."
+                                text = when {
+                                    isStoreClosed -> "Esta loja está fechada no momento. O pedido não pode ser finalizado agora."
+                                    deliveryBlockedForCurrentSelection -> store?.deliveryAvailabilityMessage?.ifBlank {
+                                        "Entrega indisponível no momento. Selecione retirada para continuar."
+                                    } ?: "Entrega indisponível no momento. Selecione retirada para continuar."
+                                    else -> "Pedido mínimo: R$ ${String.format("%.2f", minimumOrder).replace(".", ",")}. Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}."
                                 },
                                 color = if (isStoreClosed) MaterialTheme.colorScheme.onErrorContainer else ItaSuperPrimary,
                                 fontWeight = FontWeight.Bold,
@@ -567,7 +601,7 @@ fun CartScreen(
                 item {
                     Button(
                         onClick = onNavigateToCheckout,
-                        enabled = !isStoreClosed && !belowMinimum,
+                        enabled = !isStoreClosed && !belowMinimum && !deliveryBlockedForCurrentSelection,
                         colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
@@ -579,7 +613,8 @@ fun CartScreen(
                             text = when {
                                 isStoreClosed -> "Loja fechada"
                                 belowMinimum -> "Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}"
-                                                                else -> if (deliveryQuoteReady) {
+                                deliveryBlockedForCurrentSelection -> "Selecione retirada para continuar"
+                                else -> if (deliveryQuoteReady) {
                                     "Avançar para Checkout • R$ ${String.format("%.2f", cart.total).replace(".", ",")}"
                                 } else {
                                     "Avançar para Checkout • Taxa a confirmar"

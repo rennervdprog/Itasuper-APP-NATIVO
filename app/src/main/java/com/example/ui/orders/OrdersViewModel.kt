@@ -715,7 +715,36 @@ class OrdersViewModel : ViewModel() {
     }
 
     fun setDeliveryType(type: String) {
-        CartRepository.setDeliveryType(type)
+        val normalizedType = if (type.equals("RETIRADA", ignoreCase = true)) "RETIRADA" else "DELIVERY"
+        val cart = cartState.value
+        val store = cart.storeId?.let { StoreRepository.getStoreById(it) }
+
+        if (normalizedType == "DELIVERY" && store?.deliveryMode?.equals("own", ignoreCase = true) == true) {
+            if (store?.hasAvailableDriver == false) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = store.deliveryAvailabilityMessage.ifBlank {
+                        "Esta loja está sem entregador disponível no momento. Escolha retirada para continuar."
+                    }
+                )
+                return
+            }
+            viewModelScope.launch {
+                val availability = SupabaseClient.fetchStoreDeliveryAvailability(store?.id.orEmpty())
+                if (availability?.canAcceptDeliveryOrders == false) {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = availability.reasonMessage.ifBlank {
+                            "Esta loja está sem entregador disponível no momento. Escolha retirada para continuar."
+                        }
+                    )
+                    return@launch
+                }
+                CartRepository.setDeliveryType(normalizedType)
+                synchronizeDeliveryQuote()
+            }
+            return
+        }
+
+        CartRepository.setDeliveryType(normalizedType)
         synchronizeDeliveryQuote()
     }
 

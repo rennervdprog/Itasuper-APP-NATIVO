@@ -119,6 +119,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -129,6 +130,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import com.example.R
 import com.example.core.network.ConnectivityMonitor
 import com.example.data.model.AddonGroup
 import com.example.data.model.AddonItem
@@ -308,6 +310,9 @@ fun StoreDetailScreen(
                 hasPizzaCategory && store?.settings?.pizzaHalfEnabled != false && products.isNotEmpty() -> "pizza"
                 else -> null
             }
+            val isDeliveryUnavailable = store?.let {
+                it.deliveryMode.equals("own", ignoreCase = true) && it.hasAvailableDriver == false
+            } == true
 
             // Group products by menu_section / category
             val groupedProducts = remember(products, uiState.menuSections) {
@@ -341,9 +346,10 @@ fun StoreDetailScreen(
             }
             val allSectionNames = listOf("Todos") + productSections.map { it.first }
             val featuredProducts = products.take(6)
-            val sectionStartIndexByName = remember(productSections, builderType, featuredProducts) {
+            val sectionStartIndexByName = remember(productSections, builderType, featuredProducts, isDeliveryUnavailable) {
                 val starts = LinkedHashMap<String, Int>()
                 var itemIndex = 1 // Hero
+                if (isDeliveryUnavailable) itemIndex += 1
                 if (builderType != null) itemIndex += 1
                 if (featuredProducts.isNotEmpty()) {
                     itemIndex += 1 + featuredProducts.chunked(3).size // título + linhas da grade
@@ -410,6 +416,51 @@ fun StoreDetailScreen(
                         },
                         onInfoClick = onNavigateToInfo
                     )
+                }
+
+                if (isDeliveryUnavailable) {
+                    item(key = "delivery_unavailable_notice") {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = ItaSuperWarning.copy(alpha = 0.10f),
+                            border = BorderStroke(1.dp, ItaSuperWarning.copy(alpha = 0.32f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Storefront,
+                                    contentDescription = null,
+                                    tint = ItaSuperWarning,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Entrega indisponível no momento",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ItaSuperTextPrimary
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = store?.deliveryAvailabilityMessage
+                                            ?.ifBlank { "Esta loja está sem entregador disponível. Você ainda pode fazer seu pedido para retirada." }
+                                            ?: "Esta loja está sem entregador disponível. Você ainda pode fazer seu pedido para retirada.",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = ItaSuperSecondary,
+                                            lineHeight = 17.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // A personalização continua como uma única vitrine por loja.
@@ -1103,30 +1154,57 @@ private fun StoreHeroActionButton(
 
 @Composable
 private fun StoreShowcaseLogo(store: Store?, modifier: Modifier = Modifier) {
+    val imageUrl = store?.logoUrl?.trim().orEmpty()
+    var imageFailed by remember(store?.id, imageUrl) {
+        mutableStateOf(imageUrl.isBlank() || imageUrl.equals("null", ignoreCase = true))
+    }
+    val initial = store?.name?.trim()?.take(1)?.uppercase().orEmpty().ifBlank { "I" }
+    val useDarkPlaceholder = initial == "C"
+    val placeholderBackground = if (useDarkPlaceholder) Color(0xFF741914) else Color(0xFFFFE8A8)
+    val placeholderForeground = if (useDarkPlaceholder) Color.White else ItaSuperPrimary
+
     Surface(
         modifier = modifier.size(82.dp),
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xFFFFE9AD),
+        color = if (imageFailed) placeholderBackground else Color(0xFFFFE9AD),
         border = BorderStroke(2.dp, Color.White),
         shadowElevation = 2.dp
     ) {
-        if (!store?.logoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = store?.logoUrl,
-                contentDescription = store?.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))
-            )
-        } else {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = store?.name?.trim()?.firstOrNull()?.uppercase() ?: "I",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 42.sp,
-                        color = ItaSuperPrimary
-                    )
+        Box(contentAlignment = Alignment.Center) {
+            if (!imageFailed) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = store?.name,
+                    contentScale = ContentScale.Crop,
+                    onError = { imageFailed = true },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(18.dp))
                 )
+            }
+            if (imageFailed) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = initial,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 34.sp,
+                            lineHeight = 32.sp,
+                            color = placeholderForeground
+                        )
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.ic_home_placeholder_smile),
+                        contentDescription = null,
+                        tint = placeholderForeground,
+                        modifier = Modifier
+                            .offset(y = (-7).dp)
+                            .size(31.dp)
+                    )
+                }
             }
         }
     }

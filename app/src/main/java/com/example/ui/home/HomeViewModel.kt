@@ -142,13 +142,13 @@ class HomeViewModel : ViewModel() {
                 isLoadingStores = true,
                 errorMessage = null
             )
-            val success = StoreRepository.refreshStoresFromSupabase()
-            val currentStores = storesWithCalculatedDistance(StoreRepository.stores.value)
+            val refreshResult = StoreRepository.refreshStoresFromSupabase()
+            val currentStores = storesWithCalculatedDistance(refreshResult.stores)
 
-            if (!success || currentStores.isEmpty()) {
+            if (!refreshResult.isSuccess) {
                 _uiState.value = _uiState.value.copy(
                     isLoadingStores = false,
-                    errorMessage = "Não foi possível carregar as lojas, tentar novamente"
+                    errorMessage = "Não foi possível carregar as lojas. Verifique sua conexão e tente novamente."
                 )
             } else {
                 _uiState.value = _uiState.value.copy(

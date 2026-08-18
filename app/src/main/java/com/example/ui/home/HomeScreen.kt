@@ -2211,7 +2211,7 @@ private fun HomeStoreListSection(
                 Text(
                     text = when {
                         regionalStoreCount > 0 && hasActiveFilters -> "Nenhuma loja encontrada com os filtros selecionados"
-                        activeCity.isNotBlank() -> "Nenhuma loja disponível em $activeCity"
+                        activeCity.isNotBlank() -> "No momento, não há lojas com entrega disponível em $activeCity"
                         else -> "Nenhuma loja encontrada para esse filtro"
                     },
                     style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)

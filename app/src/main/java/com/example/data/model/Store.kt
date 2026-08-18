@@ -52,6 +52,9 @@ data class Store(
     val longitude: Double? = null,
     val settings: StoreSettings = StoreSettings(),
     val deliveryMode: String = "",
+    /** null enquanto a disponibilidade ainda não foi confirmada; false bloqueia somente entrega. */
+    val hasAvailableDriver: Boolean? = null,
+    val deliveryAvailabilityMessage: String = "",
     val ownDeliveryFee: Double = 0.0,
     val deliveryFeeType: String = "fixed",
     val deliveryBaseKm: Double = 0.0,

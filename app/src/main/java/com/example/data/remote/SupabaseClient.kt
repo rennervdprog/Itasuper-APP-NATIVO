@@ -47,6 +47,19 @@ data class SupabaseOperationResult(
     val errorMessage: String? = null
 )
 
+data class StoreDeliveryAvailability(
+    val canAcceptDeliveryOrders: Boolean,
+    val availableDriversCount: Int,
+    val reasonCode: String,
+    val reasonMessage: String
+)
+
+/** Resultado do catálogo: uma lista vazia pode ser uma resposta operacional válida. */
+data class StoreCatalogResult(
+    val isSuccess: Boolean,
+    val stores: List<Store>
+)
+
 data class RemoteCustomerProfile(
     val fullName: String = "",
     val email: String = "",
@@ -854,7 +867,7 @@ object SupabaseClient {
     }
 
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
-    suspend fun fetchActiveStores(): List<Store> = withContext(Dispatchers.IO) {
+    suspend fun fetchActiveStores(includeUnavailableOwnDeliveryStores: Boolean = false): StoreCatalogResult = withContext(Dispatchers.IO) {
         try {
             val openingHours = fetchOpeningHours()
 
@@ -1137,15 +1150,29 @@ object SupabaseClient {
                 // o catálogo elegível para não esvaziar a Home por erro de rede.
                 val deliveryEligibleStores = storeList.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
                 val onlineDriverStoreIds = fetchStoreIdsWithOnlineDrivers()
-                val visibleStores = if (onlineDriverStoreIds == null) {
-                    deliveryEligibleStores
-                } else {
-                    deliveryEligibleStores.filter { it.id in onlineDriverStoreIds }
+                val visibleStores = when {
+                    includeUnavailableOwnDeliveryStores || onlineDriverStoreIds == null -> deliveryEligibleStores
+                    else -> deliveryEligibleStores.filter { store ->
+                        !store.deliveryMode.equals("own", ignoreCase = true) || store.id in onlineDriverStoreIds
+                    }
                 }
 
                 // A visão pública não expõe todos os overrides VIP. A vitrine consulta a
                 // mesma RPC usada pela cotação para mostrar o preço-base correto de cada loja.
-                visibleStores.map { store ->
+                StoreCatalogResult(
+                    isSuccess = true,
+                    stores = visibleStores.map { sourceStore ->
+                    val driverAvailabilityKnown = sourceStore.deliveryMode.equals("own", ignoreCase = true) && onlineDriverStoreIds != null
+                    val store = sourceStore.copy(
+                        hasAvailableDriver = when {
+                            sourceStore.deliveryMode.equals("own", ignoreCase = true) -> onlineDriverStoreIds?.contains(sourceStore.id)
+                            else -> true
+                        },
+                        deliveryAvailabilityMessage = when {
+                            driverAvailabilityKnown && onlineDriverStoreIds?.contains(sourceStore.id) == false -> "Esta loja está sem entregador disponível no momento."
+                            else -> ""
+                        }
+                    )
                     val officialFee = fetchOfficialCustomerDeliveryFee(store.id)
                     if (officialFee == null || store.deliveryMode.equals("pickup", ignoreCase = true)) {
                         store
@@ -1157,13 +1184,14 @@ object SupabaseClient {
                         )
                     }
                 }
+                )
             } else {
                 Log.e(TAG, "Failed fetching stores_public: code=${response.code}, body=$responseText")
-                emptyList()
+                StoreCatalogResult(isSuccess = false, stores = emptyList())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
-            emptyList()
+            StoreCatalogResult(isSuccess = false, stores = emptyList())
         }
     }
 
@@ -1197,6 +1225,37 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Não foi possível filtrar lojas por entregador online", e)
+            null
+        }
+    }
+
+    /** Consulta canônica usada no detalhe: vínculo aceito + motorista ativo, online e presença recente. */
+    suspend fun fetchStoreDeliveryAvailability(storeId: String): StoreDeliveryAvailability? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        try {
+            val body = JSONObject().put("_store_id", storeId)
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/store_delivery_availability")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string().orEmpty()
+            if (!response.isSuccessful || responseText.isBlank()) {
+                Log.w(TAG, "RPC store_delivery_availability indisponível: HTTP ${response.code}")
+                return@withContext null
+            }
+            val row = JSONArray(responseText).optJSONObject(0) ?: return@withContext null
+            StoreDeliveryAvailability(
+                canAcceptDeliveryOrders = row.optBoolean("can_accept_delivery_orders", false),
+                availableDriversCount = row.optInt("available_drivers_count", 0),
+                reasonCode = row.optString("reason_code", ""),
+                reasonMessage = row.optString("reason_message", "")
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível consultar a disponibilidade de entrega", e)
             null
         }
     }
@@ -1269,7 +1328,7 @@ object SupabaseClient {
         try {
             // Reutiliza o mapper central para manter os campos e as regras do card
             // de loja idênticos entre Home, Busca e Detalhe.
-            fetchActiveStores().firstOrNull { it.id == storeId }
+            fetchActiveStores(includeUnavailableOwnDeliveryStores = true).stores.firstOrNull { it.id == storeId }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching store $storeId", e)
             null

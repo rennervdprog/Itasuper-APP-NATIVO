@@ -115,6 +115,8 @@ data class DeliveryQuoteFailure(
 ) {
     fun userMessage(): String = when (reason) {
         "delivery_unavailable" -> "Esta loja não está aceitando pedidos de entrega no momento."
+        "no_driver_available" -> "Esta loja está sem entregador disponível no momento. Você ainda pode escolher retirada."
+        "delivery_availability_unavailable" -> "Não foi possível confirmar a disponibilidade de entrega agora. Tente novamente em instantes."
         "outside_delivery_area" -> {
             if (distanceKm != null && maxDistanceKm != null) {
                 "O endereço de entrega está a ${"%.1f".format(java.util.Locale("pt", "BR"), distanceKm)} km da loja. Limite de ${"%.1f".format(java.util.Locale("pt", "BR"), maxDistanceKm)} km."
