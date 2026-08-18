@@ -3,9 +3,15 @@ package com.example.ui.orders
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.CartItem
+import com.example.data.model.DeliveryAddressInput
+import com.example.data.model.DeliveryQuote
+import com.example.data.model.DeliveryQuoteFailure
 import com.example.data.model.Order
 import com.example.data.model.LoyaltyConfig
 import com.example.data.model.SavedAddress
+import com.example.data.model.normalizeBrazilianUf
+import com.example.data.model.preorderReleaseAtMillis
+import com.example.data.model.toSnapshot
 import com.example.data.remote.SupabaseClient
 import com.example.data.repository.CartRepository
 import com.example.data.repository.CartState
@@ -19,6 +25,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 data class PixPaymentUiState(
     val order: Order? = null,
@@ -64,7 +74,12 @@ data class OrdersUiState(
     val number: String = "",
     val neighborhood: String = "",
     val city: String = "",
+    val state: String = "",
     val complement: String = "",
+    val deliveryQuote: DeliveryQuote? = null,
+    val deliveryQuoteFailure: DeliveryQuoteFailure? = null,
+    val isQuotingDelivery: Boolean = false,
+    val deliveryQuoteRequestKey: String? = null,
     val showAddressEditor: Boolean = true,
     val showGpsAddressConfirmation: Boolean = false,
     val usingGpsAddress: Boolean = false,
@@ -76,7 +91,11 @@ data class OrdersUiState(
 
     // Payment state
     val paymentMethod: String = "",
+    val needsChange: Boolean = false,
     val changeForAmount: String = "",
+
+    // Agendamento opcional. Em pré-pedido sem data escolhida, o pedido é liberado na abertura.
+    val scheduledForMillis: Long? = null,
 
     // Flow status
     val isPlacingOrder: Boolean = false,
@@ -84,6 +103,7 @@ data class OrdersUiState(
     val errorMessage: String? = null,
     val pixPayment: PixPaymentUiState? = null,
     val pixDirectPayment: PixDirectPaymentUiState? = null,
+    val isRefreshingOrders: Boolean = false,
     val confirmingDeliveryOrderId: String? = null,
     val cancellingOrderId: String? = null
 )
@@ -103,6 +123,8 @@ class OrdersViewModel : ViewModel() {
 
     private var addressEditedByCustomer = false
     private var benefitsLoadingStoreId: String? = null
+    private var inFlightDeliveryQuoteKey: String? = null
+    private var ordersRefreshInFlight = false
 
     init {
         applySavedAddress(UserSessionRepository.userSession.value)
@@ -122,6 +144,7 @@ class OrdersViewModel : ViewModel() {
                 } else {
                     recalculateBenefits(cart)
                 }
+                synchronizeDeliveryQuote()
             }
         }
     }
@@ -223,6 +246,152 @@ class OrdersViewModel : ViewModel() {
         )
     }
 
+    private fun currentDeliveryAddress(): DeliveryAddressInput = DeliveryAddressInput(
+        street = _uiState.value.street,
+        number = _uiState.value.number,
+        complement = _uiState.value.complement,
+        neighborhood = _uiState.value.neighborhood,
+        city = _uiState.value.city,
+        state = _uiState.value.state,
+        cep = _uiState.value.cep
+    )
+
+    private fun fixedDeliveryFeeFor(cart: CartState): Double? {
+        if (cart.deliveryType != "DELIVERY") return null
+        cart.storeOfficialDeliveryFee?.takeIf {
+            !cart.storeDeliveryFeeType.equals("km", ignoreCase = true)
+        }?.let { return it }
+
+        // Compatibilidade com carrinhos anteriores à persistência do perfil da loja.
+        val store = cart.storeId?.let(StoreRepository::getStoreById) ?: return null
+        return store.officialCustomerDeliveryFee?.takeIf {
+            !store.deliveryFeeType.equals("km", ignoreCase = true)
+        }
+    }
+
+    /**
+     * Lojas de taxa fixa recebem o preço VIP de imediato. Apenas lojas por
+     * quilometragem dependem de endereço, distância e cotação assíncrona.
+     */
+    private fun synchronizeDeliveryQuote() {
+        val cart = cartState.value
+        val state = _uiState.value
+        if (cart.items.isEmpty() || cart.storeId.isNullOrBlank()) return
+
+        if (cart.deliveryType == "RETIRADA") {
+            if (cart.officialDeliveryQuoteKey != null) CartRepository.clearOfficialDeliveryQuote(clearCoordinates = true)
+            if (state.deliveryQuote?.fulfillment != "pickup" || state.deliveryQuoteFailure != null || state.isQuotingDelivery) {
+                _uiState.value = state.copy(
+                    deliveryQuote = DeliveryQuote.pickup(),
+                    deliveryQuoteFailure = null,
+                    isQuotingDelivery = false,
+                    deliveryQuoteRequestKey = "pickup"
+                )
+            }
+            inFlightDeliveryQuoteKey = null
+            return
+        }
+
+        val fixedFee = fixedDeliveryFeeFor(cart)
+        if (fixedFee != null) {
+            val fixedKey = "fixed:${cart.storeId}"
+            CartRepository.setOfficialFixedDeliveryFee(cart.storeId, fixedFee)
+            if (state.deliveryQuote != null || state.deliveryQuoteFailure != null || state.isQuotingDelivery || state.deliveryQuoteRequestKey != fixedKey) {
+                _uiState.value = state.copy(
+                    deliveryQuote = null,
+                    deliveryQuoteFailure = null,
+                    isQuotingDelivery = false,
+                    deliveryQuoteRequestKey = fixedKey
+                )
+            }
+            inFlightDeliveryQuoteKey = null
+            return
+        }
+
+        val address = currentDeliveryAddress()
+        if (!address.isComplete()) {
+            if (cart.officialDeliveryQuoteKey != null) CartRepository.clearOfficialDeliveryQuote()
+            if (state.deliveryQuote != null || state.deliveryQuoteFailure != null || state.isQuotingDelivery) {
+                _uiState.value = state.copy(
+                    deliveryQuote = null,
+                    deliveryQuoteFailure = null,
+                    isQuotingDelivery = false,
+                    deliveryQuoteRequestKey = null
+                )
+            }
+            inFlightDeliveryQuoteKey = null
+            return
+        }
+
+        val requestKey = address.requestKey(cart.storeId, cart.subtotal)
+        val hasCurrentQuote = state.deliveryQuote?.isSuccessfulDelivery == true &&
+            state.deliveryQuoteRequestKey == requestKey &&
+            cart.officialDeliveryQuoteKey == requestKey
+        if (hasCurrentQuote) return
+        if (state.deliveryQuoteFailure != null && state.deliveryQuoteRequestKey == requestKey) return
+        if (inFlightDeliveryQuoteKey == requestKey) return
+
+        if (cart.officialDeliveryQuoteKey != null) CartRepository.clearOfficialDeliveryQuote()
+        inFlightDeliveryQuoteKey = requestKey
+        _uiState.value = state.copy(
+            deliveryQuote = null,
+            deliveryQuoteFailure = null,
+            isQuotingDelivery = true,
+            deliveryQuoteRequestKey = requestKey
+        )
+
+        val session = UserSessionRepository.userSession.value
+        viewModelScope.launch {
+            val result = SupabaseClient.quoteDelivery(
+                storeId = cart.storeId,
+                subtotal = cart.subtotal,
+                address = address,
+                accessToken = session.accessToken
+            )
+            if (inFlightDeliveryQuoteKey != requestKey) return@launch
+            inFlightDeliveryQuoteKey = null
+            val stillCurrent = cartState.value.storeId == cart.storeId &&
+                cartState.value.subtotal == cart.subtotal &&
+                currentDeliveryAddress().requestKey(cart.storeId, cart.subtotal) == requestKey &&
+                cartState.value.deliveryType == "DELIVERY"
+            if (!stillCurrent) return@launch
+
+            if (result.isSuccess && result.quote != null) {
+                _uiState.value = _uiState.value.copy(
+                    cep = result.quote.destination?.cep ?: _uiState.value.cep,
+                    neighborhood = result.quote.destination?.neighborhood ?: _uiState.value.neighborhood,
+                    city = result.quote.destination?.city ?: _uiState.value.city,
+                    state = result.quote.destination?.state ?: _uiState.value.state,
+                    deliveryQuote = result.quote,
+                    deliveryQuoteFailure = null,
+                    isQuotingDelivery = false,
+                    deliveryQuoteRequestKey = requestKey
+                )
+                CartRepository.setOfficialDeliveryQuote(result.quote, requestKey)
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    deliveryQuote = null,
+                    deliveryQuoteFailure = result.failure ?: DeliveryQuoteFailure(),
+                    isQuotingDelivery = false,
+                    deliveryQuoteRequestKey = requestKey
+                )
+                CartRepository.clearOfficialDeliveryQuote()
+            }
+        }
+    }
+
+    private fun invalidateDeliveryQuote() {
+        inFlightDeliveryQuoteKey = null
+        CartRepository.clearOfficialDeliveryQuote()
+        _uiState.value = _uiState.value.copy(
+            deliveryQuote = null,
+            deliveryQuoteFailure = null,
+            isQuotingDelivery = false,
+            deliveryQuoteRequestKey = null
+        )
+        synchronizeDeliveryQuote()
+    }
+
     fun setUseWallet(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(useWallet = enabled, errorMessage = null)
         recalculateBenefits()
@@ -255,8 +424,7 @@ class OrdersViewModel : ViewModel() {
         }
         val hasProfileAddress = session.addressStreet.isNotBlank() &&
             session.addressNumber.isNotBlank() &&
-            session.addressNeighborhood.isNotBlank() &&
-            session.addressCity.isNotBlank()
+            session.addressNeighborhood.isNotBlank()
         CartRepository.setDeliveryCoordinates(null, null)
         _uiState.value = _uiState.value.copy(
             cep = session.addressCep,
@@ -264,6 +432,7 @@ class OrdersViewModel : ViewModel() {
             number = session.addressNumber,
             neighborhood = session.addressNeighborhood,
             city = session.addressCity,
+            state = normalizeBrazilianUf(session.addressState),
             complement = session.addressComplement,
             showAddressEditor = !hasProfileAddress,
             showGpsAddressConfirmation = hasProfileAddress && activeLocationDiffersFromAddress(session, null),
@@ -273,13 +442,18 @@ class OrdersViewModel : ViewModel() {
     }
 
     private fun applyAddress(address: SavedAddress, session: com.example.data.model.UserSession) {
+        val resolvedState = normalizeBrazilianUf(
+            address.state.ifBlank { session.addressState.ifBlank { session.activeLocationState } }
+        )
+        val resolvedCity = address.city.ifBlank { session.addressCity.ifBlank { session.activeLocationCity } }
         CartRepository.setDeliveryCoordinates(address.latitude, address.longitude)
         _uiState.value = _uiState.value.copy(
             cep = address.cep,
             street = address.street,
             number = address.number,
             neighborhood = address.neighborhood,
-            city = session.addressCity.ifBlank { session.activeLocationCity },
+            city = resolvedCity,
+            state = resolvedState,
             complement = listOf(address.complement, address.referencePoint).filter { it.isNotBlank() }.joinToString(" · "),
             showAddressEditor = false,
             showGpsAddressConfirmation = activeLocationDiffersFromAddress(session, address),
@@ -298,7 +472,8 @@ class OrdersViewModel : ViewModel() {
         fun normalized(value: String) = value.trim().lowercase().replace(Regex("\\s+"), " ")
         val street = address?.street ?: session.addressStreet
         val number = address?.number ?: session.addressNumber
-        val sameCity = normalized(session.activeLocationCity) == normalized(session.addressCity)
+        val targetCity = address?.city?.ifBlank { session.addressCity } ?: session.addressCity
+        val sameCity = normalized(session.activeLocationCity) == normalized(targetCity)
         val sameStreet = normalized(session.activeLocationStreet) == normalized(street)
         val activeNumber = normalized(session.activeLocationNumber)
         val sameNumber = activeNumber.isBlank() || number.isBlank() || activeNumber == normalized(number)
@@ -335,6 +510,7 @@ class OrdersViewModel : ViewModel() {
     fun selectSavedAddress(address: SavedAddress) {
         addressEditedByCustomer = false
         applyAddress(address, UserSessionRepository.userSession.value)
+        invalidateDeliveryQuote()
     }
 
     fun makeSavedAddressDefault(address: SavedAddress) {
@@ -363,14 +539,17 @@ class OrdersViewModel : ViewModel() {
         addressEditedByCustomer = false
         applySavedAddress(UserSessionRepository.userSession.value)
         _uiState.value = _uiState.value.copy(showGpsAddressConfirmation = false)
+        invalidateDeliveryQuote()
     }
 
     fun saveCurrentAddress(label: String = "Novo endereço") {
         val session = UserSessionRepository.userSession.value
         val state = _uiState.value
         if (session.userId.isBlank() || session.accessToken.isBlank()) return
-        if (state.street.isBlank() || state.number.isBlank() || state.neighborhood.isBlank()) {
-            _uiState.value = state.copy(errorMessage = "Preencha rua, número e bairro antes de salvar o endereço.")
+        if (state.street.isBlank() || state.number.isBlank() || state.neighborhood.isBlank() ||
+            state.city.isBlank() || normalizeBrazilianUf(state.state).isBlank() || state.cep.filter(Char::isDigit).length != 8
+        ) {
+            _uiState.value = state.copy(errorMessage = "Complete rua, número, bairro, cidade, UF e CEP válido antes de salvar o endereço.")
             return
         }
         viewModelScope.launch {
@@ -384,6 +563,8 @@ class OrdersViewModel : ViewModel() {
                     number = state.number.trim(),
                     complement = state.complement.trim(),
                     neighborhood = state.neighborhood.trim(),
+                    city = state.city.trim(),
+                    state = normalizeBrazilianUf(state.state),
                     cep = state.cep.filter(Char::isDigit),
                     latitude = if (useGpsCoordinates) session.activeLocationLatitude else null,
                     longitude = if (useGpsCoordinates) session.activeLocationLongitude else null,
@@ -409,11 +590,13 @@ class OrdersViewModel : ViewModel() {
             number = session.activeLocationNumber,
             neighborhood = session.activeLocationNeighborhood.ifBlank { _uiState.value.neighborhood },
             city = session.activeLocationCity.ifBlank { _uiState.value.city },
+            state = normalizeBrazilianUf(session.activeLocationState.ifBlank { _uiState.value.state }),
             showAddressEditor = true,
             showGpsAddressConfirmation = false,
             usingGpsAddress = true,
             cepError = null
         )
+        invalidateDeliveryQuote()
     }
 
     fun openAddressEditor() {
@@ -424,12 +607,26 @@ class OrdersViewModel : ViewModel() {
     fun refreshOrders() {
         val session = UserSessionRepository.userSession.value
         if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            ordersRefreshInFlight = false
             OrderRepository.replaceOrders(emptyList())
+            _uiState.value = _uiState.value.copy(isRefreshingOrders = false)
             return
         }
+        if (ordersRefreshInFlight) return
+        ordersRefreshInFlight = true
+        _uiState.value = _uiState.value.copy(isRefreshingOrders = true)
         viewModelScope.launch {
-            val remoteOrders = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
-            OrderRepository.replaceOrders(remoteOrders)
+            try {
+                val remoteOrders = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
+                // A camada remota retorna lista vazia também em falhas de rede.
+                // Não apagamos o histórico já exibido por uma indisponibilidade transitória.
+                if (remoteOrders.isNotEmpty() || OrderRepository.orders.value.isEmpty()) {
+                    OrderRepository.replaceOrders(remoteOrders)
+                }
+            } finally {
+                ordersRefreshInFlight = false
+                _uiState.value = _uiState.value.copy(isRefreshingOrders = false)
+            }
         }
     }
 
@@ -519,6 +716,7 @@ class OrdersViewModel : ViewModel() {
 
     fun setDeliveryType(type: String) {
         CartRepository.setDeliveryType(type)
+        synchronizeDeliveryQuote()
     }
 
     fun onCouponCodeChange(code: String) {
@@ -528,12 +726,38 @@ class OrdersViewModel : ViewModel() {
         )
     }
 
+    private fun isCouponExpired(expiresAt: String?): Boolean {
+        val raw = expiresAt?.trim().orEmpty()
+        if (raw.isBlank()) return false
+        val normalized = if (raw.matches(Regex(".*[+-]\\d{2}:\\d{2}$"))) {
+            raw.dropLast(3) + raw.takeLast(2)
+        } else {
+            raw
+        }
+        val patterns = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ"
+        )
+        val expiration = patterns.firstNotNullOfOrNull { pattern ->
+            runCatching {
+                SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(normalized)
+            }.getOrNull()
+        } ?: return false
+        return !expiration.after(Date())
+    }
+
     fun applyCoupon() {
         val code = _uiState.value.couponCode.trim().uppercase()
         val cart = cartState.value
+        val session = UserSessionRepository.userSession.value
 
         if (code.isBlank()) {
             _uiState.value = _uiState.value.copy(couponError = "Digite o código do cupom.")
+            return
+        }
+        if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(couponError = "Entre novamente para validar o cupom.")
             return
         }
 
@@ -541,7 +765,6 @@ class OrdersViewModel : ViewModel() {
 
         viewModelScope.launch {
             val coupon = SupabaseClient.fetchCoupon(code, cart.storeId)
-            
             if (coupon == null) {
                 _uiState.value = _uiState.value.copy(
                     couponLoading = false,
@@ -549,7 +772,14 @@ class OrdersViewModel : ViewModel() {
                 )
                 return@launch
             }
-
+            if (isCouponExpired(coupon.expiresAt)) {
+                _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Este cupom expirou.")
+                return@launch
+            }
+            if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) {
+                _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Este cupom atingiu o limite de usos.")
+                return@launch
+            }
             if (cart.subtotal < coupon.minOrderValue) {
                 val minStr = String.format("R$ %.2f", coupon.minOrderValue).replace(".", ",")
                 _uiState.value = _uiState.value.copy(
@@ -558,18 +788,35 @@ class OrdersViewModel : ViewModel() {
                 )
                 return@launch
             }
-
-            val discount = if (coupon.discountType.lowercase().contains("percent")) {
-                cart.subtotal * (coupon.discountValue / 100.0)
-            } else {
-                coupon.discountValue
+            val alreadyUsed = SupabaseClient.hasCouponUsage(coupon.id, session.userId, session.accessToken)
+            if (alreadyUsed == null) {
+                _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Não foi possível validar o cupom agora. Tente novamente.")
+                return@launch
+            }
+            if (alreadyUsed) {
+                _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Você já utilizou este cupom.")
+                return@launch
+            }
+            if (coupon.firstOrderOnly) {
+                val hasPreviousOrder = SupabaseClient.hasNonCancelledOrders(session.userId, session.accessToken)
+                if (hasPreviousOrder == null) {
+                    _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Não foi possível validar seu primeiro pedido agora. Tente novamente.")
+                    return@launch
+                }
+                if (hasPreviousOrder) {
+                    _uiState.value = _uiState.value.copy(couponLoading = false, couponError = "Este cupom é válido apenas para o primeiro pedido.")
+                    return@launch
+                }
             }
 
+            val discount = when (coupon.discountType.lowercase()) {
+                "percentage" -> (cart.subtotal * (coupon.discountValue / 100.0)).coerceAtMost(cart.subtotal)
+                "free_shipping" -> 0.0
+                else -> coupon.discountValue.coerceAtMost(cart.subtotal)
+            }.coerceAtLeast(0.0)
+
             CartRepository.applyCoupon(coupon, discount)
-            _uiState.value = _uiState.value.copy(
-                couponLoading = false,
-                couponError = null
-            )
+            _uiState.value = _uiState.value.copy(couponLoading = false, couponError = null)
         }
     }
 
@@ -584,32 +831,44 @@ class OrdersViewModel : ViewModel() {
     // Address & ViaCEP handlers
     fun updateCep(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(cep = value, cepError = null, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(cep = value.filter(Char::isDigit).take(8), cepError = null, showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun updateStreet(value: String) {
         addressEditedByCustomer = true
         _uiState.value = _uiState.value.copy(street = value, showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun updateNumber(value: String) {
         addressEditedByCustomer = true
         _uiState.value = _uiState.value.copy(number = value, showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun updateNeighborhood(value: String) {
         addressEditedByCustomer = true
         _uiState.value = _uiState.value.copy(neighborhood = value, showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun updateCity(value: String) {
         addressEditedByCustomer = true
         _uiState.value = _uiState.value.copy(city = value, showAddressEditor = true)
+        invalidateDeliveryQuote()
+    }
+
+    fun updateState(value: String) {
+        addressEditedByCustomer = true
+        _uiState.value = _uiState.value.copy(state = normalizeBrazilianUf(value), showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun updateComplement(value: String) {
         addressEditedByCustomer = true
         _uiState.value = _uiState.value.copy(complement = value, showAddressEditor = true)
+        invalidateDeliveryQuote()
     }
 
     fun searchAddressByCep() {
@@ -630,8 +889,10 @@ class OrdersViewModel : ViewModel() {
                     street = result.street.ifBlank { _uiState.value.street },
                     neighborhood = result.neighborhood.ifBlank { _uiState.value.neighborhood },
                     city = result.city.ifBlank { _uiState.value.city },
+                    state = result.state.ifBlank { _uiState.value.state }.uppercase(),
                     cepError = null
                 )
+                invalidateDeliveryQuote()
             } else {
                 _uiState.value = _uiState.value.copy(
                     isSearchingCep = false,
@@ -642,8 +903,19 @@ class OrdersViewModel : ViewModel() {
     }
 
     fun setPaymentMethod(method: String) {
+        val isCash = method.equals("Dinheiro", ignoreCase = true) || method.equals("Dinheiro na entrega", ignoreCase = true)
         _uiState.value = _uiState.value.copy(
             paymentMethod = method,
+            needsChange = if (isCash) _uiState.value.needsChange else false,
+            changeForAmount = if (isCash) _uiState.value.changeForAmount else "",
+            errorMessage = null
+        )
+    }
+
+    fun setNeedsChange(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            needsChange = enabled,
+            changeForAmount = if (enabled) _uiState.value.changeForAmount else "",
             errorMessage = null
         )
     }
@@ -654,6 +926,20 @@ class OrdersViewModel : ViewModel() {
             errorMessage = null
         )
     }
+
+    fun setScheduledForMillis(value: Long?) {
+        if (value != null && value < System.currentTimeMillis() + 30 * 60 * 1000L) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Escolha um horário com pelo menos 30 minutos de antecedência.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(scheduledForMillis = value, errorMessage = null)
+    }
+
+    private fun toIsoUtc(millis: Long?): String = millis?.let {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(it))
+    }.orEmpty()
 
     fun checkoutOrder(onSuccess: (Order) -> Unit) {
         val cart = cartState.value
@@ -669,7 +955,9 @@ class OrdersViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(errorMessage = "Não foi possível identificar a loja do pedido. Volte à sacola e tente novamente.")
             return
         }
-        if (!store.isOpen) {
+        val preorderReleaseAtMillis = store.preorderReleaseAtMillis()
+        val isPreorder = preorderReleaseAtMillis != null
+        if (!store.isOpen && !isPreorder) {
             _uiState.value = _uiState.value.copy(errorMessage = "Esta loja está fechada no momento.")
             return
         }
@@ -697,9 +985,17 @@ class OrdersViewModel : ViewModel() {
             else -> _uiState.value.paymentMethod.lowercase()
         }
         val checkoutTotal = if (_uiState.value.benefitsStoreId == storeId) _uiState.value.finalTotal else cart.total
+        val scheduledForIso = toIsoUtc(_uiState.value.scheduledForMillis)
+        val releaseAtIso = if (isPreorder && normalizedPaymentMethod != "pix") toIsoUtc(preorderReleaseAtMillis) else ""
+        val initialStatusOverride = when {
+            normalizedPaymentMethod == "pix" -> "aguardando_pagamento"
+            normalizedPaymentMethod == "pix_direto" -> "aguardando_comprovante"
+            isPreorder -> "scheduled"
+            else -> "pendente"
+        }
         val changeRaw = _uiState.value.changeForAmount.replace(",", ".").trim()
         val changeDouble = changeRaw.toDoubleOrNull()
-        if (normalizedPaymentMethod == "dinheiro") {
+        if (normalizedPaymentMethod == "dinheiro" && _uiState.value.needsChange) {
             if (changeRaw.isBlank() || changeDouble == null) {
                 _uiState.value = _uiState.value.copy(errorMessage = "Informe o valor do troco para pagamento em dinheiro.")
                 return
@@ -711,11 +1007,29 @@ class OrdersViewModel : ViewModel() {
             }
         }
 
-        // Validate Address if Delivery
-        if (cart.deliveryType == "DELIVERY") {
-            if (_uiState.value.street.isBlank() || _uiState.value.number.isBlank() || _uiState.value.neighborhood.isBlank() || _uiState.value.city.isBlank()) {
-                _uiState.value = _uiState.value.copy(errorMessage = "Preencha rua, número, bairro e cidade para a entrega.")
-                return
+        val currentAddress = currentDeliveryAddress()
+        val deliveryQuote = _uiState.value.deliveryQuote
+        val fixedDeliveryFee = fixedDeliveryFeeFor(cart)
+        val quoteRequestKey = currentAddress.requestKey(storeId, cart.subtotal)
+        if (cart.deliveryType == "DELIVERY" && !currentAddress.isComplete()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Preencha rua, número, bairro e CEP válido para a entrega.")
+            return
+        }
+        if (cart.deliveryType == "DELIVERY" && fixedDeliveryFee == null) {
+            when {
+                _uiState.value.isQuotingDelivery -> {
+                    _uiState.value = _uiState.value.copy(errorMessage = "Estamos calculando a entrega. Aguarde um instante para confirmar o pedido.")
+                    return
+                }
+                deliveryQuote == null || !deliveryQuote.isSuccessfulDelivery ||
+                    _uiState.value.deliveryQuoteRequestKey != quoteRequestKey ||
+                    cart.officialDeliveryQuoteKey != quoteRequestKey -> {
+                    val failure = _uiState.value.deliveryQuoteFailure
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = failure?.userMessage() ?: "Revise o endereço para calcular a taxa oficial de entrega."
+                    )
+                    return
+                }
             }
         }
 
@@ -723,16 +1037,62 @@ class OrdersViewModel : ViewModel() {
 
         viewModelScope.launch {
             val storeName = store.name
-            val deliveryNeighborhood = if (cart.deliveryType == "RETIRADA") "RETIRADA" else _uiState.value.neighborhood.trim()
-            val formattedAddress = if (cart.deliveryType == "RETIRADA") {
-                "Retirada na loja"
+            val effectiveDeliveryQuote = when {
+                cart.deliveryType == "RETIRADA" -> DeliveryQuote.pickup()
+                fixedDeliveryFee != null -> {
+                    // A taxa VIP permanece imediata na interface. Antes do primeiro insert,
+                    // a central confirma o endereço, coordenadas e componentes financeiros.
+                    val confirmation = SupabaseClient.quoteDelivery(
+                        storeId = storeId,
+                        subtotal = cart.subtotal,
+                        address = currentAddress,
+                        accessToken = session.accessToken
+                    )
+                    val confirmedQuote = confirmation.quote
+                    if (!confirmation.isSuccess || confirmedQuote == null) {
+                        _uiState.value = _uiState.value.copy(
+                            isPlacingOrder = false,
+                            errorMessage = confirmation.failure?.userMessage()
+                                ?: "Não foi possível confirmar o endereço de entrega. Revise os dados e tente novamente."
+                        )
+                        return@launch
+                    }
+                    val confirmedFee = confirmedQuote.pricing.deliveryFee
+                    if (kotlin.math.abs(confirmedFee - fixedDeliveryFee) > 0.009) {
+                        CartRepository.setOfficialFixedDeliveryFee(storeId, confirmedFee)
+                        _uiState.value = _uiState.value.copy(
+                            isPlacingOrder = false,
+                            cep = confirmedQuote.destination?.cep ?: _uiState.value.cep,
+                            neighborhood = confirmedQuote.destination?.neighborhood ?: _uiState.value.neighborhood,
+                            city = confirmedQuote.destination?.city ?: _uiState.value.city,
+                            state = confirmedQuote.destination?.state ?: _uiState.value.state,
+                            errorMessage = "A taxa de entrega foi atualizada. Revise o total e confirme o pedido novamente."
+                        )
+                        return@launch
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        cep = confirmedQuote.destination?.cep ?: _uiState.value.cep,
+                        neighborhood = confirmedQuote.destination?.neighborhood ?: _uiState.value.neighborhood,
+                        city = confirmedQuote.destination?.city ?: _uiState.value.city,
+                        state = confirmedQuote.destination?.state ?: _uiState.value.state
+                    )
+                    confirmedQuote
+                }
+                else -> deliveryQuote ?: DeliveryQuote.pickup()
+            }
+            val quoteDestination = effectiveDeliveryQuote.destination
+            val deliveryNeighborhood = when {
+                cart.deliveryType == "RETIRADA" -> "RETIRADA"
+                else -> quoteDestination?.neighborhood.orEmpty()
+            }
+            val formattedAddress = when {
+                cart.deliveryType == "RETIRADA" -> "Retirada na loja"
+                else -> quoteDestination?.normalizedAddress.orEmpty()
+            }
+            val finalDeliveryFee = if (cart.deliveryType == "RETIRADA") {
+                0.0
             } else {
-                val st = _uiState.value.street.trim()
-                val num = _uiState.value.number.trim()
-                val neigh = _uiState.value.neighborhood.trim()
-                val cty = _uiState.value.city.trim()
-                val comp = if (_uiState.value.complement.isNotBlank()) ", ${_uiState.value.complement.trim()}" else ""
-                "$st, $num - $neigh, $cty$comp"
+                effectiveDeliveryQuote.pricing.deliveryFee
             }
 
             val result = OrderRepository.placeOrder(
@@ -740,21 +1100,37 @@ class OrdersViewModel : ViewModel() {
                 storeName = storeName,
                 items = cart.items,
                 subtotal = cart.subtotal,
-                deliveryFee = cart.deliveryFee,
-                discount = cart.discountAmount,
+                deliveryFee = finalDeliveryFee,
+                discount = cart.effectiveCouponDiscount,
                 paymentMethod = normalizedPaymentMethod,
                 deliveryAddress = formattedAddress,
                 neighborhood = deliveryNeighborhood,
                 clientId = session.userId,
                 accessToken = session.accessToken,
-                needsChange = normalizedPaymentMethod == "dinheiro",
-                changeFor = if (normalizedPaymentMethod == "dinheiro") changeDouble else null,
-                clientLatitude = cart.deliveryLatitude,
-                clientLongitude = cart.deliveryLongitude,
+                needsChange = normalizedPaymentMethod == "dinheiro" && _uiState.value.needsChange,
+                changeFor = if (normalizedPaymentMethod == "dinheiro" && _uiState.value.needsChange) changeDouble else null,
+                clientLatitude = quoteDestination?.latitude,
+                clientLongitude = quoteDestination?.longitude,
+                deliveryCep = quoteDestination?.cep.orEmpty(),
+                deliveryCity = quoteDestination?.city.orEmpty(),
+                deliveryState = quoteDestination?.state.orEmpty(),
+                deliveryFeeAbsorbedByStore = if (cart.deliveryType == "RETIRADA") {
+                    0.0
+                } else {
+                    effectiveDeliveryQuote.pricing.platformFeeStoreAbsorbed
+                },
+                deliveryQuoteSnapshot = if (cart.deliveryType == "RETIRADA") {
+                    null
+                } else {
+                    effectiveDeliveryQuote.toSnapshot()
+                },
                 coupon = cart.appliedCoupon,
                 walletDiscount = _uiState.value.walletDiscount,
                 loyaltyPointsUsed = _uiState.value.loyaltyPointsToUse,
-                loyaltyDiscount = _uiState.value.loyaltyDiscount
+                loyaltyDiscount = _uiState.value.loyaltyDiscount,
+                initialStatusOverride = initialStatusOverride,
+                scheduledFor = scheduledForIso,
+                releaseAt = releaseAtIso
             )
 
             result.onSuccess { newOrder ->
@@ -762,7 +1138,9 @@ class OrdersViewModel : ViewModel() {
                     isPlacingOrder = false,
                     placedOrderSuccess = newOrder,
                     couponCode = "",
-                    changeForAmount = ""
+                    needsChange = false,
+                    changeForAmount = "",
+                    scheduledForMillis = null
                 )
                 refreshOrders()
                 onSuccess(newOrder)

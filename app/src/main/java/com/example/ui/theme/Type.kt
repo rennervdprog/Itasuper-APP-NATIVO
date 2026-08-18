@@ -2,17 +2,22 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.example.R
 
-// Fontes do sistema (SansSerif), sem dependência externa. Fontes customizadas
-// (Sora/Manrope) via Google Fonts Provider e via .ttf embutido geraram erros
-// de build repetidos neste ambiente — voltamos ao que é garantido funcionar.
-// Pode ser revisitado depois, com mais calma, testando localmente antes de
-// subir pro GitHub Actions.
-val SoraFontFamily: FontFamily = FontFamily.SansSerif
-val ManropeFontFamily: FontFamily = FontFamily.SansSerif
+// Manrope é embarcada no APK para garantir a mesma métrica visual em todos os
+// aparelhos, sem depender de um provedor remoto de fontes em tempo de execução.
+val ManropeFontFamily: FontFamily = FontFamily(
+    Font(R.font.manrope_regular, FontWeight.Normal),
+    Font(R.font.manrope_medium, FontWeight.Medium),
+    Font(R.font.manrope_semibold, FontWeight.SemiBold),
+    Font(R.font.manrope_bold, FontWeight.Bold),
+    Font(R.font.manrope_extrabold, FontWeight.ExtraBold)
+)
+val SoraFontFamily: FontFamily = ManropeFontFamily
 
 val Typography = Typography(
     displayLarge = TextStyle(

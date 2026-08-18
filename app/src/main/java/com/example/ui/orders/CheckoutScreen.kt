@@ -1,5 +1,7 @@
 package com.example.ui.orders
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -59,17 +61,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.Order
+import com.example.data.model.preorderReleaseAtMillis
 import com.example.data.repository.StoreRepository
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
+import java.text.DateFormat
+import java.util.Calendar
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,6 +89,29 @@ fun CheckoutScreen(
     val uiState by viewModel.uiState.collectAsState()
     val cart by viewModel.cartState.collectAsState()
     val checkoutTotal = if (uiState.benefitsStoreId == cart.storeId && !uiState.isLoadingBenefits) uiState.finalTotal else cart.total
+    val deliveryQuoteReady = cart.deliveryType == "RETIRADA" || (
+        !uiState.isQuotingDelivery && cart.hasOfficialDeliveryQuote
+        )
+    val context = LocalContext.current
+    val store = cart.storeId?.let { StoreRepository.getStoreById(it) }
+    val preorderReleaseAtMillis = store?.preorderReleaseAtMillis()
+    val isPreorder = preorderReleaseAtMillis != null
+    val scheduleFormatter = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+    val openSchedulePicker = {
+        val earliest = System.currentTimeMillis() + 30 * 60 * 1000L
+        val calendar = Calendar.getInstance().apply { timeInMillis = maxOf(earliest, uiState.scheduledForMillis ?: earliest) }
+        DatePickerDialog(context, { _, year, month, day ->
+            TimePickerDialog(context, { _, hour, minute ->
+                val selected = Calendar.getInstance().apply {
+                    set(year, month, day, hour, minute, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                viewModel.setScheduledForMillis(selected)
+            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).apply {
+            datePicker.minDate = earliest
+        }.show()
+    }
 
     if (uiState.showGpsAddressConfirmation && cart.deliveryType == "DELIVERY") {
         AlertDialog(
@@ -160,7 +191,9 @@ fun CheckoutScreen(
                     Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = if (cart.deliveryType == "RETIRADA") Icons.Default.Storefront else Icons.Default.LocationOn,
+                                painter = painterResource(
+                                    if (cart.deliveryType == "RETIRADA") R.drawable.ic_ita_store else R.drawable.ic_ita_pin
+                                ),
                                 contentDescription = null,
                                 tint = ItaSuperPrimary,
                                 modifier = Modifier.size(22.dp)
@@ -199,10 +232,10 @@ fun CheckoutScreen(
                                 ) {
                                     if (selected) {
                                         Icon(
-                                            imageVector = Icons.Default.CheckCircle,
+                                            painter = painterResource(R.drawable.ic_ita_check),
                                             contentDescription = "Endereço selecionado",
                                             tint = ItaSuperPrimary,
-                                            modifier = Modifier.size(24.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     } else {
                                         Box(
@@ -344,8 +377,9 @@ fun CheckoutScreen(
                                         )
                                     } else {
                                         Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = "Buscar CEP"
+                                            painter = painterResource(R.drawable.ic_ita_search),
+                                            contentDescription = "Buscar CEP",
+                                            tint = Color.White
                                         )
                                     }
                                 }
@@ -442,6 +476,26 @@ fun CheckoutScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             OutlinedTextField(
+                                value = uiState.state,
+                                onValueChange = { viewModel.updateState(it) },
+                                label = { Text("UF (opcional)") },
+                                placeholder = { Text("Ex: RJ") },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ItaSuperPrimary,
+                                    unfocusedBorderColor = Color(0xFFE5DAD3),
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("checkout_state_input")
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
                                 value = uiState.complement,
                                 onValueChange = { viewModel.updateComplement(it) },
                                 label = { Text("Complemento / Ponto de Referência (opcional)") },
@@ -462,6 +516,54 @@ fun CheckoutScreen(
                                 modifier = Modifier.align(Alignment.End)
                             ) {
                                 Text("Salvar como endereço")
+                            }
+                        }
+
+                        if (cart.deliveryType == "DELIVERY") {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            when {
+                                cart.hasOfficialDeliveryQuote && uiState.deliveryQuote == null && !uiState.isQuotingDelivery -> {
+                                    Text(
+                                        text = "Taxa fixa confirmada pela regra da loja",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = ItaSuperSuccess,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                uiState.isQuotingDelivery -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Calculando a taxa de entrega...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                uiState.deliveryQuote?.isSuccessfulDelivery == true -> {
+                                    val quote = uiState.deliveryQuote!!
+                                    Text(
+                                        text = if (quote.pricing.freeDeliveryApplied) {
+                                            "Frete grátis aplicado pela regra da loja"
+                                        } else {
+                                            "Entrega confirmada para ${"%.1f".format(quote.distance.km)} km"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = ItaSuperSuccess,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                uiState.deliveryQuoteFailure != null -> {
+                                    Text(
+                                        text = uiState.deliveryQuoteFailure!!.userMessage(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text = "Preencha CEP, rua, número e bairro para calcular a entrega.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -513,39 +615,116 @@ fun CheckoutScreen(
                             }
                         }
 
-                        // Cash Change mandatory input
+                        // Dinheiro exato é permitido; o valor só é solicitado quando houver troco.
                         if (uiState.paymentMethod == "Dinheiro") {
                             Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedTextField(
-                                value = uiState.changeForAmount,
-                                onValueChange = { viewModel.updateChangeForAmount(it) },
-                                label = { Text("Troco para quanto?") },
-                                placeholder = { Text("Ex: 50,00 ou 100,00") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (uiState.needsChange) Color(0xFFFFF0E6) else Color(0xFFF7F7F7))
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = uiState.needsChange,
+                                    onCheckedChange = viewModel::setNeedsChange,
+                                    colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary)
+                                )
+                                Text(
+                                    text = "Preciso de troco",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (uiState.needsChange) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = uiState.changeForAmount,
+                                    onValueChange = { viewModel.updateChangeForAmount(it) },
+                                    label = { Text("Troco para quanto?") },
+                                    placeholder = { Text("Ex: 50,00 ou 100,00") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
                                         unfocusedBorderColor = Color(0xFFE5DAD3),
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("checkout_cash_change_input")
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Informe o valor em cédulas para que o entregador leve o troco correto.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("checkout_cash_change_input")
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Informe o valor em cédulas para que o entregador leve o troco correto.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            // 3. Carteira e fidelidade
+            // 3. Agendamento. A data é opcional; no pré-pedido fechado, sem seleção significa liberação na abertura.
+            if (store != null) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+                            Text(
+                                text = if (cart.deliveryType == "RETIRADA") "Agendar retirada" else "Agendar entrega",
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (isPreorder) {
+                                Text(
+                                    text = "A loja está fechada, mas aceita pré-pedidos. O pedido será liberado às ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(preorderReleaseAtMillis ?: 0L))}.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ItaSuperPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { viewModel.setScheduledForMillis(null) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (uiState.scheduledForMillis == null) ItaSuperPrimary else Color.White,
+                                        contentColor = if (uiState.scheduledForMillis == null) Color.White else MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(if (isPreorder) "Na abertura" else "Agora")
+                                }
+                                Button(
+                                    onClick = openSchedulePicker,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (uiState.scheduledForMillis != null) ItaSuperPrimary else Color.White,
+                                        contentColor = if (uiState.scheduledForMillis != null) Color.White else MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Escolher horário")
+                                }
+                            }
+                            uiState.scheduledForMillis?.let { scheduledAt ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Agendado para ${scheduleFormatter.format(Date(scheduledAt))}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ItaSuperPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Carteira e fidelidade
             if (uiState.isLoadingBenefits || uiState.loyaltyConfig != null || uiState.walletBalance > 0) {
                 item {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -642,7 +821,7 @@ fun CheckoutScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.CreditCard,
+                                                painter = painterResource(R.drawable.ic_ita_card),
                                                 contentDescription = null,
                                                 tint = if (uiState.useWallet) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(22.dp)
@@ -659,10 +838,10 @@ fun CheckoutScreen(
                                         }
                                         if (uiState.useWallet) {
                                             Icon(
-                                                imageVector = Icons.Default.CheckCircle,
+                                                painter = painterResource(R.drawable.ic_ita_check),
                                                 contentDescription = "Carteira selecionada",
                                                 tint = ItaSuperPrimary,
-                                                modifier = Modifier.size(24.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                     }
@@ -719,23 +898,23 @@ fun CheckoutScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Taxa de entrega", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (cart.deliveryType == "RETIRADA") {
-                                Text("Grátis (Retirada)", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
-                            } else if (cart.deliveryFee == 0.0) {
-                                Text("Grátis", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("R$ ${String.format("%.2f", cart.deliveryFee).replace(".", ",")}")
+                            when {
+                                cart.deliveryType == "RETIRADA" -> Text("Grátis (Retirada)", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                uiState.isQuotingDelivery -> Text("Calculando...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                !deliveryQuoteReady -> Text("A confirmar", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                cart.deliveryFee == 0.0 -> Text("Grátis", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                else -> Text("R$ ${String.format("%.2f", cart.deliveryFee).replace(".", ",")}")
                             }
                         }
 
-                        if (cart.discountAmount > 0) {
+                        if (cart.effectiveCouponDiscount > 0) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Cupom", color = ItaSuperSuccess)
-                                Text("- R$ ${String.format("%.2f", cart.discountAmount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                Text("- R$ ${String.format("%.2f", cart.effectiveCouponDiscount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
                             }
                         }
                         if (uiState.loyaltyDiscount > 0) {
@@ -787,7 +966,7 @@ fun CheckoutScreen(
                             // Triggered on success
                         }
                     },
-                    enabled = !uiState.isPlacingOrder,
+                    enabled = !uiState.isPlacingOrder && deliveryQuoteReady,
                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
@@ -805,7 +984,11 @@ fun CheckoutScreen(
                         Text("Enviando pedido ao Supabase...", fontWeight = FontWeight.Bold)
                     } else {
                         Text(
-                            text = "Confirmar e Enviar Pedido • R$ ${String.format("%.2f", checkoutTotal).replace(".", ",")}",
+                            text = if (cart.deliveryType == "DELIVERY" && uiState.isQuotingDelivery) {
+                                "Calculando entrega..."
+                            } else {
+                                "Confirmar e Enviar Pedido • R$ ${String.format("%.2f", checkoutTotal).replace(".", ",")}"
+                            },
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -823,10 +1006,10 @@ private fun PaymentSelectionCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val icon: ImageVector = when {
-        method.contains("PIX", ignoreCase = true) -> Icons.Default.Pix
-        method.contains("Cartão", ignoreCase = true) -> Icons.Default.CreditCard
-        else -> Icons.Default.AttachMoney
+    val iconRes = when {
+        method.contains("PIX", ignoreCase = true) -> R.drawable.ic_ita_pix
+        method.contains("Cartão", ignoreCase = true) -> R.drawable.ic_ita_card
+        else -> R.drawable.ic_ita_cash
     }
     val description = when {
         method.equals("PIX Online", ignoreCase = true) -> "Pagamento confirmado no aplicativo"
@@ -854,7 +1037,7 @@ private fun PaymentSelectionCard(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Icon(
-                imageVector = icon,
+                painter = painterResource(iconRes),
                 contentDescription = null,
                 tint = if (selected) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp)
@@ -875,10 +1058,10 @@ private fun PaymentSelectionCard(
             }
             if (selected) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    painter = painterResource(R.drawable.ic_ita_check),
                     contentDescription = "Selecionado",
                     tint = ItaSuperPrimary,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -918,10 +1101,10 @@ fun OrderSuccessDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CheckCircle,
+                        painter = painterResource(R.drawable.ic_ita_check),
                         contentDescription = null,
                         tint = ItaSuperSuccess,
-                        modifier = Modifier.size(42.dp)
+                        modifier = Modifier.size(38.dp)
                     )
                 }
 

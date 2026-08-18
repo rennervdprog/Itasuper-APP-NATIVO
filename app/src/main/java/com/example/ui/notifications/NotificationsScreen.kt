@@ -15,12 +15,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,9 +31,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -38,10 +43,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.ClientNotification
 import com.example.ui.navigation.ItaSuperBottomNavBar
 import com.example.ui.theme.ItaSuperBackground
@@ -49,6 +56,21 @@ import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
+import kotlinx.coroutines.delay
+
+private enum class NotificationsFilter(val label: String) {
+    ALL("Todos"),
+    UNREAD("Não lidos"),
+    ORDER("Pedidos"),
+    DELIVERY("Entrega")
+}
+
+private fun ClientNotification.matchesFilter(filter: NotificationsFilter): Boolean = when (filter) {
+    NotificationsFilter.ALL -> true
+    NotificationsFilter.UNREAD -> !isRead
+    NotificationsFilter.ORDER -> type.lowercase() in setOf("preparando", "pronto_para_entrega", "cancelado", "finalizado", "order_update")
+    NotificationsFilter.DELIVERY -> type.lowercase() in setOf("saiu_entrega", "em_transito", "entregue")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +79,16 @@ fun NotificationsScreen(
     onNavigateToRoute: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedFilter = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(NotificationsFilter.ALL) }
+    val filteredNotifications = uiState.notifications.filter { it.matchesFilter(selectedFilter.value) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadNotifications()
+        while (true) {
+            delay(15_000)
+            viewModel.loadNotifications()
+        }
+    }
 
     Scaffold(
         containerColor = ItaSuperBackground,
@@ -80,8 +112,16 @@ fun NotificationsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::loadNotifications, modifier = Modifier.testTag("refresh_notifications")) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Atualizar notificações", tint = ItaSuperTextPrimary)
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                    } else {
+                        IconButton(onClick = viewModel::loadNotifications, modifier = Modifier.testTag("refresh_notifications")) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_ita_refresh),
+                                contentDescription = "Atualizar notificações",
+                                tint = ItaSuperTextPrimary
+                            )
+                        }
                     }
                 }
             )
@@ -110,6 +150,24 @@ fun NotificationsScreen(
                     modifier = Modifier.fillMaxSize().padding(innerPadding).testTag("notifications_list"),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
+                    item {
+                        NotificationsFilterBar(
+                            selected = selectedFilter.value,
+                            onSelect = { selectedFilter.value = it }
+                        )
+                    }
+                    if (uiState.isLoading) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                                Text("Sincronizando avisos", style = MaterialTheme.typography.labelMedium, color = ItaSuperTextSecondary)
+                            }
+                        }
+                    }
                     if (!uiState.errorMessage.isNullOrBlank()) {
                         item {
                             Text(
@@ -120,17 +178,54 @@ fun NotificationsScreen(
                             )
                         }
                     }
-                    items(uiState.notifications, key = { it.id }) { notification ->
+                    if (filteredNotifications.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Nenhum aviso nesta categoria.",
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ItaSuperTextSecondary
+                            )
+                        }
+                    }
+                    items(filteredNotifications, key = { it.id }) { notification ->
                         NotificationRow(
                             notification = notification,
                             onClick = {
                                 viewModel.openNotification(notification) {
-                                    onNavigateToRoute("pedidos")
+                                    val route = notification.orderId
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.let { "pedidos?orderId=$it" }
+                                        ?: "pedidos"
+                                    onNavigateToRoute(route)
                                 }
                             }
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationsFilterBar(selected: NotificationsFilter, onSelect: (NotificationsFilter) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(NotificationsFilter.entries, key = { it.name }) { filter ->
+            val isSelected = filter == selected
+            TextButton(
+                onClick = { onSelect(filter) },
+                colors = ButtonDefaults.textButtonColors(
+                    containerColor = if (isSelected) ItaSuperHighlightBg else Color.White,
+                    contentColor = if (isSelected) ItaSuperPrimary else ItaSuperTextSecondary
+                ),
+                modifier = Modifier.testTag("notifications_filter_${filter.name.lowercase()}")
+            ) {
+                Text(filter.label, fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold)
             }
         }
     }
@@ -150,7 +245,12 @@ private fun EmptyNotificationsContent(
             modifier = Modifier.size(84.dp).clip(CircleShape).background(ItaSuperHighlightBg),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Notifications, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(40.dp))
+            Icon(
+                painter = painterResource(R.drawable.ic_ita_bell),
+                contentDescription = null,
+                tint = ItaSuperPrimary,
+                modifier = Modifier.size(40.dp)
+            )
         }
         Spacer(modifier = Modifier.height(20.dp))
         Text(
@@ -181,8 +281,13 @@ private fun NotificationRow(notification: ClientNotification, onClick: () -> Uni
             modifier = Modifier.size(42.dp).clip(CircleShape).background(if (notification.isRead) Color(0xFFF2F2F2) else ItaSuperPrimary.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center
         ) {
+            val iconRes = when (notification.type.lowercase()) {
+                "saiu_entrega", "em_transito", "entregue" -> R.drawable.ic_ita_delivery
+                "pronto_para_entrega", "finalizado" -> R.drawable.ic_ita_check
+                else -> R.drawable.ic_ita_bell
+            }
             Icon(
-                imageVector = Icons.Default.Restaurant,
+                painter = painterResource(iconRes),
                 contentDescription = null,
                 tint = if (notification.isRead) ItaSuperTextSecondary else ItaSuperPrimary,
                 modifier = Modifier.size(21.dp)

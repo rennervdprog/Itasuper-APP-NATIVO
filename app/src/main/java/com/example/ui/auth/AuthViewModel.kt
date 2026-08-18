@@ -2,6 +2,7 @@ package com.example.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.PendingLegalChanges
 import com.example.data.remote.SupabaseClient
 import com.example.data.repository.UserSessionRepository
 import com.example.ui.utils.Masks
@@ -32,6 +33,9 @@ data class AuthUiState(
     val regPinConfirm: String = "",
     val isRegPinVisible: Boolean = false,
     val isTermsAccepted: Boolean = false,
+    val isPrivacyAccepted: Boolean = false,
+    val pendingLegalChanges: PendingLegalChanges? = null,
+    val isLoadingLegalDocuments: Boolean = false,
 
     // Error messages per field or general
     val errorMessage: String? = null,
@@ -41,6 +45,7 @@ data class AuthUiState(
     // Dialog & Sheet States
     val showForgotPasswordDialog: Boolean = false,
     val recoveryEmail: String = "",
+    val isSendingRecovery: Boolean = false,
     val showTermsSheet: Boolean = false
 )
 
@@ -117,6 +122,33 @@ class AuthViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(isTermsAccepted = accepted, errorMessage = null)
     }
 
+    fun onPrivacyAcceptedChange(accepted: Boolean) {
+        _uiState.value = _uiState.value.copy(isPrivacyAccepted = accepted, errorMessage = null)
+    }
+
+    /** Carrega as versões atuais do mesmo backend legal usado pelo Capacitor. */
+    fun loadRegistrationLegalDocuments() {
+        val current = _uiState.value
+        if (current.isLoadingLegalDocuments || current.pendingLegalChanges != null) return
+        _uiState.value = current.copy(isLoadingLegalDocuments = true, errorMessage = null)
+        viewModelScope.launch {
+            val pending = SupabaseClient.fetchPendingLegalChanges(null, null)
+            _uiState.value = if (pending == null || !pending.requiresAcceptance) {
+                _uiState.value.copy(
+                    isLoadingLegalDocuments = false,
+                    errorMessage = "Não foi possível carregar os Termos e a Política de Privacidade. Verifique sua conexão."
+                )
+            } else {
+                _uiState.value.copy(
+                    pendingLegalChanges = pending,
+                    isLoadingLegalDocuments = false,
+                    isTermsAccepted = false,
+                    isPrivacyAccepted = false
+                )
+            }
+        }
+    }
+
     // Forgot password dialog
     fun openForgotPasswordDialog() {
         _uiState.value = _uiState.value.copy(
@@ -147,11 +179,25 @@ class AuthViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(errorMessage = "Informe um e-mail válido para recuperação")
             return
         }
-        _uiState.value = _uiState.value.copy(
-            showForgotPasswordDialog = false,
-            successMessage = "E-mail de recuperação enviado!",
-            errorMessage = null
-        )
+        if (_uiState.value.isSendingRecovery) return
+
+        _uiState.value = _uiState.value.copy(isSendingRecovery = true, errorMessage = null)
+        viewModelScope.launch {
+            val result = SupabaseClient.requestPasswordRecovery(email)
+            _uiState.value = if (result.isSuccess) {
+                _uiState.value.copy(
+                    isSendingRecovery = false,
+                    showForgotPasswordDialog = false,
+                    successMessage = "E-mail de recuperação enviado. Verifique sua caixa de entrada.",
+                    errorMessage = null
+                )
+            } else {
+                _uiState.value.copy(
+                    isSendingRecovery = false,
+                    errorMessage = result.errorMessage ?: "Não foi possível enviar o e-mail de recuperação."
+                )
+            }
+        }
     }
 
     fun clearMessages() {
@@ -240,9 +286,15 @@ class AuthViewModel : ViewModel() {
             return
         }
 
-        // Validate Terms of Use
-        if (!state.isTermsAccepted) {
-            _uiState.value = state.copy(errorMessage = "Você precisa aceitar os Termos de Uso para continuar")
+        val legalDocuments = state.pendingLegalChanges
+        if (legalDocuments == null) {
+            _uiState.value = state.copy(errorMessage = "Aguarde o carregamento dos Termos e da Política de Privacidade.")
+            return
+        }
+        if ((legalDocuments.needsTerms && !state.isTermsAccepted) ||
+            (legalDocuments.needsPrivacy && !state.isPrivacyAccepted)
+        ) {
+            _uiState.value = state.copy(errorMessage = "Você precisa aceitar os Termos de Uso e a Política de Privacidade para continuar.")
             return
         }
 
@@ -254,7 +306,7 @@ class AuthViewModel : ViewModel() {
             val authResult = SupabaseClient.signUp(email, state.regPassword)
             if (authResult.isSuccess && authResult.userId != null) {
                 // Insert profile record into Supabase 'profiles' table
-                SupabaseClient.insertProfile(
+                val profileSaved = SupabaseClient.insertProfile(
                     userId = authResult.userId,
                     fullName = name,
                     document = state.regCpfCnpj,
@@ -263,6 +315,27 @@ class AuthViewModel : ViewModel() {
                     deliveryPin = state.regPin,
                     accessToken = authResult.accessToken
                 )
+                if (!profileSaved || authResult.accessToken.isNullOrBlank()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Sua conta foi criada, mas não foi possível concluir o cadastro. Entre novamente para finalizar."
+                    )
+                    return@launch
+                }
+
+                val acceptance = SupabaseClient.recordLegalAcceptance(
+                    userId = authResult.userId,
+                    accessToken = authResult.accessToken,
+                    termsVersion = legalDocuments.currentTermsVersion,
+                    privacyVersion = legalDocuments.currentPrivacyVersion
+                )
+                if (!acceptance.success) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = acceptance.errorMessage ?: "Sua conta foi criada, mas o aceite não pôde ser registrado. Entre novamente para finalizar."
+                    )
+                    return@launch
+                }
 
                 // Save local user session
                 UserSessionRepository.register(

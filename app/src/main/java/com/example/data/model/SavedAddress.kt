@@ -8,6 +8,8 @@ data class SavedAddress(
     val number: String,
     val complement: String = "",
     val neighborhood: String,
+    val city: String = "",
+    val state: String = "",
     val referencePoint: String = "",
     val cep: String = "",
     val latitude: Double? = null,

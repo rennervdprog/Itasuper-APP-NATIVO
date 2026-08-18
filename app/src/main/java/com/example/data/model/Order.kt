@@ -19,6 +19,17 @@ data class Order(
     val confirmedAt: String = "",
     val deliveryPin: String = "",
     val neighborhood: String = "",
+    val deliveryCep: String = "",
+    val deliveryCity: String = "",
+    val deliveryState: String = "",
+    val clientLatitude: Double? = null,
+    val clientLongitude: Double? = null,
+    val deliveryFeeAbsorbedByStore: Double = 0.0,
+    val deliveryQuoteSnapshot: DeliveryQuoteSnapshot? = null,
     val driverId: String = "",
-    val deliveryConfirmedByClient: Boolean = false
+    val deliveryConfirmedByClient: Boolean = false,
+    /** ISO do horário escolhido pelo cliente; vazio em pedidos imediatos. */
+    val scheduledFor: String = "",
+    /** ISO da abertura que libera o pré-pedido para a loja; vazio quando não aplicável. */
+    val releaseAt: String = ""
 )

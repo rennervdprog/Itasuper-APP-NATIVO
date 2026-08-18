@@ -85,6 +85,7 @@ fun CartScreen(
     val minimumOrder = store?.minOrder ?: 0.0
     val belowMinimum = minimumOrder > 0.0 && cart.subtotal < minimumOrder
     val minimumMissing = (minimumOrder - cart.subtotal).coerceAtLeast(0.0)
+    val deliveryQuoteReady = cart.deliveryType == "RETIRADA" || cart.hasOfficialDeliveryQuote
 
     Scaffold(
         containerColor = Color(0xFFFAFAFA),
@@ -391,7 +392,7 @@ fun CartScreen(
                                                 style = MaterialTheme.typography.bodyMedium
                                             )
                                             Text(
-                                                text = "Desconto de R$ ${String.format("%.2f", cart.discountAmount).replace(".", ",")}",
+                                                text = "Desconto de R$ ${String.format("%.2f", cart.effectiveCouponDiscount).replace(".", ",")}",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -491,23 +492,22 @@ fun CartScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Taxa de entrega", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (cart.deliveryType == "RETIRADA") {
-                                    Text("Grátis (Retirada)", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
-                                } else if (cart.deliveryFee == 0.0) {
-                                    Text("Grátis", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Text("R$ ${String.format("%.2f", cart.deliveryFee).replace(".", ",")}", fontWeight = FontWeight.Medium)
+                                when {
+                                    cart.deliveryType == "RETIRADA" -> Text("Grátis (Retirada)", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                    !deliveryQuoteReady -> Text("A confirmar", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    cart.deliveryFee == 0.0 -> Text("Grátis", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                    else -> Text("R$ ${String.format("%.2f", cart.deliveryFee).replace(".", ",")}", fontWeight = FontWeight.Medium)
                                 }
                             }
 
-                            if (cart.discountAmount > 0) {
+                            if (cart.effectiveCouponDiscount > 0) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Desconto aplicado", color = ItaSuperSuccess)
-                                    Text("- R$ ${String.format("%.2f", cart.discountAmount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
+                                    Text("- R$ ${String.format("%.2f", cart.effectiveCouponDiscount).replace(".", ",")}", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -523,8 +523,12 @@ fun CartScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text("Total", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
-                                    Text("Valor final do pedido", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                                    Text(if (deliveryQuoteReady) "Total" else "Total parcial", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if (deliveryQuoteReady) "Valor final do pedido" else "A taxa será confirmada no checkout",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
                                 }
                                 Text(
                                     text = "R$ ${String.format("%.2f", cart.total).replace(".", ",")}",
@@ -575,7 +579,12 @@ fun CartScreen(
                             text = when {
                                 isStoreClosed -> "Loja fechada"
                                 belowMinimum -> "Faltam R$ ${String.format("%.2f", minimumMissing).replace(".", ",")}"
-                                else -> "Avançar para Checkout • R$ ${String.format("%.2f", cart.total).replace(".", ",")}"
+                                                                else -> if (deliveryQuoteReady) {
+                                    "Avançar para Checkout • R$ ${String.format("%.2f", cart.total).replace(".", ",")}"
+                                } else {
+                                    "Avançar para Checkout • Taxa a confirmar"
+                                }
+
                             },
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp

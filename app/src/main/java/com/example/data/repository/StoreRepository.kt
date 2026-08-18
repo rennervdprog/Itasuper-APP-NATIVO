@@ -33,10 +33,17 @@ object StoreRepository {
     private val _stores = MutableStateFlow<List<Store>>(emptyList())
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()
 
+    /**
+     * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda,
+     * timeout ou resposta temporariamente vazia do backend.
+     */
     suspend fun refreshStoresFromSupabase(): Boolean {
         val activeStores = SupabaseClient.fetchActiveStores()
-        _stores.value = activeStores
-        return activeStores.isNotEmpty()
+        if (activeStores.isNotEmpty()) {
+            _stores.value = activeStores
+            return true
+        }
+        return _stores.value.isNotEmpty()
     }
 
     private val _lastOrder = MutableStateFlow<LastOrder?>(null)

@@ -3,6 +3,7 @@ package com.example.ui.profile
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
@@ -43,6 +45,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -66,12 +69,16 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
+import com.example.data.model.LegalDocumentLinks
 import com.example.data.model.UserSession
+import com.example.data.model.normalizeBrazilianUf
 import com.example.data.remote.SupabaseClient
 import com.example.data.repository.UserSessionRepository
 import com.example.ui.navigation.ItaSuperBottomNavBar
@@ -108,6 +115,7 @@ fun ProfileScreen(
     var complement by remember { mutableStateOf(session.addressComplement) }
     var neighborhood by remember { mutableStateOf(session.addressNeighborhood) }
     var city by remember { mutableStateOf(session.addressCity) }
+    var state by remember { mutableStateOf(normalizeBrazilianUf(session.addressState)) }
     var referencePoint by remember { mutableStateOf(session.addressReferencePoint) }
     var whatsapp by remember { mutableStateOf(session.whatsapp) }
     var pin by remember { mutableStateOf("") }
@@ -136,6 +144,7 @@ fun ProfileScreen(
         session.addressComplement,
         session.addressNeighborhood,
         session.addressCity,
+        session.addressState,
         session.addressReferencePoint,
         session.whatsapp
     ) {
@@ -146,6 +155,7 @@ fun ProfileScreen(
             complement = session.addressComplement
             neighborhood = session.addressNeighborhood
             city = session.addressCity
+            state = normalizeBrazilianUf(session.addressState)
             referencePoint = session.addressReferencePoint
             whatsapp = session.whatsapp
         }
@@ -160,7 +170,8 @@ fun ProfileScreen(
         .ifBlank { "CI" }
     val hasPersonalData = session.name.isNotBlank() && session.cpfCnpj.isNotBlank()
     val hasAddress = session.addressStreet.isNotBlank() && session.addressNumber.isNotBlank() &&
-        session.addressNeighborhood.isNotBlank() && session.addressCity.isNotBlank()
+        session.addressNeighborhood.isNotBlank() && session.addressCity.isNotBlank() &&
+        normalizeBrazilianUf(session.addressState).isNotBlank()
     val hasWhatsapp = session.whatsapp.filter { it.isDigit() }.length >= 10
     val hasPin = session.deliveryPin.matches(Regex("^\\d{4}$"))
     val completed = listOf(hasPersonalData, hasAddress, hasWhatsapp, hasPin).count { it }
@@ -175,6 +186,11 @@ fun ProfileScreen(
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/5522992796291?text=$encoded"))
         runCatching { context.startActivity(intent) }
             .onFailure { feedback = "Não foi possível abrir o WhatsApp neste aparelho." }
+    }
+
+    fun openLegalDocument(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { feedback = "Não foi possível abrir este documento neste aparelho." }
     }
 
     if (showPinDialog) {
@@ -301,7 +317,7 @@ fun ProfileScreen(
         bottomBar = {
             ItaSuperBottomNavBar(currentRoute = "perfil", onNavigateToRoute = onNavigateToRoute)
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color(0xFFFAFAFA)
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -311,13 +327,21 @@ fun ProfileScreen(
             contentPadding = PaddingValues(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item { ProfileHero(displayName, session.email, initials) }
+            item {
+                ProfileTopBar(onSettingsClick = { expandedSection = SECTION_PERSONAL })
+                ProfileIdentityRow(
+                    name = displayName,
+                    email = session.email,
+                    initials = initials,
+                    onClick = { expandedSection = SECTION_PERSONAL }
+                )
+            }
             item {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = (-18).dp)
-                        .padding(horizontal = 16.dp),
+                                            .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (completed < 4) {
@@ -352,11 +376,12 @@ fun ProfileScreen(
                         }
                     )
 
-                    SectionCaption("Conta")
+                    SectionCaption("Minha conta")
+                    MenuCard {
                     AccountSectionCard(
-                        icon = Icons.Default.Person,
+                        iconRes = R.drawable.ic_ita_profile,
                         title = "Dados pessoais",
-                        subtitle = session.name.ifBlank { "Toque para cadastrar seu nome" },
+                        subtitle = "Nome, CPF e e-mail",
                         complete = hasPersonalData,
                         expanded = expandedSection == SECTION_PERSONAL,
                         onToggle = { toggleSection(SECTION_PERSONAL) }
@@ -412,15 +437,13 @@ fun ProfileScreen(
                             if (isSavingPersonal) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                             else Text("Salvar dados pessoais")
                         }
-                    }
+                        }
+                    ProfileDivider()
 
                     AccountSectionCard(
-                        icon = Icons.Default.LocationOn,
+                        iconRes = R.drawable.ic_ita_pin,
                         title = "Endereço de entrega",
-                        subtitle = listOf(session.addressStreet, session.addressNumber, session.addressNeighborhood)
-                            .filter { it.isNotBlank() }
-                            .joinToString(", ")
-                            .ifBlank { "Toque para cadastrar seu endereço" },
+                        subtitle = "Rua, número e localização",
                         complete = hasAddress,
                         expanded = expandedSection == SECTION_ADDRESS,
                         onToggle = { toggleSection(SECTION_ADDRESS) }
@@ -448,6 +471,7 @@ fun ProfileScreen(
                                             street = result.street.ifBlank { street }
                                             neighborhood = result.neighborhood.ifBlank { neighborhood }
                                             city = result.city.ifBlank { city }
+                                            state = normalizeBrazilianUf(result.state).ifBlank { state }
                                         }
                                     }
                                 },
@@ -455,7 +479,7 @@ fun ProfileScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
                             ) {
                                 if (isLookingUpCep) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                                else Icon(Icons.Default.Search, contentDescription = "Buscar CEP")
+                                else Icon(painter = painterResource(R.drawable.ic_ita_search), contentDescription = "Buscar CEP", tint = Color.White)
                             }
                         }
                         Row(modifier = Modifier.fillMaxWidth()) {
@@ -484,11 +508,21 @@ fun ProfileScreen(
                             onValueChange = { addressDirty = true; neighborhood = it },
                             label = "Bairro"
                         )
-                        ProfileTextField(
-                            value = city,
-                            onValueChange = { addressDirty = true; city = it },
-                            label = "Cidade"
-                        )
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            ProfileTextField(
+                                value = city,
+                                onValueChange = { addressDirty = true; city = it },
+                                label = "Cidade",
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            ProfileTextField(
+                                value = state,
+                                onValueChange = { addressDirty = true; state = normalizeBrazilianUf(it) },
+                                label = "UF",
+                                modifier = Modifier.width(84.dp)
+                            )
+                        }
                         ProfileTextField(
                             value = referencePoint,
                             onValueChange = { addressDirty = true; referencePoint = it },
@@ -503,10 +537,12 @@ fun ProfileScreen(
                         Button(
                             enabled = !isSavingAddress,
                             onClick = {
+                                val normalizedState = normalizeBrazilianUf(state)
                                 when {
                                     cep.length != 8 -> feedback = "Informe um CEP válido com 8 dígitos."
                                     street.isBlank() || number.isBlank() || neighborhood.isBlank() -> feedback = "Preencha rua, número e bairro."
                                     city.isBlank() -> feedback = "Informe a cidade."
+                                    normalizedState.isBlank() -> feedback = "Informe uma UF válida com duas letras."
                                     whatsapp.filter(Char::isDigit).length < 10 -> feedback = "Informe um WhatsApp válido com DDD."
                                     else -> scope.launch {
                                         isSavingAddress = true
@@ -519,6 +555,7 @@ fun ProfileScreen(
                                             complement = complement.trim(),
                                             neighborhood = neighborhood.trim(),
                                             city = city.trim(),
+                                            state = normalizedState,
                                             referencePoint = referencePoint.trim(),
                                             whatsapp = whatsapp.filter(Char::isDigit)
                                         )
@@ -534,7 +571,7 @@ fun ProfileScreen(
                                                 pixKeyType = session.pixKeyType,
                                                 pixKey = session.pixKey,
                                                 city = city.trim(),
-                                                state = "",
+                                                state = normalizedState,
                                                 complement = complement.trim(),
                                                 referencePoint = referencePoint.trim()
                                             )
@@ -552,21 +589,23 @@ fun ProfileScreen(
                             if (isSavingAddress) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                             else Text("Salvar endereço")
                         }
-                    }
+                        }
+                    ProfileDivider()
 
                     PinCard(hasPin = hasPin, onClick = { showPinDialog = true })
+                    }
 
                     SectionCaption("Ajuda e suporte")
                     MenuCard {
                         ProfileMenuRow(
-                            icon = Icons.Default.Message,
+                            iconRes = R.drawable.ic_ita_support,
                             title = "Falar com o suporte",
                             subtitle = "WhatsApp — resposta em minutos",
                             onClick = { openWhatsApp("Olá! Sou $displayName (${session.email}) e preciso de ajuda no ItaSuper.") }
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            icon = Icons.Default.ReportProblem,
+                            iconRes = R.drawable.ic_ita_info,
                             title = "Reportar um problema",
                             subtitle = "Envie um relato ao suporte",
                             onClick = {
@@ -578,17 +617,21 @@ fun ProfileScreen(
                     SectionCaption("Sobre o ItaSuper")
                     MenuCard {
                         ProfileMenuRow(
-                            icon = Icons.Default.School,
-                            title = "Ver tutorial novamente",
-                            subtitle = "Reveja o guia de localização ao voltar para a Home",
-                            onClick = {
-                                LocationOnboardingPreferences.reset(context, session.userId)
-                                feedback = "Tutorial preparado. Volte para a Home para visualizá-lo."
-                            }
+                            iconRes = R.drawable.ic_ita_info,
+                            title = "Termos de Uso",
+                            subtitle = "Leia os termos oficiais do ItaSuper",
+                            onClick = { openLegalDocument(LegalDocumentLinks.TERMS_URL) }
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            icon = Icons.Default.Share,
+                            iconRes = R.drawable.ic_ita_info,
+                            title = "Política de Privacidade",
+                            subtitle = "Veja como seus dados são tratados",
+                            onClick = { openLegalDocument(LegalDocumentLinks.PRIVACY_URL) }
+                        )
+                        ProfileDivider()
+                        ProfileMenuRow(
+                            iconRes = R.drawable.ic_ita_share,
                             title = "Compartilhar o app",
                             subtitle = "Convide amigos para usar o ItaSuper",
                             onClick = {
@@ -600,12 +643,22 @@ fun ProfileScreen(
                                     .onFailure { feedback = "Não foi possível abrir o compartilhamento." }
                             }
                         )
+                        ProfileDivider()
+                        ProfileMenuRow(
+                            iconRes = R.drawable.ic_ita_info,
+                            title = "Ver tutorial novamente",
+                            subtitle = "Reveja o guia de localização ao voltar para a Home",
+                            onClick = {
+                                LocationOnboardingPreferences.reset(context, session.userId)
+                                feedback = "Tutorial preparado. Volte para a Home para visualizá-lo."
+                            }
+                        )
                     }
 
                     SectionCaption("Conta")
                     MenuCard {
                         ProfileMenuRow(
-                            icon = Icons.Default.Logout,
+                            iconRes = R.drawable.ic_ita_logout,
                             title = "Sair da conta",
                             subtitle = "Encerrar esta sessão neste aparelho",
                             onClick = { showLogoutConfirmation = true },
@@ -613,7 +666,7 @@ fun ProfileScreen(
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            icon = Icons.Default.DeleteForever,
+                            iconRes = R.drawable.ic_ita_trash,
                             title = "Excluir minha conta",
                             subtitle = "Remover sua conta do ItaSuper",
                             onClick = { showDeleteConfirmation = true },
@@ -628,40 +681,68 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileHero(name: String, email: String, initials: String) {
-    Box(
+private fun ProfileTopBar(onSettingsClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.linearGradient(colors = listOf(ItaSuperPrimary, Color(0xFFE95D00))))
-            .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 42.dp)
+            .background(Color.White)
+            .padding(start = 20.dp, end = 14.dp, top = 18.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(58.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(initials, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(name, color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(email.ifBlank { "Conta ItaSuper" }, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(modifier = Modifier.padding(top = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "CLIENTE",
-                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 9.dp, vertical = 3.dp),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp
-                    )
-                }
-            }
+        Icon(Icons.Default.Person, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(30.dp))
+        Spacer(Modifier.width(12.dp))
+        Text("Meu perfil", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1F1F1F))
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onSettingsClick) {
+            Icon(Icons.Default.Settings, contentDescription = "Editar dados pessoais", tint = Color(0xFF3F3F3F), modifier = Modifier.size(25.dp))
         }
     }
+}
+
+@Composable
+private fun ProfileIdentityRow(
+    name: String,
+    email: String,
+    initials: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .clickable(onClick = onClick)
+            .padding(start = 20.dp, end = 18.dp, top = 16.dp, bottom = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(66.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFEEEEEE)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(initials, color = Color(0xFF404040), fontWeight = FontWeight.Medium, fontSize = 24.sp)
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(email.ifBlank { "Conta ItaSuper" }, color = Color(0xFF686868), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "CLIENTE",
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(1.dp, ItaSuperPrimary, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 9.dp, vertical = 3.dp),
+                color = ItaSuperPrimary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.7.sp
+            )
+        }
+        Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = null, tint = Color(0xFF717171), modifier = Modifier.size(22.dp))
+    }
+    HorizontalDivider(color = Color(0xFFE8E8E8))
 }
 
 @Composable
@@ -698,38 +779,52 @@ private fun FeedbackCard(message: String, onDismiss: () -> Unit) {
 
 @Composable
 private fun SectionCaption(title: String) {
-    Text(title.uppercase(), modifier = Modifier.padding(start = 2.dp, top = 2.dp), style = MaterialTheme.typography.labelSmall, color = ItaSuperTextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+    Text(
+        title.uppercase(),
+        modifier = Modifier.padding(top = 8.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = Color(0xFF737373),
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = 1.4.sp
+    )
 }
 
 @Composable
 private fun QuickActionGrid(onOrders: () -> Unit, onSupport: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        QuickAction(Modifier.weight(1f), Icons.Default.ShoppingBag, "Meus pedidos", "Acompanhe", onOrders)
-        QuickAction(Modifier.weight(1f), Icons.Default.Message, "Suporte", "Precisa de ajuda?", onSupport)
+        QuickAction(Modifier.weight(1f), R.drawable.ic_ita_bag, "Meus pedidos", "", onOrders)
+        QuickAction(Modifier.weight(1f), R.drawable.ic_ita_support, "Suporte", "", onSupport)
     }
 }
 
 @Composable
-private fun QuickAction(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun QuickAction(modifier: Modifier, iconRes: Int, title: String, subtitle: String, onClick: () -> Unit) {
     Card(
-        modifier = modifier.height(102.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
+        modifier = modifier.height(86.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(ItaSuperHighlightBg), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(19.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle.isNotBlank()) {
+                    Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
 private fun AccountSectionCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconRes: Int,
     title: String,
     subtitle: String,
     complete: Boolean,
@@ -737,35 +832,25 @@ private fun AccountSectionCard(
     onToggle: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ItaSuperHighlightBg), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(13.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.width(7.dp))
-                        StatusBadge(complete)
-                    }
-                    Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = ItaSuperTextSecondary.copy(alpha = 0.55f), modifier = Modifier.size(20.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
+                Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (expanded) {
-                HorizontalDivider(color = ItaSuperBorder.copy(alpha = 0.65f))
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
-            }
+            Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = null, tint = Color(0xFF747474), modifier = Modifier.size(20.dp))
+        }
+        if (expanded) {
+            HorizontalDivider(color = Color(0xFFE8E8E8))
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
         }
     }
 }
@@ -805,27 +890,24 @@ private fun ProfileTextField(
 
 @Composable
 private fun PinCard(hasPin: Boolean, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ItaSuperHighlightBg), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Key, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("PIN de entrega", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.width(7.dp))
-                    StatusBadge(hasPin)
-                }
-                Text(if (hasPin) "•• •• (código exigido pelo entregador)" else "Defina um PIN de 4 dígitos", color = ItaSuperTextSecondary, style = MaterialTheme.typography.labelSmall)
-            }
-            Text(if (hasPin) "Alterar" else "Definir", color = ItaSuperPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+        Icon(painter = painterResource(R.drawable.ic_ita_key), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("PIN de entrega", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (hasPin) "Código de segurança para receber pedidos" else "Defina um PIN de 4 dígitos",
+                color = ItaSuperTextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
+        Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = null, tint = Color(0xFF747474), modifier = Modifier.size(20.dp))
     }
 }
 
@@ -833,38 +915,40 @@ private fun PinCard(hasPin: Boolean, onClick: () -> Unit) {
 private fun MenuCard(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) { Column { content() } }
 }
 
 @Composable
 private fun ProfileMenuRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconRes: Int,
     title: String,
     subtitle: String,
     onClick: () -> Unit,
     destructive: Boolean = false
 ) {
-    val tint = if (destructive) Color(0xFFCE3730) else ItaSuperPrimary
+    val tint = if (destructive) Color(0xFFCE3730) else Color(0xFF2F2F2F)
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (destructive) Color(0xFFFFECEB) else ItaSuperHighlightBg), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(13.dp))
+        Icon(painter = painterResource(iconRes), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (destructive) tint else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-            Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.labelSmall)
+            Text(title, color = if (destructive) Color(0xFFB83B36) else Color(0xFF242424), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.bodySmall)
         }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = tint.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
+        Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = null, tint = if (destructive) Color(0xFFB83B36) else Color(0xFF747474), modifier = Modifier.size(20.dp))
     }
 }
 
 @Composable
 private fun ProfileDivider() {
-    HorizontalDivider(modifier = Modifier.padding(start = 68.dp), color = ItaSuperBorder.copy(alpha = 0.65f))
+    HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = Color(0xFFE8E8E8))
 }

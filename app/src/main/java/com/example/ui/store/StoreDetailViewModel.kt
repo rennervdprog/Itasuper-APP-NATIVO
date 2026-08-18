@@ -18,13 +18,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 import com.example.data.model.PastelBorder
 
 data class StoreDetailUiState(
     val store: Store? = null,
     val isLoading: Boolean = true,
+    val errorMessage: String? = null,
     val menuSections: List<MenuSection> = emptyList(),
     val pastelBorders: List<PastelBorder> = emptyList(),
     val pizzaBorders: List<PastelBorder> = emptyList(),
@@ -36,6 +41,9 @@ data class StoreDetailUiState(
     val modalAddonGroups: List<AddonGroup> = emptyList(),
     val modalAddonItemsMap: Map<String, List<AddonItem>> = emptyMap(),
     val modalSelectedAddonsMap: Map<String, List<AddonItem>> = emptyMap(),
+    /** 1: detalhes/observações; 2: escolhas obrigatórias, quando existentes. */
+    val modalStep: Int = 1,
+    val modalAddonsLoading: Boolean = false,
     val modalError: String? = null,
     // Custom Builder State (Monte Sua Pizza / Monte Seu Pastel)
     val showBuilderModal: Boolean = false,
@@ -72,14 +80,18 @@ data class StoreDetailUiState(
     val pizzaWizardErrorMessage: String? = null,
     val snackbarMessage: String? = null
 ) {
+    val hasRequiredModalAddons: Boolean
+        get() = modalAddonGroups.any { it.minSelect > 0 }
+
+    val modalTotalSteps: Int
+        get() = if (hasRequiredModalAddons) 2 else 1
+
     val canAddToCart: Boolean
         get() {
-            if (selectedProductForModal == null) return false
+            if (selectedProductForModal == null || modalAddonsLoading) return false
             for (group in modalAddonGroups) {
                 val selected = modalSelectedAddonsMap[group.id] ?: emptyList()
-                if (selected.size < group.minSelect) {
-                    return false
-                }
+                if (selected.size < group.minSelect) return false
             }
             return true
         }
@@ -195,6 +207,7 @@ class StoreDetailViewModel : ViewModel() {
     private var allAddonGroups: List<AddonGroup> = emptyList()
     private var productAddonGroupsMap: Map<String, List<String>> = emptyMap()
     private var allAddonItems: List<AddonItem> = emptyList()
+    private var loadStoreJob: Job? = null
 
     val cartState: StateFlow<CartState> = CartRepository.cartState
     val allProducts: StateFlow<List<Product>> = _rawProducts.asStateFlow()
@@ -231,42 +244,90 @@ class StoreDetailViewModel : ViewModel() {
     )
 
     fun loadStore(storeId: String) {
-        _uiState.value = _uiState.value.copy(isLoading = true)
+        loadStoreJob?.cancel()
+        val previous = _uiState.value
+        _uiState.value = previous.copy(isLoading = previous.store == null, errorMessage = null)
 
-        viewModelScope.launch {
-            val storeList = StoreRepository.stores.value
-            val cachedStore = storeList.find { it.id == storeId }
-            // Consulta completa para que o detalhe não herde campos incompletos
-            // carregados anteriormente pela Home ou pela Busca.
-            val store = SupabaseClient.fetchStoreById(storeId) ?: cachedStore
+        loadStoreJob = viewModelScope.launch {
+            try {
+                withTimeout(20_000L) {
+                    val storeList = StoreRepository.stores.value
+                val cachedStore = storeList.find { it.id == storeId }
+                // Consulta completa para que o detalhe não herde campos incompletos
+                // carregados anteriormente pela Home ou pela Busca.
+                val store = SupabaseClient.fetchStoreById(storeId) ?: cachedStore ?: previous.store
+                store?.let {
+                    CartRepository.rememberStoreDeliveryProfile(
+                        storeId = it.id,
+                        feeType = it.deliveryFeeType,
+                        officialFee = it.officialCustomerDeliveryFee
+                    )
+                }
 
-            // Fetch menu_sections from Supabase
-            val sections = SupabaseClient.fetchMenuSectionsForStore(storeId)
+                val sections = SupabaseClient.fetchMenuSectionsForStore(storeId)
+                val borders = SupabaseClient.fetchPastelBordersForStore(storeId)
+                val pizzaBordersList = SupabaseClient.fetchPizzaBordersForStore(storeId)
+                val remoteProducts = SupabaseClient.fetchProductsForStore(storeId)
+                val addonGroups = SupabaseClient.fetchAddonGroupsForStore(storeId)
+                val productGroups = SupabaseClient.fetchProductAddonGroupsMap()
+                val addonItems = SupabaseClient.fetchAddonItemsForStore()
 
-            // Fetch pastel_borders from Supabase
-            val borders = SupabaseClient.fetchPastelBordersForStore(storeId)
+                if (store == null) {
+                    _uiState.value = previous.copy(
+                        isLoading = false,
+                        errorMessage = "Não foi possível carregar a loja. Verifique sua conexão e tente novamente."
+                    )
+                    return@withTimeout
+                }
 
-            // Fetch pizza_borders from Supabase (borda recheada, catupiry, cheddar, etc.)
-            val pizzaBordersList = SupabaseClient.fetchPizzaBordersForStore(storeId)
+                // Uma resposta vazia durante instabilidade não apaga o cardápio já visível.
+                if (remoteProducts.isNotEmpty() || _rawProducts.value.isEmpty()) {
+                    _rawProducts.value = remoteProducts
+                }
+                if (addonGroups.isNotEmpty()) allAddonGroups = addonGroups
+                if (productGroups.isNotEmpty()) productAddonGroupsMap = productGroups
+                if (addonItems.isNotEmpty()) allAddonItems = addonItems
 
-            // Fetch products from Supabase (already sorted by name & filtered)
-            val remoteProducts = SupabaseClient.fetchProductsForStore(storeId)
-            _rawProducts.value = remoteProducts
-
-            // Fetch addon data
-            allAddonGroups = SupabaseClient.fetchAddonGroupsForStore(storeId)
-            productAddonGroupsMap = SupabaseClient.fetchProductAddonGroupsMap()
-            allAddonItems = SupabaseClient.fetchAddonItemsForStore()
-
-            _uiState.value = _uiState.value.copy(
-                store = store,
-                isLoading = false,
-                menuSections = sections,
-                pastelBorders = borders,
-                pizzaBorders = pizzaBordersList,
-                selectedSectionName = "Todos"
-            )
+                _uiState.value = _uiState.value.copy(
+                    store = store,
+                    isLoading = false,
+                    errorMessage = null,
+                    menuSections = if (sections.isNotEmpty()) sections else previous.menuSections,
+                    pastelBorders = if (borders.isNotEmpty()) borders else previous.pastelBorders,
+                    pizzaBorders = if (pizzaBordersList.isNotEmpty()) pizzaBordersList else previous.pizzaBorders,
+                    selectedSectionName = previous.selectedSectionName.ifBlank { "Todos" }
+                )
+                }
+            } catch (error: TimeoutCancellationException) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "A loja demorou para responder. Verifique sua conexão e tente novamente."
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Conexão instável. Não foi possível atualizar esta loja."
+                )
+            }
         }
+    }
+
+    /** Interrompe a busca remota imediatamente quando o Android informa que não há internet. */
+    fun showOffline(storeId: String) {
+        loadStoreJob?.cancel()
+        val cachedStore = _uiState.value.store ?: StoreRepository.getStoreById(storeId)
+        _uiState.value = _uiState.value.copy(
+            store = cachedStore,
+            isLoading = false,
+            errorMessage = if (cachedStore == null) {
+                "Você está sem internet. Conecte-se para abrir esta loja."
+            } else {
+                "Sem internet. Exibindo informações já carregadas."
+            },
+            snackbarMessage = if (cachedStore != null) "Sem internet. Exibindo informações já carregadas." else null
+        )
     }
 
     fun selectSection(sectionName: String) {
@@ -278,39 +339,58 @@ class StoreDetailViewModel : ViewModel() {
     }
 
     fun openProductModal(product: Product) {
-        // Find addon groups for this product
-        val directGroups = allAddonGroups.filter { it.productId == product.id }
-        val mappedGroupIds = productAddonGroupsMap[product.id] ?: emptyList()
-        val mappedGroups = allAddonGroups.filter { mappedGroupIds.contains(it.id) }
-
-        val combinedGroups = (directGroups + mappedGroups).distinctBy { it.id }.sortedBy { it.sortOrder }
-
-        val itemsMap = mutableMapOf<String, List<AddonItem>>()
-        val initialSelectedMap = mutableMapOf<String, List<AddonItem>>()
-
-        for (group in combinedGroups) {
-            val groupItems = allAddonItems.filter { it.groupId == group.id && it.isAvailable }.sortedBy { it.sortOrder }
-            itemsMap[group.id] = groupItems
-
-            // If required and maxSelect == 1 and items available, preselect first item
-            if (group.minSelect > 0 && group.maxSelect == 1 && groupItems.isNotEmpty()) {
-                initialSelectedMap[group.id] = listOf(groupItems.first())
-            }
-        }
-
+        // Abre imediatamente e busca vínculos por produto, igual ao Capacitor.
+        // A lista global da loja é mantida para os builders, mas não define mais este fluxo.
         _uiState.value = _uiState.value.copy(
             selectedProductForModal = product,
             modalQuantity = 1,
             modalNotes = "",
-            modalAddonGroups = combinedGroups,
-            modalAddonItemsMap = itemsMap,
-            modalSelectedAddonsMap = initialSelectedMap,
+            modalAddonGroups = emptyList(),
+            modalAddonItemsMap = emptyMap(),
+            modalSelectedAddonsMap = emptyMap(),
+            modalStep = 1,
+            modalAddonsLoading = true,
+            modalError = null
+        )
+        viewModelScope.launch {
+            val payload = SupabaseClient.fetchAddonsForProduct(product.id)
+            val current = _uiState.value
+            if (current.selectedProductForModal?.id != product.id) return@launch
+            val itemsMap = payload.groups.associate { group ->
+                group.id to payload.items.filter { it.groupId == group.id && it.isAvailable }.sortedBy { it.sortOrder }
+            }
+            _uiState.value = current.copy(
+                modalAddonGroups = payload.groups,
+                modalAddonItemsMap = itemsMap,
+                modalSelectedAddonsMap = emptyMap(),
+                modalStep = 1,
+                modalAddonsLoading = false,
+                modalError = null
+            )
+        }
+    }
+
+    fun closeProductModal() {
+        _uiState.value = _uiState.value.copy(
+            selectedProductForModal = null,
+            modalStep = 1,
+            modalAddonsLoading = false,
             modalError = null
         )
     }
 
-    fun closeProductModal() {
-        _uiState.value = _uiState.value.copy(selectedProductForModal = null)
+    fun nextProductModalStep() {
+        val state = _uiState.value
+        if (state.modalTotalSteps > 1) {
+            _uiState.value = state.copy(modalStep = 2, modalError = null)
+        }
+    }
+
+    fun previousProductModalStep() {
+        val state = _uiState.value
+        if (state.modalStep > 1) {
+            _uiState.value = state.copy(modalStep = 1, modalError = null)
+        }
     }
 
     fun toggleAddonItem(group: AddonGroup, item: AddonItem) {
@@ -330,7 +410,7 @@ class StoreDetailViewModel : ViewModel() {
             if (currentSelected.contains(item)) {
                 currentSelected.remove(item)
             } else {
-                if (currentSelected.size < group.maxSelect) {
+                if (group.maxSelect <= 0 || currentSelected.size < group.maxSelect) {
                     currentSelected.add(item)
                 }
             }
@@ -400,22 +480,9 @@ class StoreDetailViewModel : ViewModel() {
     }
 
     fun addDirectProductToCart(product: Product) {
-        // If product has required addon groups, open modal instead of adding directly
-        val directGroups = allAddonGroups.filter { it.productId == product.id }
-        val mappedGroupIds = productAddonGroupsMap[product.id] ?: emptyList()
-        val mappedGroups = allAddonGroups.filter { mappedGroupIds.contains(it.id) }
-        val hasRequiredGroups = (directGroups + mappedGroups).any { it.minSelect > 0 }
-
-        if (hasRequiredGroups) {
-            openProductModal(product)
-        } else {
-            val storeName = _uiState.value.store?.name ?: "Loja"
-            CartRepository.addProduct(
-                product = product,
-                storeName = storeName,
-                quantity = 1
-            )
-        }
+        // O vínculo obrigatório é assíncrono e específico por produto; abrir o modal
+        // evita adicionar antes de a regra real retornar do Supabase.
+        openProductModal(product)
     }
 
     fun openBuilder(type: String) {

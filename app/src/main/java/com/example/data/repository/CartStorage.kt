@@ -47,6 +47,10 @@ class CartStorage(context: Context) {
                     deliveryType = root.optString("delivery_type", "DELIVERY"),
                     deliveryLatitude = root.takeIf { it.has("delivery_latitude") && !it.isNull("delivery_latitude") }?.optDouble("delivery_latitude"),
                     deliveryLongitude = root.takeIf { it.has("delivery_longitude") && !it.isNull("delivery_longitude") }?.optDouble("delivery_longitude"),
+                    storeDeliveryFeeType = root.optString("store_delivery_fee_type", ""),
+                    storeOfficialDeliveryFee = root.takeIf { it.has("store_official_delivery_fee") && !it.isNull("store_official_delivery_fee") }?.optDouble("store_official_delivery_fee"),
+                    officialDeliveryFee = root.takeIf { it.optString("store_delivery_fee_type", "").equals("fixed", ignoreCase = true) && it.has("store_official_delivery_fee") }?.optDouble("store_official_delivery_fee"),
+                    officialDeliveryQuoteKey = root.takeIf { it.optString("store_delivery_fee_type", "").equals("fixed", ignoreCase = true) && it.has("store_official_delivery_fee") }?.optString("store_id")?.takeIf { it.isNotBlank() }?.let { "fixed:$it" },
                     appliedCoupon = root.optJSONObject("coupon")?.toCoupon(),
                     discountAmount = root.optDouble("discount_amount", 0.0).coerceAtLeast(0.0)
                 )
@@ -69,6 +73,8 @@ class CartStorage(context: Context) {
             put("delivery_type", state.deliveryType)
             state.deliveryLatitude?.let { put("delivery_latitude", it) }
             state.deliveryLongitude?.let { put("delivery_longitude", it) }
+            put("store_delivery_fee_type", state.storeDeliveryFeeType)
+            state.storeOfficialDeliveryFee?.let { put("store_official_delivery_fee", it) }
             put("discount_amount", state.discountAmount)
             state.appliedCoupon?.let { put("coupon", it.toJson()) }
             put("items", JSONArray().apply {

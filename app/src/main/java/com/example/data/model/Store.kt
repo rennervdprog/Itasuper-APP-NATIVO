@@ -34,9 +34,13 @@ data class Store(
     val rating: Double,
     val deliveryTime: String = "",
     val deliveryFee: String = "",
+    /** Taxa-base ao cliente já calculada pela regra VIP da loja, antes da validação por endereço. */
+    val officialCustomerDeliveryFee: Double? = null,
     val isFreeDelivery: Boolean = false,
     val isOpen: Boolean = true,
     val forceClosed: Boolean = false,
+    val preorderEnabled: Boolean = false,
+    val preorderMinutesBefore: Int = 0,
     val distanceKm: Double? = null,
     val logoUrl: String = "",
     val bannerUrl: String = "",

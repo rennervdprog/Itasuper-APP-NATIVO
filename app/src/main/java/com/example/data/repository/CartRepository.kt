@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.model.CartItem
 import com.example.data.model.Coupon
+import com.example.data.model.DeliveryQuote
 import com.example.data.model.Product
 import com.example.data.model.SelectedAddonItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,13 @@ data class CartState(
     val deliveryType: String = "DELIVERY", // "DELIVERY" or "RETIRADA"
     val deliveryLatitude: Double? = null,
     val deliveryLongitude: Double? = null,
+    /** Perfil configurado pela loja quando o item foi adicionado à sacola. */
+    val storeDeliveryFeeType: String = "",
+    val storeOfficialDeliveryFee: Double? = null,
+    /** Valor e coordenadas liberados exclusivamente pela cotação central. */
+    val officialDeliveryFee: Double? = null,
+    val officialDeliveryDistanceKm: Double? = null,
+    val officialDeliveryQuoteKey: String? = null,
     val appliedCoupon: Coupon? = null,
     val discountAmount: Double = 0.0
 ) {
@@ -24,65 +32,32 @@ data class CartState(
     val subtotal: Double
         get() = items.sumOf { it.totalPrice }
 
+    /** A taxa financeira vem exclusivamente da cotação central, já com regras VIP. */
     val deliveryFee: Double
-        get() {
-            if (deliveryType == "RETIRADA" || items.isEmpty() || storeId == null) return 0.0
-            val store = StoreRepository.getStoreById(storeId) ?: return 0.0
-            val mode = store.deliveryMode.lowercase()
-            if (mode == "pickup") return 0.0
+        get() = if (deliveryType == "RETIRADA" || items.isEmpty()) 0.0 else officialDeliveryFee ?: 0.0
 
-            val isAutonomy = store.planType.equals("autonomy", true) || store.autonomyLifetimeFree
-            val splitFull = if (isAutonomy) 0.0 else (store.platformDeliverySplitOverride ?: 0.99)
-            val platformAddToCustomer = when (store.platformFeeSplit.lowercase()) {
-                "meio_a_meio" -> Math.round((splitFull / 2.0) * 100.0) / 100.0
-                "lojista" -> 0.0
-                else -> splitFull
-            }
-            val storeDeliveryFee = when (mode) {
-                "platform" -> store.platformDeliveryFee
-                "own", "direto" -> {
-                    if (store.deliveryFeeType.equals("km", true) &&
-                        store.latitude != null && store.longitude != null &&
-                        deliveryLatitude != null && deliveryLongitude != null
-                    ) {
-                        val distanceKm = haversineKm(store.latitude, store.longitude, deliveryLatitude, deliveryLongitude)
-                        val pricedKm = kotlin.math.max(1, kotlin.math.ceil(distanceKm).toInt())
-                        val baseKm = store.deliveryBaseKm.coerceAtLeast(0.0)
-                        val baseFee = store.deliveryFeeBase.coerceAtLeast(0.0)
-                        val extraKm = (pricedKm - baseKm).coerceAtLeast(0.0)
-                        baseFee + extraKm * store.deliveryFeePerKm.coerceAtLeast(0.0)
-                    } else {
-                        store.ownDeliveryFee
-                    }
-                }
-                else -> store.platformDeliveryFee
-            }
-            val total = storeDeliveryFee + if (mode in setOf("own", "direto")) platformAddToCustomer else 0.0
-            return (Math.round(total * 100.0) / 100.0).coerceAtLeast(0.0)
-        }
+    val hasOfficialDeliveryQuote: Boolean
+        get() = deliveryType == "RETIRADA" || (officialDeliveryFee != null && officialDeliveryQuoteKey != null)
 
     val deliveryDistanceKm: Double?
-        get() {
-            val store = storeId?.let { StoreRepository.getStoreById(it) } ?: return null
-            if (store.latitude == null || store.longitude == null || deliveryLatitude == null || deliveryLongitude == null) return null
-            return Math.round(haversineKm(store.latitude, store.longitude, deliveryLatitude, deliveryLongitude) * 10.0) / 10.0
+        get() = officialDeliveryDistanceKm
+
+    /** Frete grátis acompanha a taxa central — inclusive após uma nova cotação por km. */
+    val effectiveCouponDiscount: Double
+        get() = if (appliedCoupon?.discountType.equals("free_shipping", ignoreCase = true) && deliveryType == "DELIVERY") {
+            deliveryFee
+        } else {
+            discountAmount
         }
 
     val total: Double
-        get() = (subtotal + deliveryFee - discountAmount).coerceAtLeast(0.0)
-
-    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-        val radius = 6371.0
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLng = Math.toRadians(lng2 - lng1)
-        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
-            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
-            kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
-        return radius * 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
-    }
+        get() = (subtotal + deliveryFee - effectiveCouponDiscount).coerceAtLeast(0.0)
 }
 
 object CartRepository {
+
+    private data class StoreDeliveryProfile(val feeType: String, val officialFee: Double?)
+    private val deliveryProfiles = mutableMapOf<String, StoreDeliveryProfile>()
 
     private val _cartState = MutableStateFlow(CartState())
     val cartState: StateFlow<CartState> = _cartState.asStateFlow()
@@ -98,12 +73,73 @@ object CartRepository {
         _cartState.value = if (userId.isBlank()) CartState() else storage?.read(userId) ?: CartState()
     }
 
+    /** Registra o perfil real carregado na página da loja antes da adição de itens. */
+    fun rememberStoreDeliveryProfile(storeId: String, feeType: String, officialFee: Double?) {
+        if (storeId.isBlank()) return
+        deliveryProfiles[storeId] = StoreDeliveryProfile(feeType, officialFee)
+        val current = _cartState.value
+        if (current.storeId == storeId && current.items.isNotEmpty()) {
+            val isFixed = !feeType.equals("km", ignoreCase = true) && officialFee != null
+            publish(current.copy(
+                storeDeliveryFeeType = feeType,
+                storeOfficialDeliveryFee = officialFee,
+                officialDeliveryFee = if (isFixed && current.deliveryType == "DELIVERY") officialFee else current.officialDeliveryFee,
+                officialDeliveryQuoteKey = if (isFixed && current.deliveryType == "DELIVERY") "fixed:$storeId" else current.officialDeliveryQuoteKey
+            ))
+        }
+    }
+
     fun setDeliveryType(type: String) {
-        publish(_cartState.value.copy(deliveryType = type))
+        val current = _cartState.value
+        val restoreFixed = type == "DELIVERY" &&
+            current.storeDeliveryFeeType.equals("fixed", ignoreCase = true) &&
+            current.storeOfficialDeliveryFee != null
+        publish(current.copy(
+            deliveryType = type,
+            officialDeliveryFee = if (restoreFixed) current.storeOfficialDeliveryFee else null,
+            officialDeliveryDistanceKm = null,
+            officialDeliveryQuoteKey = if (restoreFixed) "fixed:${current.storeId}" else null
+        ))
     }
 
     fun setDeliveryCoordinates(latitude: Double?, longitude: Double?) {
         publish(_cartState.value.copy(deliveryLatitude = latitude, deliveryLongitude = longitude))
+    }
+
+    /** Aplica a taxa VIP já configurada pela loja fixa; não depende de endereço ou distância. */
+    fun setOfficialFixedDeliveryFee(storeId: String, fee: Double) {
+        val current = _cartState.value
+        if (current.storeId != storeId || current.deliveryType != "DELIVERY") return
+        val requestKey = "fixed:$storeId"
+        if (current.officialDeliveryFee == fee && current.officialDeliveryQuoteKey == requestKey) return
+        publish(current.copy(
+            officialDeliveryFee = fee.coerceAtLeast(0.0),
+            officialDeliveryDistanceKm = null,
+            officialDeliveryQuoteKey = requestKey
+        ))
+    }
+
+    fun setOfficialDeliveryQuote(quote: DeliveryQuote, requestKey: String) {
+        val destination = quote.destination ?: return
+        if (!quote.isSuccessfulDelivery) return
+        publish(_cartState.value.copy(
+            deliveryLatitude = destination.latitude,
+            deliveryLongitude = destination.longitude,
+            officialDeliveryFee = quote.pricing.deliveryFee.coerceAtLeast(0.0),
+            officialDeliveryDistanceKm = quote.distance.km.takeIf { it.isFinite() },
+            officialDeliveryQuoteKey = requestKey
+        ))
+    }
+
+    fun clearOfficialDeliveryQuote(clearCoordinates: Boolean = false) {
+        val current = _cartState.value
+        publish(current.copy(
+            deliveryLatitude = if (clearCoordinates) null else current.deliveryLatitude,
+            deliveryLongitude = if (clearCoordinates) null else current.deliveryLongitude,
+            officialDeliveryFee = null,
+            officialDeliveryDistanceKm = null,
+            officialDeliveryQuoteKey = null
+        ))
     }
 
     fun applyCoupon(coupon: Coupon, discount: Double) {
@@ -129,15 +165,24 @@ object CartRepository {
         storeName: String,
         quantity: Int = 1,
         notes: String = "",
-        selectedAddons: List<SelectedAddonItem> = emptyList()
+        selectedAddons: List<SelectedAddonItem> = emptyList(),
+        storeDeliveryFeeType: String = "",
+        storeOfficialDeliveryFee: Double? = null
     ) {
         val current = _cartState.value
+        val rememberedProfile = deliveryProfiles[product.storeId]
+        val effectiveFeeType = storeDeliveryFeeType.ifBlank { rememberedProfile?.feeType.orEmpty() }
+        val effectiveOfficialFee = storeOfficialDeliveryFee ?: rememberedProfile?.officialFee
         if (current.storeId != null && current.storeId != product.storeId && current.items.isNotEmpty()) {
             publish(
                 CartState(
                     storeId = product.storeId,
                     storeName = storeName,
-                    items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
+                    items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons)),
+                    storeDeliveryFeeType = effectiveFeeType,
+                    storeOfficialDeliveryFee = effectiveOfficialFee,
+                    officialDeliveryFee = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) },
+                    officialDeliveryQuoteKey = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) }?.let { "fixed:${product.storeId}" }
                 )
             )
             return
@@ -153,7 +198,20 @@ object CartRepository {
         } else {
             updatedItems.add(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons))
         }
-        publish(current.copy(storeId = product.storeId, storeName = storeName, items = updatedItems))
+        publish(current.copy(
+            storeId = product.storeId,
+            storeName = storeName,
+            items = updatedItems,
+            storeDeliveryFeeType = effectiveFeeType.ifBlank { current.storeDeliveryFeeType },
+            storeOfficialDeliveryFee = effectiveOfficialFee ?: current.storeOfficialDeliveryFee,
+            officialDeliveryFee = if (effectiveFeeType.ifBlank { current.storeDeliveryFeeType }.equals("fixed", ignoreCase = true)) {
+                effectiveOfficialFee ?: current.storeOfficialDeliveryFee
+            } else null,
+            officialDeliveryDistanceKm = null,
+            officialDeliveryQuoteKey = if (effectiveFeeType.ifBlank { current.storeDeliveryFeeType }.equals("fixed", ignoreCase = true)) {
+                (effectiveOfficialFee ?: current.storeOfficialDeliveryFee)?.let { "fixed:${product.storeId}" }
+            } else null
+        ))
     }
 
     /**
@@ -184,13 +242,19 @@ object CartRepository {
                     storeId = if (updatedItems.isEmpty()) null else current.storeId,
                     items = updatedItems,
                     appliedCoupon = if (updatedItems.isEmpty()) null else current.appliedCoupon,
-                    discountAmount = if (updatedItems.isEmpty()) 0.0 else current.discountAmount
+                    discountAmount = if (updatedItems.isEmpty()) 0.0 else current.discountAmount,
+                    officialDeliveryFee = null,
+                    officialDeliveryDistanceKm = null,
+                    officialDeliveryQuoteKey = null
                 )
             )
         } else {
-            publish(current.copy(items = current.items.map {
-                if (it.product.id == productId) it.copy(quantity = newQuantity) else it
-            }))
+            publish(current.copy(
+                items = current.items.map { if (it.product.id == productId) it.copy(quantity = newQuantity) else it },
+                officialDeliveryFee = null,
+                officialDeliveryDistanceKm = null,
+                officialDeliveryQuoteKey = null
+            ))
         }
     }
 
@@ -208,7 +272,10 @@ object CartRepository {
                 items = validatedItems,
                 storeId = if (validatedItems.isEmpty()) null else current.storeId,
                 appliedCoupon = if (validatedItems.isEmpty()) null else current.appliedCoupon,
-                discountAmount = if (validatedItems.isEmpty()) 0.0 else current.discountAmount
+                discountAmount = if (validatedItems.isEmpty()) 0.0 else current.discountAmount,
+                officialDeliveryFee = null,
+                officialDeliveryDistanceKm = null,
+                officialDeliveryQuoteKey = null
             )
         )
     }

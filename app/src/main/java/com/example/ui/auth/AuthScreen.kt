@@ -1,5 +1,7 @@
 package com.example.ui.auth
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -77,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -106,6 +109,7 @@ fun AuthScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { error ->
@@ -118,6 +122,12 @@ fun AuthScreen(
         uiState.successMessage?.let { success ->
             snackbarHostState.showSnackbar(success)
             viewModel.clearMessages()
+        }
+    }
+
+    LaunchedEffect(uiState.authMode) {
+        if (uiState.authMode is AuthMode.Register) {
+            viewModel.loadRegistrationLegalDocuments()
         }
     }
 
@@ -175,6 +185,9 @@ fun AuthScreen(
                         RegisterForm(
                             uiState = uiState,
                             viewModel = viewModel,
+                            onOpenLegalDocument = { url ->
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                            },
                             onRegisterClick = {
                                 focusManager.clearFocus()
                                 viewModel.handleRegister(onSuccess = onAuthSuccess)
@@ -188,24 +201,15 @@ fun AuthScreen(
 
     // Forgot Password Dialog
     if (uiState.showForgotPasswordDialog) {
-        ForgotPasswordDialog(
-            email = uiState.recoveryEmail,
-            onEmailChange = viewModel::onRecoveryEmailChange,
-            onDismiss = viewModel::closeForgotPasswordDialog,
-            onSend = viewModel::sendRecoveryEmail
-        )
+            ForgotPasswordDialog(
+                email = uiState.recoveryEmail,
+                isSending = uiState.isSendingRecovery,
+                onEmailChange = viewModel::onRecoveryEmailChange,
+                onDismiss = viewModel::closeForgotPasswordDialog,
+                onSend = viewModel::sendRecoveryEmail
+            )
     }
 
-    // Terms of Use Modal Sheet
-    if (uiState.showTermsSheet) {
-        TermsBottomSheet(
-            onDismiss = viewModel::closeTermsSheet,
-            onAccept = {
-                viewModel.onTermsAcceptedChange(true)
-                viewModel.closeTermsSheet()
-            }
-        )
-    }
 }
 
 @Composable
@@ -451,6 +455,7 @@ private fun LoginForm(
 private fun RegisterForm(
     uiState: AuthUiState,
     viewModel: AuthViewModel,
+    onOpenLegalDocument: (String) -> Unit,
     onRegisterClick: () -> Unit
 ) {
     Column(
@@ -618,33 +623,45 @@ private fun RegisterForm(
             }
         }
 
-        // Checkbox Termos de Uso
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = uiState.isTermsAccepted,
-                onCheckedChange = viewModel::onTermsAcceptedChange,
-                colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary),
-                modifier = Modifier.testTag("terms_checkbox")
-            )
+        val legalDocuments = uiState.pendingLegalChanges
+        if (uiState.isLoadingLegalDocuments) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = ItaSuperPrimary, strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+                Text("Carregando Termos e Política de Privacidade...", style = MaterialTheme.typography.bodySmall)
+            }
+        } else if (legalDocuments != null) {
+            if (legalDocuments.needsTerms) {
+                LegalRegisterCheckbox(
+                    checked = uiState.isTermsAccepted,
+                    onCheckedChange = viewModel::onTermsAcceptedChange,
+                    prefix = "Li e aceito os ",
+                    title = "Termos de Uso",
+                    version = legalDocuments.currentTermsVersion,
+                    url = "https://itasuper.com.br/termos-de-uso",
+                    onOpen = onOpenLegalDocument,
+                    testTag = "terms_checkbox"
+                )
+            }
+            if (legalDocuments.needsPrivacy) {
+                LegalRegisterCheckbox(
+                    checked = uiState.isPrivacyAccepted,
+                    onCheckedChange = viewModel::onPrivacyAcceptedChange,
+                    prefix = "Li e aceito a ",
+                    title = "Política de Privacidade",
+                    version = legalDocuments.currentPrivacyVersion,
+                    url = "https://itasuper.com.br/politica-de-privacidade",
+                    onOpen = onOpenLegalDocument,
+                    testTag = "privacy_checkbox"
+                )
+            }
+        } else {
             Text(
-                text = "Aceito os ",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = "Termos de Uso",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    color = ItaSuperPrimary,
-                    fontWeight = FontWeight.Bold,
-                    textDecoration = TextDecoration.Underline
-                ),
-                modifier = Modifier
-                    .clickable { viewModel.openTermsSheet() }
-                    .testTag("terms_link")
+                "Os Termos e a Política de Privacidade precisam ser carregados antes do cadastro.",
+                style = MaterialTheme.typography.bodySmall.copy(color = ItaSuperError)
             )
         }
 
@@ -682,6 +699,53 @@ private fun RegisterForm(
 }
 
 @Composable
+private fun LegalRegisterCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    prefix: String,
+    title: String,
+    version: String,
+    url: String,
+    onOpen: (String) -> Unit,
+    testTag: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = CheckboxDefaults.colors(checkedColor = ItaSuperPrimary),
+                modifier = Modifier.testTag(testTag)
+            )
+            Column(modifier = Modifier.padding(top = 10.dp).weight(1f)) {
+                Text(
+                    text = "$prefix$title versão $version.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF5D5D5D))
+                )
+                Text(
+                    text = "Ler $title",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = ItaSuperPrimary,
+                        fontWeight = FontWeight.Bold,
+                        textDecoration = TextDecoration.Underline
+                    ),
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .clickable { onOpen(url) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ErrorBanner(message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -712,6 +776,7 @@ private fun ErrorBanner(message: String) {
 @Composable
 private fun ForgotPasswordDialog(
     email: String,
+    isSending: Boolean,
     onEmailChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSend: () -> Unit
@@ -747,12 +812,17 @@ private fun ForgotPasswordDialog(
         },
         confirmButton = {
             Button(
-                onClick = onSend,
-                shape = RoundedCornerShape(16.dp),
+                    onClick = onSend,
+                    enabled = !isSending,
+                    shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                 modifier = Modifier.testTag("send_recovery_button")
             ) {
-                Text("Enviar")
+                if (isSending) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("Enviar")
+                }
             }
         },
         dismissButton = {

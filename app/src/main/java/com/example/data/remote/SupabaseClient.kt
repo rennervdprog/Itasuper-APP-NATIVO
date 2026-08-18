@@ -3,12 +3,24 @@ package com.example.data.remote
 import android.util.Log
 import com.example.data.model.AddonGroup
 import com.example.data.model.AddonItem
+import com.example.data.model.DeliveryAddressInput
+import com.example.data.model.DeliveryQuote
+import com.example.data.model.DeliveryQuoteDestination
+import com.example.data.model.DeliveryQuoteDistance
+import com.example.data.model.DeliveryQuoteFailure
+import com.example.data.model.DeliveryQuotePricing
+import com.example.data.model.DeliveryQuoteResult
+import com.example.data.model.DeliveryQuoteSnapshot
+import com.example.data.model.LegalAcceptanceResult
+import com.example.data.model.LegalChange
 import com.example.data.model.MenuSection
+import com.example.data.model.PendingLegalChanges
 import com.example.data.model.Product
 import com.example.data.model.PizzaLegacySize
 import com.example.data.model.PizzaSizeCatalogItem
 import com.example.data.model.SavedAddress
 import com.example.data.model.Store
+import com.example.data.model.normalizeBrazilianUf
 import com.example.data.model.StoreSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,6 +42,11 @@ data class SupabaseAuthResponse(
     val errorMessage: String? = null
 )
 
+data class SupabaseOperationResult(
+    val isSuccess: Boolean,
+    val errorMessage: String? = null
+)
+
 data class RemoteCustomerProfile(
     val fullName: String = "",
     val email: String = "",
@@ -45,7 +62,9 @@ data class RemoteCustomerProfile(
     val state: String = "",
     val referencePoint: String = "",
     val pixKeyType: String = "",
-    val pixKey: String = ""
+    val pixKey: String = "",
+    val termsVersionAccepted: String = "",
+    val privacyVersionAccepted: String = ""
 )
 
 data class OrderSubmissionResponse(
@@ -183,6 +202,39 @@ object SupabaseClient {
         }
     }
 
+    /** Envia o mesmo link de redefinição de senha usado no cliente web. */
+    suspend fun requestPasswordRecovery(email: String): SupabaseOperationResult = withContext(Dispatchers.IO) {
+        try {
+            val bodyJson = JSONObject().apply {
+                put("email", email.trim())
+                put("redirect_to", "https://itasuper.com.br/cliente?mode=reset")
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/auth/v1/recover")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(bodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+            if (response.isSuccessful) {
+                SupabaseOperationResult(isSuccess = true)
+            } else {
+                SupabaseOperationResult(
+                    isSuccess = false,
+                    errorMessage = parseErrorMessage(responseText, "Não foi possível enviar o e-mail de recuperação.")
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting password recovery", e)
+            SupabaseOperationResult(
+                isSuccess = false,
+                errorMessage = "Falha de conexão ao enviar o e-mail de recuperação."
+            )
+        }
+    }
+
     // 2b. REFRESH SESSION
     suspend fun refreshSession(refreshToken: String): SupabaseAuthResponse = withContext(Dispatchers.IO) {
         try {
@@ -230,7 +282,8 @@ object SupabaseClient {
             val select = listOf(
                 "full_name", "email", "document", "whatsapp_number", "phone", "delivery_pin",
                 "cep", "street", "number", "complement", "neighborhood",
-                "city", "reference_point", "pix_type", "pix_key"
+                "city", "state", "reference_point", "pix_type", "pix_key",
+                "terms_version_accepted", "privacy_version_accepted"
             ).joinToString(",")
             val url = "$SUPABASE_URL/rest/v1/profiles?select=$select&user_id=eq.$userId&limit=1"
             val request = Request.Builder()
@@ -261,10 +314,12 @@ object SupabaseClient {
                 complement = profile.optNullableString("complement").orEmpty().trim(),
                 neighborhood = profile.optNullableString("neighborhood").orEmpty().trim(),
                 city = profile.optNullableString("city").orEmpty().trim(),
-                state = profile.optNullableString("state").orEmpty().trim(),
+                state = normalizeBrazilianUf(profile.optNullableString("state").orEmpty()),
                 referencePoint = profile.optNullableString("reference_point").orEmpty().trim(),
                 pixKeyType = profile.optNullableString("pix_type").orEmpty().trim(),
-                pixKey = profile.optNullableString("pix_key").orEmpty().trim()
+                pixKey = profile.optNullableString("pix_key").orEmpty().trim(),
+                termsVersionAccepted = profile.optNullableString("terms_version_accepted").orEmpty().trim(),
+                privacyVersionAccepted = profile.optNullableString("privacy_version_accepted").orEmpty().trim()
             )
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao buscar perfil do cliente", e)
@@ -276,7 +331,7 @@ object SupabaseClient {
     suspend fun fetchSavedAddresses(userId: String, accessToken: String): List<SavedAddress> = withContext(Dispatchers.IO) {
         if (userId.isBlank() || accessToken.isBlank()) return@withContext emptyList()
         try {
-            val select = "id,label,street,number,complement,neighborhood,reference_point,is_default,cep,latitude,longitude,pin_confirmed"
+            val select = "id,label,street,number,complement,neighborhood,city,state,reference_point,is_default,cep,latitude,longitude,pin_confirmed"
             val url = "$SUPABASE_URL/rest/v1/saved_addresses?select=$select&user_id=eq.$userId&order=is_default.desc,created_at.desc"
             val request = Request.Builder()
                 .url(url)
@@ -304,6 +359,8 @@ object SupabaseClient {
                             number = item.optNullableString("number").orEmpty(),
                             complement = item.optNullableString("complement").orEmpty(),
                             neighborhood = item.optNullableString("neighborhood").orEmpty(),
+                            city = item.optNullableString("city").orEmpty(),
+                            state = normalizeBrazilianUf(item.optNullableString("state").orEmpty()),
                             referencePoint = item.optNullableString("reference_point").orEmpty(),
                             cep = item.optNullableString("cep").orEmpty(),
                             latitude = item.takeIf { it.has("latitude") && !it.isNull("latitude") }?.optDouble("latitude"),
@@ -342,6 +399,8 @@ object SupabaseClient {
                 put("number", address.number)
                 put("complement", address.complement)
                 put("neighborhood", address.neighborhood)
+                put("city", address.city.trim())
+                put("state", normalizeBrazilianUf(address.state))
                 put("reference_point", address.referencePoint)
                 put("cep", address.cep)
                 address.latitude?.let { put("latitude", it) }
@@ -421,6 +480,135 @@ object SupabaseClient {
         } catch (error: Exception) {
             Log.e(TAG, "Erro ao excluir endereço salvo", error)
             false
+        }
+    }
+
+    /**
+     * Consulta o mesmo RPC utilizado pelo Capacitor. As versões não são fixadas no APK:
+     * o backend informa qual documento mudou e quais versões exigem novo aceite.
+     */
+    suspend fun fetchPendingLegalChanges(
+        termsAccepted: String?,
+        privacyAccepted: String?,
+        accessToken: String? = null
+    ): PendingLegalChanges? = withContext(Dispatchers.IO) {
+        try {
+            val requestBody = JSONObject().apply {
+                put("_terms_accepted", termsAccepted?.ifBlank { "0" } ?: "0")
+                put("_privacy_accepted", privacyAccepted?.ifBlank { "0" } ?: "0")
+            }
+            val bearer = accessToken?.takeIf { it.isNotBlank() } ?: SUPABASE_ANON_KEY
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/get_pending_legal_changes")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $bearer")
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank()) {
+                    Log.w(TAG, "Não foi possível consultar documentos legais: code=${response.code}")
+                    return@withContext null
+                }
+                val result = JSONObject(body)
+                PendingLegalChanges(
+                    needsTerms = result.optBoolean("needs_terms", false),
+                    needsPrivacy = result.optBoolean("needs_privacy", false),
+                    currentTermsVersion = result.optNullableString("current_terms_version").orEmpty(),
+                    currentPrivacyVersion = result.optNullableString("current_privacy_version").orEmpty(),
+                    termsChanges = parseLegalChanges(result.optJSONArray("terms_changes")),
+                    privacyChanges = parseLegalChanges(result.optJSONArray("privacy_changes"))
+                )
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao consultar documentos legais", error)
+            null
+        }
+    }
+
+    /** Registra o aceite auditável e atualiza as versões no perfil, como no Capacitor. */
+    suspend fun recordLegalAcceptance(
+        userId: String,
+        accessToken: String,
+        termsVersion: String,
+        privacyVersion: String
+    ): LegalAcceptanceResult = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank() || termsVersion.isBlank() || privacyVersion.isBlank()) {
+            return@withContext LegalAcceptanceResult(false, "Não foi possível identificar os documentos para aceite.")
+        }
+        try {
+            val acceptedAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+            val acceptanceBody = JSONObject().apply {
+                put("user_id", userId)
+                put("terms_version", termsVersion)
+                put("privacy_version", privacyVersion)
+                put("user_agent", "ItaSuper Android")
+                put("accepted_at", acceptedAt)
+            }
+            val acceptanceRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/terms_acceptance")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .post(acceptanceBody.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(acceptanceRequest).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext LegalAcceptanceResult(
+                        false,
+                        parseErrorMessage(response.body?.string().orEmpty(), "Não foi possível registrar seu aceite.")
+                    )
+                }
+            }
+
+            val profileBody = JSONObject().apply {
+                put("terms_version_accepted", termsVersion)
+                put("privacy_version_accepted", privacyVersion)
+                put("terms_accepted_at", acceptedAt)
+            }
+            val profileRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/profiles?user_id=eq.$userId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Prefer", "return=minimal")
+                .patch(profileBody.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(profileRequest).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext LegalAcceptanceResult(
+                        false,
+                        parseErrorMessage(response.body?.string().orEmpty(), "O aceite foi registrado, mas não foi possível atualizar seu perfil.")
+                    )
+                }
+            }
+            LegalAcceptanceResult(true)
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao registrar aceite legal", error)
+            LegalAcceptanceResult(false, "Não foi possível registrar seu aceite. Tente novamente.")
+        }
+    }
+
+    private fun parseLegalChanges(array: JSONArray?): List<LegalChange> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                add(
+                    LegalChange(
+                        version = item.optNullableString("version").orEmpty(),
+                        effectiveDate = item.optNullableString("effective_date").orEmpty(),
+                        section = item.optNullableString("section").orEmpty(),
+                        changeType = item.optNullableString("change_type").orEmpty(),
+                        summary = item.optNullableString("summary").orEmpty(),
+                        legalBasis = item.optNullableString("legal_basis")
+                    )
+                )
+            }
         }
     }
 
@@ -505,6 +693,7 @@ object SupabaseClient {
         complement: String,
         neighborhood: String,
         city: String,
+        state: String,
         referencePoint: String,
         whatsapp: String
     ): Boolean = withContext(Dispatchers.IO) {
@@ -517,6 +706,7 @@ object SupabaseClient {
                 put("complement", complement)
                 put("neighborhood", neighborhood)
                 put("city", city)
+                put("state", normalizeBrazilianUf(state))
                 put("reference_point", referencePoint)
                 put("whatsapp_number", whatsapp)
                 put("phone", whatsapp)
@@ -723,6 +913,8 @@ object SupabaseClient {
                     val bannerUrl = item.optString("banner_url", imageUrl)
                     val isForceClosed = item.optBoolean("force_closed", false)
                     val defaultIsOpen = item.optBoolean("is_open", true)
+                    val preorderEnabled = item.optBoolean("preorder_enabled", false)
+                    val preorderMinutesBefore = item.optInt("preorder_minutes_before", 0).coerceAtLeast(0)
 
                     val computedIsOpen = checkIsStoreOpenNow(id, isForceClosed, defaultIsOpen, openingHours)
 
@@ -897,6 +1089,8 @@ object SupabaseClient {
                         isFreeDelivery = isFree,
                         isOpen = computedIsOpen,
                         forceClosed = isForceClosed,
+                        preorderEnabled = preorderEnabled,
+                        preorderMinutesBefore = preorderMinutesBefore,
                         distanceKm = null,
                         logoUrl = imageUrl,
                         bannerUrl = bannerUrl,
@@ -943,10 +1137,25 @@ object SupabaseClient {
                 // o catálogo elegível para não esvaziar a Home por erro de rede.
                 val deliveryEligibleStores = storeList.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
                 val onlineDriverStoreIds = fetchStoreIdsWithOnlineDrivers()
-                if (onlineDriverStoreIds == null) {
+                val visibleStores = if (onlineDriverStoreIds == null) {
                     deliveryEligibleStores
                 } else {
                     deliveryEligibleStores.filter { it.id in onlineDriverStoreIds }
+                }
+
+                // A visão pública não expõe todos os overrides VIP. A vitrine consulta a
+                // mesma RPC usada pela cotação para mostrar o preço-base correto de cada loja.
+                visibleStores.map { store ->
+                    val officialFee = fetchOfficialCustomerDeliveryFee(store.id)
+                    if (officialFee == null || store.deliveryMode.equals("pickup", ignoreCase = true)) {
+                        store
+                    } else {
+                        store.copy(
+                            deliveryFee = if (officialFee <= 0.0) "Grátis" else String.format("R$ %.2f", officialFee).replace(".", ","),
+                            officialCustomerDeliveryFee = officialFee,
+                            isFreeDelivery = officialFee <= 0.0
+                        )
+                    }
                 }
             } else {
                 Log.e(TAG, "Failed fetching stores_public: code=${response.code}, body=$responseText")
@@ -988,6 +1197,33 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Não foi possível filtrar lojas por entregador online", e)
+            null
+        }
+    }
+
+    /** Taxa-base oficial para vitrine; a confirmação final continua na Edge Function quote-delivery. */
+    private fun fetchOfficialCustomerDeliveryFee(storeId: String): Double? {
+        if (storeId.isBlank()) return null
+        return try {
+            val body = JSONObject().put("_store_id", storeId)
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/compute_store_delivery_fee")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return null
+            val payload = if (text.trimStart().startsWith("[")) {
+                JSONArray(text).optJSONObject(0)
+            } else {
+                JSONObject(text)
+            } ?: return null
+            payload.optDouble("customer_total", Double.NaN).takeIf { it.isFinite() && it >= 0.0 }
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível obter taxa VIP da vitrine para $storeId", e)
             null
         }
     }
@@ -1069,26 +1305,23 @@ object SupabaseClient {
         val storeHours = openingHours.filter { it.storeId == storeId }
         if (storeHours.isEmpty()) return defaultIsOpen
 
-        val calendar = java.util.Calendar.getInstance()
-        val sysDay = calendar.get(java.util.Calendar.DAY_OF_WEEK)
+        // Mesmo fuso e convenção do web: América/São Paulo e domingo = 0.
+        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("America/Sao_Paulo"))
+        val dayOfWeek = calendar.get(java.util.Calendar.DAY_OF_WEEK) - java.util.Calendar.SUNDAY
         val currentMinutes = calendar.get(java.util.Calendar.HOUR_OF_DAY) * 60 + calendar.get(java.util.Calendar.MINUTE)
 
-        val todayHour = storeHours.find { hour ->
+        val todayHour = storeHours.firstOrNull { it.dayOfWeek == dayOfWeek } ?: storeHours.find { hour ->
             when {
-                hour.dayOfWeek == sysDay -> true
-                hour.dayOfWeek == (sysDay - 1) -> true
-                hour.dayOfWeekStr.equals("domingo", true) && sysDay == java.util.Calendar.SUNDAY -> true
-                hour.dayOfWeekStr.equals("segunda", true) && sysDay == java.util.Calendar.MONDAY -> true
-                hour.dayOfWeekStr.equals("terca", true) && sysDay == java.util.Calendar.TUESDAY -> true
-                hour.dayOfWeekStr.equals("terça", true) && sysDay == java.util.Calendar.TUESDAY -> true
-                hour.dayOfWeekStr.equals("quarta", true) && sysDay == java.util.Calendar.WEDNESDAY -> true
-                hour.dayOfWeekStr.equals("quinta", true) && sysDay == java.util.Calendar.THURSDAY -> true
-                hour.dayOfWeekStr.equals("sexta", true) && sysDay == java.util.Calendar.FRIDAY -> true
-                hour.dayOfWeekStr.equals("sabado", true) && sysDay == java.util.Calendar.SATURDAY -> true
-                hour.dayOfWeekStr.equals("sábado", true) && sysDay == java.util.Calendar.SATURDAY -> true
+                hour.dayOfWeekStr.equals("domingo", true) && dayOfWeek == 0 -> true
+                hour.dayOfWeekStr.equals("segunda", true) && dayOfWeek == 1 -> true
+                (hour.dayOfWeekStr.equals("terca", true) || hour.dayOfWeekStr.equals("terça", true)) && dayOfWeek == 2 -> true
+                hour.dayOfWeekStr.equals("quarta", true) && dayOfWeek == 3 -> true
+                hour.dayOfWeekStr.equals("quinta", true) && dayOfWeek == 4 -> true
+                hour.dayOfWeekStr.equals("sexta", true) && dayOfWeek == 5 -> true
+                (hour.dayOfWeekStr.equals("sabado", true) || hour.dayOfWeekStr.equals("sábado", true)) && dayOfWeek == 6 -> true
                 else -> false
             }
-        } ?: storeHours.firstOrNull()
+        }
 
         if (todayHour == null) return defaultIsOpen
         if (todayHour.isClosedAllDay) return false
@@ -1514,6 +1747,107 @@ object SupabaseClient {
         }
     }
 
+    /** Grupos e itens vinculados diretamente a um produto, seguindo a mesma consulta do Capacitor. */
+    data class ProductAddonsPayload(
+        val groups: List<AddonGroup> = emptyList(),
+        val items: List<AddonItem> = emptyList()
+    )
+
+    suspend fun fetchAddonsForProduct(productId: String): ProductAddonsPayload = withContext(Dispatchers.IO) {
+        if (productId.isBlank()) return@withContext ProductAddonsPayload()
+        try {
+            fun fetchArray(url: String): JSONArray? {
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                    .get()
+                    .build()
+                httpClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    return if (response.isSuccessful && body.isNotBlank()) JSONArray(body) else null
+                }
+            }
+
+            fun parseGroup(json: JSONObject) = AddonGroup(
+                id = json.optString("id", ""),
+                storeId = json.optNullableString("store_id"),
+                productId = json.optNullableString("product_id"),
+                name = json.optString("name", "Adicionais"),
+                minSelect = json.optInt("min_select", 0),
+                maxSelect = json.optInt("max_select", 1),
+                sortOrder = json.optInt("sort_order", 0),
+                priceReplacesBase = json.optBoolean("price_replaces_base", false)
+            )
+
+            val directRows = fetchArray(
+                "$SUPABASE_URL/rest/v1/addon_groups?product_id=eq.$productId&order=sort_order.asc"
+            )
+            val linkedRows = fetchArray(
+                "$SUPABASE_URL/rest/v1/product_addon_groups?product_id=eq.$productId&select=addon_group_id"
+            )
+            val linkedIds = buildList {
+                if (linkedRows != null) {
+                    for (index in 0 until linkedRows.length()) {
+                        linkedRows.optJSONObject(index)?.optString("addon_group_id", "")
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(::add)
+                    }
+                }
+            }
+            val directGroups = buildList {
+                if (directRows != null) {
+                    for (index in 0 until directRows.length()) {
+                        directRows.optJSONObject(index)?.let(::parseGroup)?.takeIf { it.id.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+            val linkedGroups = if (linkedIds.isEmpty()) emptyList() else {
+                val rows = fetchArray(
+                    "$SUPABASE_URL/rest/v1/addon_groups?id=in.(${linkedIds.joinToString(",")})&order=sort_order.asc"
+                )
+                buildList {
+                    if (rows != null) {
+                        for (index in 0 until rows.length()) {
+                            rows.optJSONObject(index)?.let(::parseGroup)?.takeIf { it.id.isNotBlank() }?.let(::add)
+                        }
+                    }
+                }
+            }
+            val groups = (directGroups + linkedGroups).distinctBy { it.id }.sortedBy { it.sortOrder }
+            if (groups.isEmpty()) return@withContext ProductAddonsPayload()
+
+            val groupIds = groups.joinToString(",") { it.id }
+            val itemRows = fetchArray(
+                "$SUPABASE_URL/rest/v1/addon_items?group_id=in.($groupIds)&order=sort_order.asc"
+            )
+            val items = buildList {
+                if (itemRows != null) {
+                    for (index in 0 until itemRows.length()) {
+                        val item = itemRows.optJSONObject(index) ?: continue
+                        val id = item.optString("id", "")
+                        val groupId = item.optString("group_id", "")
+                        val name = item.optString("name", "")
+                        if (id.isNotBlank() && groupId.isNotBlank() && name.isNotBlank()) {
+                            add(AddonItem(
+                                id = id,
+                                groupId = groupId,
+                                name = name,
+                                price = item.optDouble("price", 0.0),
+                                sortOrder = item.optInt("sort_order", 0),
+                                isAvailable = item.optBoolean("is_available", true)
+                            ))
+                        }
+                    }
+                }
+            }.sortedBy { it.sortOrder }
+            ProductAddonsPayload(groups, items)
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao buscar adicionais do produto $productId", error)
+            ProductAddonsPayload()
+        }
+    }
+
     // 5e. FETCH PASTEL BORDERS FOR STORE
     suspend fun fetchPastelBordersForStore(storeId: String): List<com.example.data.model.PastelBorder> = withContext(Dispatchers.IO) {
         try {
@@ -1648,6 +1982,8 @@ object SupabaseClient {
                         minOrderValue = obj.optDouble("min_order_value", 0.0),
                         expiresAt = obj.optNullableString("expires_at"),
                         firstOrderOnly = obj.optBoolean("first_order_only", false),
+                        maxUses = if (obj.isNull("max_uses")) null else obj.optInt("max_uses"),
+                        usedCount = obj.optInt("used_count", 0),
                         isActive = obj.optBoolean("is_active", true),
                         storeId = cStoreId
                     )
@@ -1656,6 +1992,48 @@ object SupabaseClient {
             null
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching coupon", e)
+            null
+        }
+    }
+
+    /** Retorna null em falha de rede para que o checkout não aceite um cupom sem validação. */
+    suspend fun hasCouponUsage(couponId: String, userId: String, accessToken: String): Boolean? = withContext(Dispatchers.IO) {
+        if (couponId.isBlank() || userId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val url = "$SUPABASE_URL/rest/v1/coupon_uses?coupon_id=eq.$couponId&user_id=eq.$userId&select=id&limit=1"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                JSONArray(response.body?.string().orEmpty()).length() > 0
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao validar uso anterior de cupom", error)
+            null
+        }
+    }
+
+    /** Retorna null em falha de rede para que cupons de primeiro pedido não sejam aceitos por engano. */
+    suspend fun hasNonCancelledOrders(userId: String, accessToken: String): Boolean? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val url = "$SUPABASE_URL/rest/v1/orders?client_id=eq.$userId&status=neq.cancelado&select=id&limit=1"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                JSONArray(response.body?.string().orEmpty()).length() > 0
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao validar primeiro pedido para cupom", error)
             null
         }
     }
@@ -1845,6 +2223,111 @@ object SupabaseClient {
         } catch (error: Exception) {
             Log.e(TAG, "Erro ao executar $functionName", error)
             Result.failure(IllegalStateException("Falha de conexão ao aplicar o benefício."))
+        }
+    }
+
+    /**
+     * Solicita a cotação autenticada usada pelo checkout web. Esta é a única
+     * fonte final de endereço normalizado, coordenadas, área atendida e taxa.
+     */
+    suspend fun quoteDelivery(
+        storeId: String,
+        subtotal: Double,
+        address: DeliveryAddressInput,
+        accessToken: String
+    ): DeliveryQuoteResult = withContext(Dispatchers.IO) {
+        if (storeId.isBlank() || accessToken.isBlank()) {
+            return@withContext DeliveryQuoteResult(failure = DeliveryQuoteFailure("unauthorized"))
+        }
+        if (!address.isComplete()) {
+            val reason = if (address.normalizedCep().length != 8) "invalid_cep" else "address_unavailable"
+            return@withContext DeliveryQuoteResult(failure = DeliveryQuoteFailure(reason))
+        }
+        try {
+            val body = JSONObject().apply {
+                put("store_id", storeId)
+                put("fulfillment", "delivery")
+                put("subtotal", subtotal)
+                put("address", JSONObject().apply {
+                    put("street", address.street.trim())
+                    put("number", address.number.trim())
+                    put("complement", address.complement.trim())
+                    put("neighborhood", address.neighborhood.trim())
+                    // Cidade e UF da sessão podem estar desatualizadas. A função oficial
+                    // as resolve novamente pelo CEP e devolve o snapshot normalizado.
+                    put("cep", address.normalizedCep())
+                })
+            }
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/functions/v1/quote-delivery")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            val payload = runCatching { JSONObject(text) }.getOrNull()
+            if (!response.isSuccessful || payload == null || !payload.optBoolean("ok", false)) {
+                val reason = when {
+                    response.code == 401 || response.code == 403 -> "unauthorized"
+                    else -> payload?.optNullableString("reason") ?: "quote_unreachable"
+                }
+                val distance = payload?.optJSONObject("distance")
+                return@withContext DeliveryQuoteResult(
+                    failure = DeliveryQuoteFailure(
+                        reason = reason,
+                        distanceKm = distance?.optFiniteDouble("km"),
+                        maxDistanceKm = distance?.optFiniteDouble("max_km")
+                    )
+                )
+            }
+
+            val destinationJson = payload.optJSONObject("destination")
+            val pricingJson = payload.optJSONObject("pricing")
+            val distanceJson = payload.optJSONObject("distance")
+            if (destinationJson == null || pricingJson == null || distanceJson == null) {
+                return@withContext DeliveryQuoteResult(failure = DeliveryQuoteFailure("address_unavailable"))
+            }
+            val destination = DeliveryQuoteDestination(
+                normalizedAddress = destinationJson.optNullableString("normalized_address").orEmpty(),
+                cep = destinationJson.optNullableString("cep").orEmpty().filter(Char::isDigit),
+                city = destinationJson.optNullableString("city").orEmpty(),
+                state = destinationJson.optNullableString("state").orEmpty().uppercase(),
+                neighborhood = destinationJson.optNullableString("neighborhood").orEmpty(),
+                latitude = destinationJson.optFiniteDouble("lat") ?: Double.NaN,
+                longitude = destinationJson.optFiniteDouble("lng") ?: Double.NaN,
+                precision = destinationJson.optNullableString("precision").orEmpty().ifBlank { "cep" }
+            )
+            val quote = DeliveryQuote(
+                fulfillment = payload.optNullableString("fulfillment").orEmpty(),
+                destination = destination,
+                distance = DeliveryQuoteDistance(
+                    km = distanceJson.optFiniteDouble("km") ?: 0.0,
+                    source = distanceJson.optNullableString("source").orEmpty().ifBlank { "haversine" },
+                    maxKm = distanceJson.optFiniteDouble("max_km"),
+                    eligible = distanceJson.optBoolean("eligible", false)
+                ),
+                pricing = DeliveryQuotePricing(
+                    storeDeliveryBase = pricingJson.optFiniteDouble("store_delivery_base") ?: 0.0,
+                    platformFeeCustomer = pricingJson.optFiniteDouble("platform_fee_customer") ?: 0.0,
+                    platformFeeStoreAbsorbed = pricingJson.optFiniteDouble("platform_fee_store_absorbed") ?: 0.0,
+                    deliveryFee = pricingJson.optFiniteDouble("delivery_fee") ?: Double.NaN,
+                    vipOverrideApplied = pricingJson.optFiniteDouble("vip_override_applied"),
+                    splitMode = pricingJson.optNullableString("split_mode"),
+                    planType = pricingJson.optNullableString("plan_type"),
+                    freeDeliveryApplied = pricingJson.optBoolean("free_delivery_applied", false)
+                ),
+                policyVersion = payload.optInt("policy_version", 1)
+            )
+            if (!quote.isSuccessfulDelivery) {
+                DeliveryQuoteResult(failure = DeliveryQuoteFailure("quote_unreachable"))
+            } else {
+                DeliveryQuoteResult(quote = quote)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Erro ao cotar a entrega", error)
+            DeliveryQuoteResult(failure = DeliveryQuoteFailure("quote_unreachable"))
         }
     }
 
@@ -2046,8 +2529,19 @@ object SupabaseClient {
                     confirmedAt = item.optString("confirmed_at", ""),
                     deliveryPin = item.optString("delivery_pin", ""),
                     neighborhood = item.optString("neighborhood", ""),
+                    deliveryCep = item.optString("delivery_cep", ""),
+                    deliveryCity = item.optString("delivery_city", ""),
+                    deliveryState = item.optString("delivery_state", ""),
+                    clientLatitude = item.optFiniteDouble("client_lat"),
+                    clientLongitude = item.optFiniteDouble("client_lng"),
+                    deliveryFeeAbsorbedByStore = item.optDouble("delivery_fee_absorbed_by_store", 0.0),
+                    deliveryQuoteSnapshot = item.optJSONObject("metadata")
+                        ?.optJSONObject("delivery_quote")
+                        ?.toDeliveryQuoteSnapshot(),
                     driverId = item.optString("driver_id", item.optString("assigned_driver_id", "")),
-                    deliveryConfirmedByClient = item.optBoolean("delivery_confirmed_by_client", false)
+                    deliveryConfirmedByClient = item.optBoolean("delivery_confirmed_by_client", false),
+                    scheduledFor = item.optString("scheduled_for", ""),
+                    releaseAt = item.optString("release_at", "")
                 )
             }
         } catch (e: Exception) {
@@ -2231,11 +2725,8 @@ object SupabaseClient {
         order: com.example.data.model.Order,
         clientId: String,
         accessToken: String,
-        neighborhood: String,
         needsChange: Boolean,
-        changeFor: Double?,
-        clientLatitude: Double? = null,
-        clientLongitude: Double? = null
+        changeFor: Double?
     ): OrderSubmissionResponse = withContext(Dispatchers.IO) {
         try {
             val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
@@ -2249,12 +2740,21 @@ object SupabaseClient {
                 put("loyalty_discount", order.loyaltyDiscount)
                 put("total_price", order.total)
                 put("payment_method", order.paymentMethod)
-                put("neighborhood", neighborhood)
+                put("neighborhood", order.neighborhood)
                 put("address_details", order.deliveryAddress)
-                put("client_lat", clientLatitude ?: JSONObject.NULL)
-                put("client_lng", clientLongitude ?: JSONObject.NULL)
+                put("delivery_cep", order.deliveryCep.ifBlank { JSONObject.NULL })
+                put("delivery_city", order.deliveryCity.ifBlank { JSONObject.NULL })
+                put("delivery_state", order.deliveryState.ifBlank { JSONObject.NULL })
+                put("client_lat", order.clientLatitude ?: JSONObject.NULL)
+                put("client_lng", order.clientLongitude ?: JSONObject.NULL)
+                put("delivery_fee_absorbed_by_store", order.deliveryFeeAbsorbedByStore)
+                order.deliveryQuoteSnapshot?.let { snapshot ->
+                    put("metadata", JSONObject().put("delivery_quote", snapshot.toJson()))
+                }
                 put("needs_change", needsChange)
                 put("change_for", changeFor ?: JSONObject.NULL)
+                put("scheduled_for", order.scheduledFor.ifBlank { JSONObject.NULL })
+                put("release_at", order.releaseAt.ifBlank { JSONObject.NULL })
                 put("status", order.status)
             }
             val orderRequest = Request.Builder()
@@ -2333,12 +2833,17 @@ object SupabaseClient {
         }
     }
 
-    suspend fun fetchDiscoverProducts(openStores: List<Store>): List<com.example.data.model.DiscoverProduct> = withContext(Dispatchers.IO) {
+    suspend fun fetchDiscoverProducts(
+        openStores: List<Store>,
+        limit: Int = 8,
+        orderByPrice: Boolean = false
+    ): List<com.example.data.model.DiscoverProduct> = withContext(Dispatchers.IO) {
         try {
             if (openStores.isNotEmpty()) {
                 val storeIds = openStores.map { it.id }
                 val idFilter = storeIds.joinToString(",")
-                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)&limit=8"
+                val ordering = if (orderByPrice) "&price=gt.0&order=price.asc" else ""
+                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -2387,6 +2892,44 @@ object SupabaseClient {
         } catch (e: Exception) {
             defaultMsg
         }
+    }
+
+    private fun DeliveryQuoteSnapshot.toJson(): JSONObject = JSONObject().apply {
+        put("policy_version", policyVersion)
+        put("distance_km", distanceKm)
+        put("distance_source", distanceSource)
+        put("max_delivery_km", maxDeliveryKm ?: JSONObject.NULL)
+        put("destination_precision", destinationPrecision)
+        put("store_delivery_base", storeDeliveryBase)
+        put("platform_fee_customer", platformFeeCustomer)
+        put("platform_fee_store_absorbed", platformFeeStoreAbsorbed)
+        put("delivery_fee", deliveryFee)
+        put("vip_override_applied", vipOverrideApplied ?: JSONObject.NULL)
+        put("split_mode", splitMode ?: JSONObject.NULL)
+        put("plan_type", planType ?: JSONObject.NULL)
+        put("free_delivery_applied", freeDeliveryApplied)
+    }
+
+    private fun JSONObject.toDeliveryQuoteSnapshot(): DeliveryQuoteSnapshot = DeliveryQuoteSnapshot(
+        policyVersion = optInt("policy_version", 1),
+        distanceKm = optFiniteDouble("distance_km") ?: 0.0,
+        distanceSource = optNullableString("distance_source").orEmpty().ifBlank { "haversine" },
+        maxDeliveryKm = optFiniteDouble("max_delivery_km"),
+        destinationPrecision = optNullableString("destination_precision").orEmpty().ifBlank { "cep" },
+        storeDeliveryBase = optFiniteDouble("store_delivery_base") ?: 0.0,
+        platformFeeCustomer = optFiniteDouble("platform_fee_customer") ?: 0.0,
+        platformFeeStoreAbsorbed = optFiniteDouble("platform_fee_store_absorbed") ?: 0.0,
+        deliveryFee = optFiniteDouble("delivery_fee") ?: 0.0,
+        vipOverrideApplied = optFiniteDouble("vip_override_applied"),
+        splitMode = optNullableString("split_mode"),
+        planType = optNullableString("plan_type"),
+        freeDeliveryApplied = optBoolean("free_delivery_applied", false)
+    )
+
+    private fun JSONObject.optFiniteDouble(key: String): Double? {
+        if (!has(key) || isNull(key)) return null
+        val value = optDouble(key, Double.NaN)
+        return value.takeIf { it.isFinite() }
     }
 
     private fun JSONObject.optNullableString(key: String): String? {

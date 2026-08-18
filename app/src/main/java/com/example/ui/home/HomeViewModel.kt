@@ -7,6 +7,7 @@ import com.example.data.model.Banner
 import com.example.data.model.CategoryItem
 import com.example.data.model.Order
 import com.example.data.model.Store
+import com.example.data.model.normalizeBrazilianUf
 import com.example.data.remote.SupabaseClient
 import com.example.data.repository.CartRepository
 import com.example.data.repository.StoreRepository
@@ -30,6 +31,13 @@ data class AddressDraft(
     val whatsapp: String = ""
 )
 
+enum class HomeStoreSort(val label: String) {
+    RELEVANCE("Mais relevantes"),
+    DISTANCE("Mais perto"),
+    DELIVERY_FEE("Menor taxa"),
+    NAME("Nome da loja")
+}
+
 data class HomeUiState(
     val streetName: String = "",
     val streetNumber: String = "",
@@ -45,8 +53,11 @@ data class HomeUiState(
     val recentStores: List<Store> = emptyList(),
     val banners: List<Banner> = emptyList(),
     val discoverProducts: List<DiscoverProduct> = emptyList(),
+    val affordableProducts: List<DiscoverProduct> = emptyList(),
+    val repeatProducts: List<DiscoverProduct> = emptyList(),
     val isFreeFeeFilterActive: Boolean = false,
     val isDirectDeliveryFilterActive: Boolean = false,
+    val storeSort: HomeStoreSort = HomeStoreSort.RELEVANCE,
     val recentCompletedOrder: Order? = null,
     val isReordering: Boolean = false,
     val showSupportSheet: Boolean = false,
@@ -99,9 +110,13 @@ class HomeViewModel : ViewModel() {
                 ) {
                     lastLoadedOrderUserId = session.userId
                     loadLatestCompletedOrder(session.userId, session.accessToken)
+                    loadRepeatProducts(session.userId, session.accessToken)
                 } else if (!session.isLoggedIn) {
                     lastLoadedOrderUserId = ""
-                    _uiState.value = _uiState.value.copy(recentCompletedOrder = null)
+                    _uiState.value = _uiState.value.copy(
+                        recentCompletedOrder = null,
+                        repeatProducts = emptyList()
+                    )
                 }
                 refreshRegionalCatalog()
             }
@@ -168,11 +183,27 @@ class HomeViewModel : ViewModel() {
         }
         val generation = ++catalogGeneration
         val filteredStores = applyUiFilters(regionalStores)
-        val sortedStores = filteredStores.sortedWith(
-            compareBy<Store> { !it.isOpen }
-                .thenBy { it.distanceKm ?: Double.MAX_VALUE }
-                .thenBy { it.name.lowercase() }
-        )
+        val sortedStores = when (_uiState.value.storeSort) {
+            HomeStoreSort.RELEVANCE -> filteredStores.sortedWith(
+                compareBy<Store> { !it.isOpen }
+                    .thenBy { it.distanceKm ?: Double.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+            HomeStoreSort.DISTANCE -> filteredStores.sortedWith(
+                compareBy<Store> { !it.isOpen }
+                    .thenBy { it.distanceKm ?: Double.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+            HomeStoreSort.DELIVERY_FEE -> filteredStores.sortedWith(
+                compareBy<Store> { !it.isOpen }
+                    .thenBy { deliverySortValue(it) }
+                    .thenBy { it.name.lowercase() }
+            )
+            HomeStoreSort.NAME -> filteredStores.sortedWith(
+                compareBy<Store> { !it.isOpen }
+                    .thenBy { it.name.lowercase() }
+            )
+        }
         _uiState.value = _uiState.value.copy(
             stores = sortedStores,
             regionalStoreCount = regionalStores.size,
@@ -184,6 +215,7 @@ class HomeViewModel : ViewModel() {
             requiresAddress = normalizedCity.isBlank()
         )
         loadDiscoverProducts(regionalStores, generation)
+        loadAffordableProducts(regionalStores, generation)
     }
 
     /**
@@ -209,6 +241,55 @@ class HomeViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Produz a vitrine "Peça de novo" somente a partir de pedidos efetivamente concluídos.
+     * Cada produto é revalidado no cardápio atual da loja para não oferecer item removido,
+     * indisponível ou pertencente a loja fechada. A ordem respeita a recência dos pedidos.
+     */
+    private fun loadRepeatProducts(userId: String, accessToken: String) {
+        viewModelScope.launch {
+            try {
+                val completedOrders = SupabaseClient.fetchOrdersForClient(userId, accessToken)
+                    .filter { order ->
+                        order.status.trim().lowercase() in setOf("entregue", "finalizado") && order.items.isNotEmpty()
+                    }
+                val currentProductsByStore = mutableMapOf<String, Map<String, com.example.data.model.Product>>()
+                val seenProductIds = mutableSetOf<String>()
+                val repeatProducts = buildList {
+                    completedOrders.forEach { order ->
+                        if (size >= 8) return@forEach
+                        val store = StoreRepository.getStoreById(order.storeId)
+                        if (store == null || !store.isOpen) return@forEach
+                        val productsById = currentProductsByStore[order.storeId]
+                            ?: SupabaseClient.fetchProductsForStore(order.storeId)
+                                .filter { it.isAvailable }
+                                .associateBy { it.id }
+                                .also { currentProductsByStore[order.storeId] = it }
+                        order.items.forEach { previousItem ->
+                            if (size >= 8 || !seenProductIds.add(previousItem.product.id)) return@forEach
+                            val currentProduct = productsById[previousItem.product.id] ?: return@forEach
+                            add(
+                                DiscoverProduct(
+                                    id = currentProduct.id,
+                                    storeId = store.id,
+                                    storeName = store.name,
+                                    storeCategory = store.category,
+                                    name = currentProduct.name,
+                                    price = currentProduct.price,
+                                    imageUrl = currentProduct.imageUrl
+                                )
+                            )
+                        }
+                    }
+                }
+                _uiState.value = _uiState.value.copy(repeatProducts = repeatProducts)
+            } catch (error: Exception) {
+                android.util.Log.w("HomeViewModel", "Unable to load repeat products", error)
+                _uiState.value = _uiState.value.copy(repeatProducts = emptyList())
+            }
+        }
+    }
+
     private fun loadDiscoverProducts(regionalStores: List<Store>, generation: Int) {
         viewModelScope.launch {
             val openStores = regionalStores.filter { it.isOpen }
@@ -217,6 +298,26 @@ class HomeViewModel : ViewModel() {
             }
             if (generation == catalogGeneration) {
                 _uiState.value = _uiState.value.copy(discoverProducts = products)
+            }
+        }
+    }
+
+    /**
+     * Vitrine de preço acessível: mostra apenas produtos atuais de lojas abertas
+     * na cidade ativa, ordenados pelo menor preço real cadastrado.
+     */
+    private fun loadAffordableProducts(regionalStores: List<Store>, generation: Int) {
+        viewModelScope.launch {
+            val openStores = regionalStores.filter { it.isOpen }
+            val products = if (openStores.isEmpty()) emptyList() else {
+                SupabaseClient.fetchDiscoverProducts(
+                    openStores = openStores,
+                    limit = 8,
+                    orderByPrice = true
+                )
+            }
+            if (generation == catalogGeneration) {
+                _uiState.value = _uiState.value.copy(affordableProducts = products)
             }
         }
     }
@@ -249,6 +350,12 @@ class HomeViewModel : ViewModel() {
         filterStores()
     }
 
+    fun onStoreSortSelect(sort: HomeStoreSort) {
+        if (_uiState.value.storeSort == sort) return
+        _uiState.value = _uiState.value.copy(storeSort = sort)
+        filterStores()
+    }
+
     private fun filterStores() {
         refreshRegionalCatalog()
     }
@@ -269,6 +376,13 @@ class HomeViewModel : ViewModel() {
             val matchDirectDelivery = !directDeliveryOnly || store.deliveryMode.equals("direto", ignoreCase = true) || store.deliveryMode.equals("own", ignoreCase = true)
             matchCategory && matchQuery && matchFreeFee && matchDirectDelivery
         }
+    }
+
+    private fun deliverySortValue(store: Store): Double {
+        if (store.isFreeDelivery || store.deliveryFee.equals("Grátis", ignoreCase = true)) return 0.0
+        return store.officialCustomerDeliveryFee
+            ?: store.ownDeliveryFee.takeIf { it > 0.0 }
+            ?: Double.MAX_VALUE
     }
 
     private fun storesWithCalculatedDistance(stores: List<Store>): List<Store> {
@@ -520,6 +634,7 @@ class HomeViewModel : ViewModel() {
     fun saveAddress() {
         val draft = _uiState.value.addressDraft
         val cleanCep = draft.cep.filter { it.isDigit() }
+        val cleanState = normalizeBrazilianUf(draft.state)
         val cleanWhatsapp = draft.whatsapp.filter { it.isDigit() }
         when {
             cleanCep.length != 8 -> {
@@ -530,7 +645,7 @@ class HomeViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(addressFormError = "Preencha rua, número e bairro.")
                 return
             }
-            draft.city.isBlank() || draft.state.isBlank() -> {
+            draft.city.isBlank() || cleanState.isBlank() -> {
                 _uiState.value = _uiState.value.copy(addressFormError = "Informe um CEP que identifique cidade e estado.")
                 return
             }
@@ -557,6 +672,7 @@ class HomeViewModel : ViewModel() {
                 complement = draft.complement.trim(),
                 neighborhood = draft.neighborhood.trim(),
                 city = draft.city.trim(),
+                state = cleanState,
                 referencePoint = draft.referencePoint.trim(),
                 whatsapp = cleanWhatsapp
             )
@@ -578,7 +694,7 @@ class HomeViewModel : ViewModel() {
                 pixKeyType = session.pixKeyType,
                 pixKey = session.pixKey,
                 city = draft.city.trim(),
-                state = "",
+                state = cleanState,
                 complement = draft.complement.trim(),
                 referencePoint = draft.referencePoint.trim()
             )

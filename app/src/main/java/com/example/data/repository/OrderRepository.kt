@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.model.CartItem
 import com.example.data.model.Coupon
+import com.example.data.model.DeliveryQuoteSnapshot
 import com.example.data.model.Order
 import com.example.data.remote.SupabaseClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,10 +39,18 @@ object OrderRepository {
         changeFor: Double? = null,
         clientLatitude: Double? = null,
         clientLongitude: Double? = null,
+        deliveryCep: String = "",
+        deliveryCity: String = "",
+        deliveryState: String = "",
+        deliveryFeeAbsorbedByStore: Double = 0.0,
+        deliveryQuoteSnapshot: DeliveryQuoteSnapshot? = null,
         coupon: Coupon? = null,
         walletDiscount: Double = 0.0,
         loyaltyPointsUsed: Int = 0,
-        loyaltyDiscount: Double = 0.0
+        loyaltyDiscount: Double = 0.0,
+        initialStatusOverride: String = "",
+        scheduledFor: String = "",
+        releaseAt: String = ""
     ): Result<Order> {
         if (storeId.isBlank() || clientId.isBlank() || accessToken.isBlank()) {
             return Result.failure(IllegalStateException("Sua sessão expirou. Entre novamente para finalizar o pedido."))
@@ -50,11 +59,14 @@ object OrderRepository {
             return Result.failure(IllegalStateException("Sua sacola está vazia."))
         }
 
-        val total = (subtotal + deliveryFee - discount - walletDiscount - loyaltyDiscount).coerceAtLeast(0.0)
-        val initialStatus = when (paymentMethod) {
-            "pix" -> "aguardando_pagamento"
-            "pix_direto" -> "aguardando_comprovante"
-            else -> "pendente"
+        // A carteira é debitada depois do insert com lock no banco; o total inicial não pode antecipá-la.
+        val totalBeforeWallet = (subtotal + deliveryFee - discount - loyaltyDiscount).coerceAtLeast(0.0)
+        val initialStatus = initialStatusOverride.ifBlank {
+            when (paymentMethod) {
+                "pix" -> "aguardando_pagamento"
+                "pix_direto" -> "aguardando_comprovante"
+                else -> "pendente"
+            }
         }
         val draft = Order(
             id = "",
@@ -64,41 +76,55 @@ object OrderRepository {
             subtotal = subtotal,
             deliveryFee = deliveryFee,
             discount = discount,
-            walletDiscount = walletDiscount,
+            walletDiscount = 0.0,
             loyaltyPointsUsed = loyaltyPointsUsed,
             loyaltyDiscount = loyaltyDiscount,
-            total = total,
+            total = totalBeforeWallet,
             paymentMethod = paymentMethod,
             deliveryAddress = deliveryAddress,
             status = initialStatus,
-            createdAt = dateFormat.format(Date())
+            createdAt = dateFormat.format(Date()),
+            neighborhood = neighborhood,
+            deliveryCep = deliveryCep,
+            deliveryCity = deliveryCity,
+            deliveryState = deliveryState,
+            clientLatitude = clientLatitude,
+            clientLongitude = clientLongitude,
+            deliveryFeeAbsorbedByStore = deliveryFeeAbsorbedByStore,
+            deliveryQuoteSnapshot = deliveryQuoteSnapshot,
+            scheduledFor = scheduledFor,
+            releaseAt = releaseAt
         )
 
         val response = SupabaseClient.submitOrder(
             order = draft,
             clientId = clientId,
             accessToken = accessToken,
-            neighborhood = neighborhood,
             needsChange = needsChange,
-            changeFor = changeFor,
-            clientLatitude = clientLatitude,
-            clientLongitude = clientLongitude
+            changeFor = changeFor
         )
         if (!response.isSuccess || response.orderId.isNullOrBlank()) {
             return Result.failure(IllegalStateException(response.errorMessage ?: "Não foi possível enviar o pedido. Tente novamente."))
         }
 
-        val confirmedOrder = draft.copy(
-            id = response.orderId,
-            createdAt = response.createdAt ?: draft.createdAt
-        )
         // Benefícios e cupom são processados após o pedido, como no checkout Capacitor.
         if (loyaltyPointsUsed > 0 && loyaltyDiscount > 0) {
             SupabaseClient.redeemLoyaltyPoints(response.orderId, storeId, loyaltyPointsUsed, accessToken)
         }
-        if (walletDiscount > 0) {
+        val confirmedWalletDiscount = if (walletDiscount > 0) {
             SupabaseClient.applyWalletDiscount(response.orderId, clientId, walletDiscount, accessToken)
+                .getOrNull()
+                ?.let { walletDiscount }
+                ?: 0.0
+        } else {
+            0.0
         }
+        val confirmedOrder = draft.copy(
+            id = response.orderId,
+            createdAt = response.createdAt ?: draft.createdAt,
+            walletDiscount = confirmedWalletDiscount,
+            total = (totalBeforeWallet - confirmedWalletDiscount).coerceAtLeast(0.0)
+        )
         coupon?.id?.takeIf { it.isNotBlank() }?.let { couponId ->
             SupabaseClient.registerCouponUse(couponId, clientId, response.orderId, accessToken)
         }

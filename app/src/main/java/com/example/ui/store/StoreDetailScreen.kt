@@ -30,7 +30,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -66,6 +70,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocalPizza
 import androidx.compose.material.icons.filled.Remove
@@ -73,6 +78,8 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -120,7 +127,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import com.example.core.network.ConnectivityMonitor
 import com.example.data.model.AddonGroup
 import com.example.data.model.AddonItem
 import com.example.data.model.Product
@@ -129,20 +138,18 @@ import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSecondary
 import com.example.ui.theme.ItaSuperWarning
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun StoreDetailScreen(
     storeId: String,
     viewModel: StoreDetailViewModel,
     onBackClick: () -> Unit,
-    onNavigateToCart: () -> Unit
+    onNavigateToCart: () -> Unit,
+    onNavigateToInfo: () -> Unit
 ) {
-    LaunchedEffect(storeId) {
-        viewModel.loadStore(storeId)
-    }
-
     val uiState by viewModel.uiState.collectAsState()
-    val products by viewModel.filteredProducts.collectAsState()
+    // Sem busca na tela, o catálogo completo fica disponível para a navegação por seção.
+    val products by viewModel.allProducts.collectAsState()
     val allStoreProducts by viewModel.allProducts.collectAsState()
     val cartState by viewModel.cartState.collectAsState()
 
@@ -156,193 +163,91 @@ fun StoreDetailScreen(
     }
 
     val context = LocalContext.current
-    var isSearchActive by remember { mutableStateOf(false) }
+    val connectivityMonitor = remember(context) { ConnectivityMonitor(context) }
+    val isOnline by connectivityMonitor.isOnline.collectAsState()
+    var retryAfterReconnect by remember { mutableStateOf(false) }
+    LaunchedEffect(storeId, isOnline) {
+        if (!isOnline) {
+            retryAfterReconnect = true
+            viewModel.showOffline(storeId)
+        } else if (retryAfterReconnect || uiState.store == null) {
+            retryAfterReconnect = false
+            viewModel.loadStore(storeId)
+        }
+    }
+    val menuListState = rememberLazyListState()
+    val menuScrollScope = rememberCoroutineScope()
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    if (isSearchActive) {
-                        OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = { viewModel.onSearchQueryChange(it) },
-                            placeholder = { Text("Buscar no cardápio...", fontSize = 14.sp) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("appbar_search_input"),
-                            trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                        Icon(imageVector = Icons.Default.Clear, contentDescription = "Limpar")
-                                    }
-                                }
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ItaSuperPrimary,
-                                unfocusedBorderColor = Color.Transparent
-                            )
-                        )
-                    } else {
-                        Column {
-                            Text(
-                                text = uiState.store?.name ?: "Detalhes da Loja",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = ItaSuperTextPrimary
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .background(
-                                            if (uiState.store?.isOpen == true) Color(0xFF22C55E) else Color(0xFFE5484D),
-                                            CircleShape
-                                        )
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (uiState.store?.isOpen == true) "ABERTO" else "FECHADO",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (isSearchActive) {
-                                isSearchActive = false
-                                viewModel.onSearchQueryChange("")
-                            } else {
-                                onBackClick()
-                            }
-                        },
-                        modifier = Modifier.testTag("back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Voltar"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { isSearchActive = !isSearchActive },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                if (isSearchActive) ItaSuperPrimary.copy(alpha = 0.15f) else ItaSuperSecondary,
-                                CircleShape
-                            )
-                            .testTag("topappbar_search_icon")
-                    ) {
-                        Icon(
-                            imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                            contentDescription = "Buscar no cardápio",
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        enabled = !uiState.store?.whatsapp.isNullOrBlank(),
-                        onClick = {
-                            val phone = uiState.store?.whatsapp.orEmpty()
-                            if (phone.isNotBlank()) {
-                                val whatsappUri = Uri.parse("https://api.whatsapp.com/send?phone=$phone&text=${Uri.encode("Olá! Vim pelo app ItaSuper Delivery.")}")
-                                val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
-                                try {
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
-                            }
-                        },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0xFF25D366).copy(alpha = 0.15f), CircleShape)
-                            .testTag("topappbar_whatsapp_icon")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Chat,
-                            contentDescription = "WhatsApp da Loja",
-                            tint = Color(0xFF25D366),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         bottomBar = {
-            // Floating Cart Summary Bar
             AnimatedVisibility(visible = cartState.totalItemCount > 0) {
                 Surface(
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 7.dp,
+                    color = Color.White,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(16.dp)
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFFAFAFA))
+                            .clickable(onClick = onNavigateToCart)
+                            .testTag("view_cart_button"),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = onNavigateToCart,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .testTag("view_cart_button"),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Surface(
+                            modifier = Modifier.size(34.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = ItaSuperPrimary.copy(alpha = 0.11f)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(Color.White.copy(alpha = 0.25f))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "${cartState.totalItemCount}",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "Ver carrinho",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
-                                    )
-                                }
-                                Text(
-                                    text = String.format("R$ %.2f", cartState.subtotal).replace(".", ","),
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ShoppingBag,
+                                    contentDescription = null,
+                                    tint = ItaSuperPrimary,
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Ver sacola",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = ItaSuperTextPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = ItaSuperPrimary
+                        ) {
+                            Text(
+                                text = "${cartState.totalItemCount}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    color = Color.White
+                                ),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = String.format("R$ %.2f", cartState.subtotal).replace(".", ","),
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = ItaSuperTextPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(13.dp))
                     }
                 }
             }
@@ -357,8 +262,52 @@ fun StoreDetailScreen(
             ) {
                 CircularProgressIndicator(color = ItaSuperPrimary)
             }
+        } else if (uiState.store == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Não foi possível abrir esta loja",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ItaSuperTextPrimary
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = uiState.errorMessage ?: "Verifique sua conexão e tente novamente.",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF686868)),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Button(
+                    onClick = {
+                        if (isOnline) viewModel.loadStore(storeId) else viewModel.showOffline(storeId)
+                    }
+                ) {
+                    Text("Tentar novamente")
+                }
+            }
         } else {
             val store = uiState.store
+            val hasPizzaCategory = store?.let { currentStore ->
+                currentStore.category.lowercase().contains("pizza") ||
+                    currentStore.secondaryCategories.any { it.lowercase().contains("pizza") }
+            } ?: false
+            val hasPastelCategory = store?.let { currentStore ->
+                currentStore.category.lowercase().contains("pastel") || currentStore.category.lowercase().contains("pasteis") ||
+                    currentStore.secondaryCategories.any { it.lowercase().contains("pastel") || it.lowercase().contains("pasteis") }
+            } ?: false
+            val builderType = when {
+                hasPastelCategory && store?.settings?.pastelHalfEnabled != false && products.isNotEmpty() -> "pastel"
+                hasPizzaCategory && store?.settings?.pizzaHalfEnabled != false && products.isNotEmpty() -> "pizza"
+                else -> null
+            }
 
             // Group products by menu_section / category
             val groupedProducts = remember(products, uiState.menuSections) {
@@ -385,116 +334,137 @@ fun StoreDetailScreen(
 
                 map.filterValues { it.isNotEmpty() }
             }
+            val productSections = remember(groupedProducts) {
+                groupedProducts.entries
+                    .filterNot { (sectionName, _) -> sectionName.equals("Destaques", ignoreCase = true) }
+                    .map { it.key to it.value }
+            }
+            val allSectionNames = listOf("Todos") + productSections.map { it.first }
+            val featuredProducts = products.take(6)
+            val sectionStartIndexByName = remember(productSections, builderType, featuredProducts) {
+                val starts = LinkedHashMap<String, Int>()
+                var itemIndex = 1 // Hero
+                if (builderType != null) itemIndex += 1
+                if (featuredProducts.isNotEmpty()) {
+                    itemIndex += 1 + featuredProducts.chunked(3).size // título + linhas da grade
+                }
+                productSections.forEach { (sectionName, sectionProducts) ->
+                    starts[sectionName] = itemIndex
+                    itemIndex += 1 + sectionProducts.size // título da seção + linhas de produtos
+                }
+                starts
+            }
+            val activeSectionName by remember(menuListState, sectionStartIndexByName) {
+                derivedStateOf {
+                    sectionStartIndexByName
+                        .filterValues { it <= menuListState.firstVisibleItemIndex }
+                        .maxByOrNull { it.value }
+                        ?.key ?: "Todos"
+                }
+            }
+            val showContextualTopBar by remember(menuListState, sectionStartIndexByName) {
+                derivedStateOf {
+                    val firstMenuSectionIndex = sectionStartIndexByName.values.minOrNull() ?: Int.MAX_VALUE
+                    menuListState.firstVisibleItemIndex >= firstMenuSectionIndex
+                }
+            }
 
-            LazyColumn(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Header Banner & Store Information
+                LazyColumn(
+                    state = menuListState,
+                    modifier = Modifier.fillMaxSize()
+                ) {
                 item {
-                    StoreHeaderSection(
+                    StoreShowcaseHeader(
                         store = store,
-                        productsCount = products.size,
-                        categoriesCount = if (uiState.menuSections.isNotEmpty()) uiState.menuSections.size else groupedProducts.keys.size
-                    )
-                }
-
-                // Monte Sua Pizza / Monte Seu Pastel Custom Builder Buttons
-                val hasPizzaCategory = store?.let { s ->
-                    s.category.lowercase().contains("pizza") || s.secondaryCategories.any { it.lowercase().contains("pizza") }
-                } ?: false
-
-                val hasPastelCategory = store?.let { s ->
-                    s.category.lowercase().contains("pastel") || s.category.lowercase().contains("pasteis") ||
-                    s.secondaryCategories.any { it.lowercase().contains("pastel") || it.lowercase().contains("pasteis") }
-                } ?: false
-
-                val showPizzaBuilderButton = hasPizzaCategory && (store?.settings?.pizzaHalfEnabled != false) && products.isNotEmpty()
-                val showPastelBuilderButton = hasPastelCategory && (store?.settings?.pastelHalfEnabled != false) && products.isNotEmpty()
-
-                if (showPizzaBuilderButton || showPastelBuilderButton) {
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            if (showPizzaBuilderButton) {
-                                StoreBuilderCard(
-                                    title = "Monte sua Pizza",
-                                    subtitle = "Escolha o tamanho e combine até 4 sabores",
-                                    icon = Icons.Default.LocalPizza,
-                                    testTag = "monte_sua_pizza_button",
-                                    onClick = { viewModel.openBuilder("pizza") }
-                                )
-                            }
-                            if (showPastelBuilderButton) {
-                                StoreBuilderCard(
-                                    title = "Monte seu Pastel",
-                                    subtitle = "Combine sabores diferentes em um pastel",
-                                    icon = Icons.Default.Restaurant,
-                                    testTag = "monte_seu_pastel_button",
-                                    onClick = { viewModel.openBuilder("pastel") }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Search inside Store Menu
-                item {
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.onSearchQueryChange(it) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .testTag("menu_search_input"),
-                        placeholder = { Text("Buscar no cardápio de ${store?.name ?: "esta loja"}...") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Search, contentDescription = "Buscar")
-                        },
-                        trailingIcon = {
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                    Icon(imageVector = Icons.Default.Clear, contentDescription = "Limpar")
+                        onBackClick = onBackClick,
+                        onContactClick = {
+                            val phone = store?.whatsapp?.filter { it.isDigit() }.orEmpty()
+                            if (phone.isNotBlank()) {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phone"))
+                                    )
                                 }
                             }
                         },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ItaSuperPrimary,
-                            unfocusedBorderColor = Color.LightGray
-                        )
+                        onOpenMaps = {
+                            val mapQuery = store?.address?.takeIf { it.isNotBlank() }
+                                ?: listOfNotNull(
+                                    store?.addressStreet?.takeIf { it.isNotBlank() },
+                                    store?.addressNumber?.takeIf { it.isNotBlank() },
+                                    store?.addressNeighborhood?.takeIf { it.isNotBlank() },
+                                    store?.addressCity?.takeIf { it.isNotBlank() }
+                                ).joinToString(", ")
+                            if (mapQuery.isNotBlank()) {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(mapQuery)}"))
+                                    )
+                                }
+                            }
+                        },
+                        onInfoClick = onNavigateToInfo
                     )
                 }
 
-                // Menu Section Chips (Real menu_sections query)
-                val allSectionNames = listOf("Todos") + uiState.menuSections.map { it.name }
-                item {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(allSectionNames, key = { idx, secName -> "sec_chip_${idx}_$secName" }) { _, secName ->
-                            val isSelected = secName.equals(uiState.selectedSectionName, ignoreCase = true)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { viewModel.selectSection(secName) },
-                                label = {
-                                    Text(
-                                        text = secName,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                // A personalização continua como uma única vitrine por loja.
+                if (builderType != null) {
+                    item {
+                        StoreBuilderHighlight(
+                            title = if (builderType == "pastel") "Monte seu pastel" else "Monte sua pizza",
+                            subtitle = if (builderType == "pastel") {
+                                "Escolha recheios e adicionais do seu jeito"
+                            } else {
+                                "Escolha tamanho, sabores e adicionais do seu jeito"
+                            },
+                            imageUrl = products.firstOrNull {
+                                if (builderType == "pastel") it.isPastelFlavor else it.pizzaCategoryId.isNotBlank()
+                            }?.imageUrl.orEmpty(),
+                            icon = if (builderType == "pastel") Icons.Default.Restaurant else Icons.Default.LocalPizza,
+                            testTag = if (builderType == "pastel") "monte_seu_pastel_button" else "monte_sua_pizza_button",
+                            onClick = { viewModel.openBuilder(builderType) }
+                        )
+                    }
+                }
+
+                // Apenas Destaques usa vitrine em grade. O cardápio permanece em linhas horizontais.
+                if (featuredProducts.isNotEmpty()) {
+                    item(key = "highlights_title") {
+                        Text(
+                            text = "Destaques",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 16.sp,
+                                color = ItaSuperTextPrimary
+                            ),
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 10.dp)
+                        )
+                    }
+                    featuredProducts.chunked(3).forEachIndexed { rowIndex, productRow ->
+                        item(key = "highlights_grid_$rowIndex") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                productRow.forEach { product ->
+                                    ProductShowcaseTile(
+                                        product = product,
+                                        onCardClick = { viewModel.openProductModal(product) },
+                                        onAddClick = { viewModel.addDirectProductToCart(product) },
+                                        modifier = Modifier.weight(1f)
                                     )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ItaSuperPrimary,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
+                                }
+                                repeat(3 - productRow.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
@@ -529,58 +499,70 @@ fun StoreDetailScreen(
                         }
                     }
                 } else {
-                    groupedProducts.entries.forEachIndexed { secIndex, (secName, secProducts) ->
-                        // Section Header showing Section Name and Item Count
-                        item(key = "section_header_${secIndex}_$secName") {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                color = MaterialTheme.colorScheme.surface
-                            ) {
+                    productSections.forEachIndexed { secIndex, (secName, secProducts) ->
+                            item(key = "section_header_${secIndex}_$secName") {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = secName,
                                         style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 16.sp,
                                             color = ItaSuperTextPrimary
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${secProducts.size} itens",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF777777)
                                         )
                                     )
-                                    Surface(
-                                        color = ItaSuperPrimary.copy(alpha = 0.12f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text(
-                                            text = "${secProducts.size}",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = ItaSuperPrimary,
-                                                fontSize = 12.sp
-                                            ),
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                        )
-                                    }
                                 }
                             }
+                            itemsIndexed(secProducts, key = { productIndex, product ->
+                                "product_row_${secIndex}_${productIndex}_${product.id}"
+                            }) { _, product ->
+                                ProductMenuRow(
+                                    product = product,
+                                    onCardClick = { viewModel.openProductModal(product) },
+                                    onAddClick = { viewModel.addDirectProductToCart(product) }
+                                )
+                            }
                         }
+                }
 
-                        itemsIndexed(secProducts, key = { pIndex, prod -> "prod_${secIndex}_${pIndex}_${prod.id}" }) { _, product ->
-                            ProductItemCard(
-                                product = product,
-                                onCardClick = { viewModel.openProductModal(product) },
-                                onAddClick = { viewModel.addDirectProductToCart(product) }
-                            )
-                        }
+                    item {
+                        Spacer(modifier = Modifier.height(80.dp))
                     }
                 }
 
-                item {
-                    Spacer(modifier = Modifier.height(80.dp))
+                AnimatedVisibility(
+                    visible = showContextualTopBar,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                ) {
+                    StoreStickyMenuHeader(
+                        storeName = store?.name ?: "Loja ItaSuper",
+                        sectionNames = allSectionNames,
+                        activeSectionName = activeSectionName,
+                        onBackClick = onBackClick,
+                        onSectionClick = { sectionName ->
+                            val targetIndex = if (sectionName == "Todos") {
+                                sectionStartIndexByName.values.minOrNull() ?: 0
+                            } else {
+                                sectionStartIndexByName[sectionName] ?: 0
+                            }
+                            menuScrollScope.launch {
+                                menuListState.animateScrollToItem(targetIndex)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -601,6 +583,8 @@ fun StoreDetailScreen(
                     onQuantityIncrement = { viewModel.incrementModalQuantity() },
                     onQuantityDecrement = { viewModel.decrementModalQuantity() },
                     onNotesChange = { viewModel.updateModalNotes(it) },
+                    onNextCustomization = { viewModel.nextProductModalStep() },
+                    onBackToDetails = { viewModel.previousProductModalStep() },
                     onAddToCartClick = { viewModel.addSelectedProductToCart() }
                 )
             }
@@ -664,37 +648,226 @@ fun StoreDetailScreen(
 }
 
 @Composable
-private fun StoreBuilderCard(
+private fun StoreStickyMenuHeader(
+    storeName: String,
+    sectionNames: List<String>,
+    activeSectionName: String,
+    onBackClick: () -> Unit,
+    onSectionClick: (String) -> Unit
+) {
+    val categoryRowState = rememberLazyListState()
+    LaunchedEffect(activeSectionName, sectionNames) {
+        val activeIndex = sectionNames.indexOfFirst { it.equals(activeSectionName, ignoreCase = true) }
+        if (activeIndex >= 0) categoryRowState.animateScrollToItem(activeIndex)
+    }
+
+    Surface(
+        color = Color.White,
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clickable(onClick = onBackClick),
+                    shape = CircleShape,
+                    color = Color(0xFFF5F5F5)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar",
+                            tint = ItaSuperTextPrimary,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(11.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "CARDÁPIO",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = Color(0xFF8A8A8A)
+                        ),
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Text(
+                        text = storeName,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = ItaSuperTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            HorizontalDivider(color = Color(0xFFF1F1F1))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFFAFAFA))
+            ) {
+                LazyRow(
+                    state = categoryRowState,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(sectionNames, key = { index, name -> "sticky_section_${index}_$name" }) { _, sectionName ->
+                        StoreMenuFilterPill(
+                            label = sectionName,
+                            selected = sectionName.equals(activeSectionName, ignoreCase = true),
+                            onClick = { onSectionClick(sectionName) }
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = Color(0xFFECECEC))
+        }
+    }
+}
+
+@Composable
+private fun StoreBuilderHighlight(
     title: String,
     subtitle: String,
+    imageUrl: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     testTag: String,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(testTag),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9F5)),
-        border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.14f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 18.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .testTag(testTag),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFE9E9E9)),
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 92.dp, height = 74.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFFF4EA)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (imageUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = ItaSuperTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = Color(0xFF707070)
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Montar agora",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = ItaSuperPrimary
+                            )
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = ItaSuperPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreMenuFilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFFFFF0E6) else Color.White,
+        border = BorderStroke(1.dp, if (selected) ItaSuperPrimary.copy(alpha = 0.55f) else Color(0xFFE5E5E5))
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Box(
-                modifier = Modifier.size(52.dp).background(ItaSuperPrimary.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(28.dp))
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(ItaSuperPrimary, CircleShape)
+                )
             }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = ItaSuperTextPrimary)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(text = subtitle, fontSize = 14.sp, lineHeight = 18.sp, color = Color(0xFF737373))
-            }
-            Icon(imageVector = Icons.Default.KeyboardArrowRight, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(28.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    color = if (selected) ItaSuperPrimary else Color(0xFF343434),
+                    fontSize = 13.sp
+                ),
+                maxLines = 1
+            )
         }
     }
 }
@@ -750,21 +923,23 @@ private fun StoreInfoMetric(
 }
 
 @Composable
-fun StoreHeaderSection(
+private fun StoreShowcaseHeader(
     store: Store?,
-    productsCount: Int = 0,
-    categoriesCount: Int = 0
+    onBackClick: () -> Unit,
+    onContactClick: () -> Unit,
+    onOpenMaps: () -> Unit,
+    onInfoClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    var isHoursExpanded by remember { mutableStateOf(false) }
+    val isOpen = store?.isOpen == true
+    val feeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
+    val timeText = store?.deliveryTime?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // Banner compacto, mantendo a fotografia como pano de fundo do bloco editorial.
+    Box(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(118.dp)
-                .background(ItaSuperSecondary)
+                .height(224.dp)
+                .background(Color(0xFF4B1A11))
         ) {
             if (!store?.bannerUrl.isNullOrBlank()) {
                 AsyncImage(
@@ -777,398 +952,270 @@ fun StoreHeaderSection(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ItaSuperPrimary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ShoppingBag,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = ItaSuperPrimary
+                        .background(ItaSuperPrimary.copy(alpha = 0.82f))
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StoreHeroActionButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    description = "Voltar",
+                    onClick = onBackClick
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StoreHeroActionButton(
+                        icon = Icons.Default.FavoriteBorder,
+                        description = "Favoritar loja",
+                        onClick = { }
+                    )
+                    StoreHeroActionButton(
+                        icon = Icons.Default.Share,
+                        description = "Contato da loja",
+                        onClick = onContactClick,
+                        enabled = !store?.whatsapp.isNullOrBlank()
                     )
                 }
             }
         }
 
-        // Uma única superfície agrupa todas as informações; as divisórias substituem cartões redundantes.
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Surface(
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 188.dp),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = Color.White
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFFFFFEFC),
-                border = BorderStroke(1.dp, Color(0xFFECEBE8)),
-                shadowElevation = 1.dp
+                    .padding(start = 16.dp, top = 66.dp, end = 16.dp, bottom = 18.dp)
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, top = 60.dp, end = 16.dp, bottom = 20.dp),
-                    horizontalAlignment = Alignment.Start
+                        .clickable { onInfoClick() },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = store?.name ?: "Loja ItaSuper",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Start
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 22.sp,
+                            color = ItaSuperTextPrimary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        Text(
-                            text = store?.category ?: "Alimentação",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = "Nota",
-                                tint = ItaSuperWarning,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "${store?.rating ?: 5.0}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val isOpen = store?.isOpen ?: true
-                        Surface(
-                            color = if (isOpen) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = if (isOpen) "Aberto" else "Fechado",
-                                color = if (isOpen) Color(0xFF2E7D32) else Color(0xFFC62828),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
-
-                    val addressText = store?.address?.ifBlank { "Endereço não informado" } ?: "Endereço não informado"
-                    val hasMapsTarget = store?.latitude != null && store.longitude != null || store?.address?.isNotBlank() == true
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.LocationOn,
-                                contentDescription = null,
-                                tint = ItaSuperPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = addressText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ItaSuperTextPrimary,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            modifier = Modifier
-                                .clickable(enabled = hasMapsTarget) {
-                                    val lat = store?.latitude
-                                    val lng = store?.longitude
-                                    val mapsQuery = if (lat != null && lng != null) "$lat,$lng" else addressText
-                                    val gmmIntentUri = Uri.parse("geo:0,0?q=${Uri.encode(mapsQuery)}")
-                                    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
-                                    mapIntent.setPackage("com.google.android.apps.maps")
-                                    try {
-                                        context.startActivity(mapIntent)
-                                    } catch (_: Exception) {
-                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(mapsQuery)}"))
-                                        context.startActivity(browserIntent)
-                                    }
-                                }
-                                .testTag("open_maps_button"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = ItaSuperPrimary.copy(alpha = 0.10f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Navigation,
-                                    contentDescription = null,
-                                    tint = ItaSuperPrimary,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "MAPS",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = ItaSuperPrimary,
-                                        fontSize = 11.sp
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
-                    val deliveryFeeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
-                    val deliveryTimeText = store?.deliveryTime?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
-                    val minimumOrderText = store?.minOrder?.takeIf { it > 0.0 }?.let { value ->
-                        String.format("R$ %.2f", value).replace('.', ',')
-                    } ?: "—"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            StoreInfoMetric("Taxa", deliveryFeeText, Icons.Default.Navigation, if (store?.isFreeDelivery == true) Color(0xFF17803D) else ItaSuperTextPrimary)
-                        }
-                        Box(modifier = Modifier.weight(1f)) {
-                            StoreInfoMetric("Tempo", deliveryTimeText, Icons.Outlined.Schedule)
-                        }
-                        Box(modifier = Modifier.weight(1f)) {
-                            StoreInfoMetric("Pedido mín.", minimumOrderText, Icons.Default.ShoppingBag)
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isHoursExpanded = !isHoursExpanded }
-                            .testTag("expand_hours_button")
-                            .padding(vertical = 12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Schedule,
-                                    contentDescription = null,
-                                    tint = ItaSuperPrimary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Horários",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                            Icon(
-                                imageVector = if (isHoursExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = if (isHoursExpanded) "Recolher" else "Expandir",
-                                tint = Color.Gray
-                            )
-                        }
-
-                        if (isHoursExpanded) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            val hoursList = store?.openingHours
-                            if (!hoursList.isNullOrEmpty()) {
-                                hoursList.forEach { oh ->
-                                    val dayLabel = when {
-                                        oh.dayOfWeekStr.isNotBlank() -> oh.dayOfWeekStr.replaceFirstChar { it.uppercase() }
-                                        oh.dayOfWeek == 1 -> "Domingo"
-                                        oh.dayOfWeek == 2 -> "Segunda-feira"
-                                        oh.dayOfWeek == 3 -> "Terça-feira"
-                                        oh.dayOfWeek == 4 -> "Quarta-feira"
-                                        oh.dayOfWeek == 5 -> "Quinta-feira"
-                                        oh.dayOfWeek == 6 -> "Sexta-feira"
-                                        oh.dayOfWeek == 7 -> "Sábado"
-                                        else -> "Dia da Semana"
-                                    }
-                                    val timeLabel = if (oh.isClosedAllDay) "Fechado" else "${oh.openTime} às ${oh.closeTime}"
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 3.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(text = dayLabel, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
-                                        Text(
-                                            text = timeLabel,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (oh.isClosedAllDay) Color.Red else ItaSuperPrimary
-                                            )
-                                        )
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = "Horários não informados.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp)
-                    ) {
-                        Text(
-                            text = "Pagamento",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val settings = store?.settings
-                        val paymentMethods = buildList {
-                            if (settings?.acceptPixOnline == true) add("PIX Online")
-                            if (settings?.acceptPixMachine == true) add("PIX")
-                            if (settings?.acceptCard == true) add("Cartão")
-                            if (settings?.acceptCash == true) add("Dinheiro")
-                        }
-                        if (paymentMethods.isEmpty()) {
-                            Text(
-                                text = "Consulte a loja",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                paymentMethods.chunked(2).forEach { rowMethods ->
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        rowMethods.forEach { method ->
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = ItaSuperPrimary.copy(alpha = 0.06f)
-                                            ) {
-                                                Text(
-                                                    text = method,
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = ItaSuperTextPrimary,
-                                                        fontSize = 11.sp
-                                                    ),
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = Color(0xFFF0EFEC), thickness = 1.dp)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Mais informações",
+                        tint = Color(0xFF4A4A4A),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(
+                    text = store?.category?.takeIf { it.isNotBlank() } ?: "Alimentação",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                    color = Color(0xFF686868)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "$timeText  •  Taxa $feeText",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp
+                        ),
+                        color = Color(0xFF666666)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = ItaSuperPrimary.copy(alpha = 0.06f)
+                        color = if (isOpen) Color(0xFFF1FAF3) else Color(0xFFFFF3F3),
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "$productsCount Produtos",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperHighlightText,
-                                    fontSize = 12.sp
-                                )
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(if (isOpen) Color(0xFF16A34A) else Color(0xFFE5484D), CircleShape)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "•",
+                                text = if (isOpen) "Aberta" else "Fechada",
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperHighlightText
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "$categoriesCount Categorias",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = ItaSuperHighlightText,
-                                    fontSize = 12.sp
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = if (isOpen) Color(0xFF16803A) else Color(0xFFC9343C)
                                 )
                             )
                         }
                     }
                 }
-            }
 
-            // O logo cruza a borda entre banner e bloco informativo, como na composição aprovada.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = (-44).dp)
-                    .size(88.dp)
-                    .testTag("store_logo_overlay"),
-                shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 4.dp,
-                border = BorderStroke(3.dp, Color.White)
-            ) {
-                if (!store?.logoUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = store?.logoUrl,
-                        contentDescription = store?.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(ItaSuperSecondary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Storefront,
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp),
-                            tint = ItaSuperPrimary
-                        )
-                    }
-                }
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+
+        StoreShowcaseLogo(
+            store = store,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 150.dp)
+        )
     }
 }
 
 @Composable
-fun ProductItemCard(
+private fun StoreHeroActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Surface(
+        modifier = Modifier
+            .size(44.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.56f)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = Color.White,
+                modifier = Modifier.size(23.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StoreShowcaseLogo(store: Store?, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.size(82.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFFFFE9AD),
+        border = BorderStroke(2.dp, Color.White),
+        shadowElevation = 2.dp
+    ) {
+        if (!store?.logoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = store?.logoUrl,
+                contentDescription = store?.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))
+            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = store?.name?.trim()?.firstOrNull()?.uppercase() ?: "I",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 42.sp,
+                        color = ItaSuperPrimary
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductShowcaseTile(
+    product: Product,
+    onCardClick: () -> Unit,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clickable { onCardClick() }
+            .testTag("product_item_${product.id}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(96.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFF4F4F4))
+        ) {
+            if (product.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = product.imageUrl,
+                    contentDescription = product.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.ShoppingBag,
+                    contentDescription = null,
+                    tint = Color(0xFFB9B9B9),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(25.dp)
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .clickable { onAddClick() }
+                    .testTag("add_product_button_${product.id}"),
+                shape = CircleShape,
+                color = ItaSuperPrimary,
+                shadowElevation = 2.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Adicionar ${product.name}",
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(7.dp))
+        Text(
+            text = product.name,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                lineHeight = 15.sp,
+                color = ItaSuperTextPrimary
+            ),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = String.format("R$ %.2f", product.price).replace(".", ","),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 12.sp,
+                color = ItaSuperPrimary
+            ),
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ProductMenuRow(
     product: Product,
     onCardClick: () -> Unit,
     onAddClick: () -> Unit
@@ -1182,101 +1229,85 @@ fun ProductItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 15.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = product.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = ItaSuperTextPrimary,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp,
+                        color = ItaSuperTextPrimary
+                    ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
-                    Spacer(modifier = Modifier.height(5.dp))
+                if (product.description.isNotBlank() && !product.description.equals("null", ignoreCase = true)) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = product.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF7A7A7A),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = Color(0xFF737373)
+                        ),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = String.format("R$ %.2f", product.price).replace(".", ","),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                Spacer(modifier = Modifier.height(9.dp))
+                Text(
+                    text = String.format("R$ %.2f", product.price).replace(".", ","),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
                         color = ItaSuperPrimary
                     )
-                    if (product.originalPrice != null && product.originalPrice > product.price) {
-                        Spacer(modifier = Modifier.width(7.dp))
-                        Text(
-                            text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF969696),
-                            textDecoration = TextDecoration.LineThrough
-                        )
-                    }
-                }
+                )
             }
-
             Spacer(modifier = Modifier.width(14.dp))
-            Column(horizontalAlignment = Alignment.End) {
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF4F4F4))
+            ) {
                 if (product.imageUrl.isNotBlank()) {
                     AsyncImage(
                         model = product.imageUrl,
                         contentDescription = product.name,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(82.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                        modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Box(
+                    Icon(
+                        imageVector = Icons.Default.ShoppingBag,
+                        contentDescription = null,
+                        tint = Color(0xFFB9B9B9),
                         modifier = Modifier
-                            .size(82.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFFFFF7F1)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ShoppingBag,
-                            contentDescription = null,
-                            tint = ItaSuperPrimary.copy(alpha = 0.45f)
-                        )
-                    }
+                            .align(Alignment.Center)
+                            .size(24.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
                         .clickable { onAddClick() }
                         .testTag("add_product_button_${product.id}"),
-                    shape = RoundedCornerShape(18.dp),
-                    color = ItaSuperPrimary.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, ItaSuperPrimary.copy(alpha = 0.18f))
+                    shape = CircleShape,
+                    color = ItaSuperPrimary,
+                    shadowElevation = 2.dp
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Adicionar",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = ItaSuperPrimary,
-                                fontSize = 12.sp
-                            )
+                            contentDescription = "Adicionar ${product.name}",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
@@ -1284,7 +1315,7 @@ fun ProductItemCard(
         }
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
-            color = Color(0xFFF0F0ED),
+            color = Color(0xFFEEEEEE),
             thickness = 1.dp
         )
     }
@@ -1298,9 +1329,17 @@ fun ProductDetailSheetContent(
     onQuantityIncrement: () -> Unit,
     onQuantityDecrement: () -> Unit,
     onNotesChange: (String) -> Unit,
+    onNextCustomization: () -> Unit,
+    onBackToDetails: () -> Unit,
     onAddToCartClick: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val isCustomizationStep = uiState.modalTotalSteps > 1 && uiState.modalStep == 2
+    val visibleAddonGroups = if (isCustomizationStep) {
+        uiState.modalAddonGroups.filter { it.minSelect > 0 }
+    } else {
+        uiState.modalAddonGroups.filter { it.minSelect == 0 }
+    }
 
     Column(
         modifier = Modifier
@@ -1308,35 +1347,87 @@ fun ProductDetailSheetContent(
             .verticalScroll(scrollState)
             .padding(20.dp)
     ) {
-        Text(
-            text = product.name,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
-            Spacer(modifier = Modifier.height(6.dp))
+        if (uiState.modalTotalSteps > 1) {
             Text(
-                text = product.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.DarkGray
+                text = "ETAPA ${uiState.modalStep} DE ${uiState.modalTotalSteps}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { uiState.modalStep.toFloat() / uiState.modalTotalSteps.toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+                color = ItaSuperPrimary,
+                trackColor = Color(0xFFF1EEE9)
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        if (isCustomizationStep) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBackToDetails) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = ItaSuperTextPrimary)
+                }
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    Text(
+                        text = "PERSONALIZAÇÃO",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = ItaSuperPrimary
+                    )
+                    Text(
+                        text = "Escolha os obrigatórios",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "Selecione as opções necessárias para finalizar.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = product.name,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            if (!product.description.isNullOrBlank() && product.description.trim() != "null") {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = product.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.DarkGray
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = String.format("R$ %.2f", product.price).replace(".", ","),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = ItaSuperPrimary
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (uiState.modalAddonsLoading) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Carregando opções do produto...", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
 
-        Text(
-            text = String.format("R$ %.2f", product.price).replace(".", ","),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = ItaSuperPrimary
-        )
-
-        // Addon Groups Section
-        if (uiState.modalAddonGroups.isNotEmpty()) {
+        // Na primeira etapa ficam apenas extras opcionais; obrigatórios ficam isolados na segunda.
+        if (visibleAddonGroups.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            uiState.modalAddonGroups.forEach { group ->
+            visibleAddonGroups.forEach { group ->
                 val items = uiState.modalAddonItemsMap[group.id] ?: emptyList()
                 val selectedItems = uiState.modalSelectedAddonsMap[group.id] ?: emptyList()
 
@@ -1439,20 +1530,20 @@ fun ProductDetailSheetContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Observações
-        OutlinedTextField(
-            value = uiState.modalNotes,
-            onValueChange = onNotesChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("product_notes_input"),
-            label = { Text("Alguma observação?") },
-            placeholder = { Text("Ex: Sem cebola, capricha no molho...") },
-            maxLines = 3,
-            shape = RoundedCornerShape(12.dp)
-        )
+        if (!isCustomizationStep) {
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = uiState.modalNotes,
+                onValueChange = onNotesChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("product_notes_input"),
+                label = { Text("Observações") },
+                placeholder = { Text("Ex: Sem cebola, bem passado...") },
+                maxLines = 3,
+                shape = RoundedCornerShape(12.dp)
+            )
+        }
 
         if (!uiState.modalError.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -1495,10 +1586,10 @@ fun ProductDetailSheetContent(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Submit Add Button
+            // Na etapa de detalhes o produto apenas avança; a validação ocorre na personalização.
             Button(
-                onClick = onAddToCartClick,
-                enabled = uiState.canAddToCart,
+                onClick = if (!isCustomizationStep && uiState.modalTotalSteps > 1) onNextCustomization else onAddToCartClick,
+                enabled = !uiState.modalAddonsLoading && if (!isCustomizationStep && uiState.modalTotalSteps > 1) true else uiState.canAddToCart,
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
@@ -1507,7 +1598,11 @@ fun ProductDetailSheetContent(
                 colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
             ) {
                 Text(
-                    text = "Adicionar • ${String.format("R$ %.2f", uiState.modalTotalPrice).replace(".", ",")}",
+                    text = when {
+                        uiState.modalAddonsLoading -> "Carregando opções..."
+                        !isCustomizationStep && uiState.modalTotalSteps > 1 -> "Próximo: Personalizar"
+                        else -> "Adicionar • ${String.format("R$ %.2f", uiState.modalTotalPrice).replace(".", ",")}"
+                    },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = Color.White

@@ -42,11 +42,14 @@ object PushNotificationManager {
     private const val PUSH_PREFS = "itasuper_push_session"
     private const val DEVICE_ID_KEY = "device_id"
     private const val PENDING_DESTINATION_KEY = "pending_destination"
+    private const val PENDING_ORDER_ID_KEY = "pending_order_id"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = OkHttpClient()
     private val _pendingDestination = MutableStateFlow<String?>(null)
     val pendingDestination: StateFlow<String?> = _pendingDestination.asStateFlow()
+    private val _pendingOrderId = MutableStateFlow<String?>(null)
+    val pendingOrderId: StateFlow<String?> = _pendingOrderId.asStateFlow()
 
     fun createOrderNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -155,11 +158,17 @@ object PushNotificationManager {
             rawDestination.contains("pedidos", ignoreCase = true) -> DESTINATION_ORDERS
             else -> DESTINATION_ORDERS
         }
+        val orderId = intent?.getStringExtra("order_id")?.takeIf { it.isNotBlank() }
         context.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(PENDING_DESTINATION_KEY, destination)
+            .apply {
+                if (orderId != null) putString(PENDING_ORDER_ID_KEY, orderId)
+                else remove(PENDING_ORDER_ID_KEY)
+            }
             .apply()
         _pendingDestination.value = destination
+        _pendingOrderId.value = orderId
     }
 
     fun consumePendingDestination(context: Context): String? {
@@ -168,6 +177,14 @@ object PushNotificationManager {
         _pendingDestination.value = null
         preferences.edit().remove(PENDING_DESTINATION_KEY).apply()
         return destination
+    }
+
+    fun consumePendingOrderId(context: Context): String? {
+        val preferences = context.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+        val orderId = _pendingOrderId.value ?: preferences.getString(PENDING_ORDER_ID_KEY, null)
+        _pendingOrderId.value = null
+        preferences.edit().remove(PENDING_ORDER_ID_KEY).apply()
+        return orderId
     }
 
     private fun getOrCreateDeviceId(context: Context): String {

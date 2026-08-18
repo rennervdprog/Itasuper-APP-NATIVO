@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,10 +24,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Receipt
@@ -65,11 +71,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Order
 import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.theme.ItaSuperBorder
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
@@ -86,6 +94,7 @@ private fun Order.presentation(): OrderStatusPresentation = when (status.lowerca
     "aguardando_pagamento" -> OrderStatusPresentation("Aguardando pagamento", Color(0xFFE58A00), 0)
     "aguardando_comprovante" -> OrderStatusPresentation("Aguardando comprovante", Color(0xFFE58A00), 0)
     "comprovante_enviado" -> OrderStatusPresentation("Comprovante enviado", Color(0xFFE58A00), 0)
+    "scheduled" -> OrderStatusPresentation("Agendado", Color(0xFF5B5CE2), 0)
     "pendente", "recebido" -> OrderStatusPresentation("Pedido recebido", ItaSuperPrimary, 0)
     "preparando", "em_preparo" -> OrderStatusPresentation("Em preparo", ItaSuperPrimary, 1)
     "pronto_para_entrega", "pronto" -> OrderStatusPresentation("Pronto", ItaSuperPrimary, 2)
@@ -97,7 +106,18 @@ private fun Order.presentation(): OrderStatusPresentation = when (status.lowerca
 
 private fun Order.isFinished(): Boolean = status.lowercase() in setOf("entregue", "finalizado", "cancelado")
 
+private enum class OrdersFilter(val label: String) {
+    ACTIVE("Em andamento"),
+    FINISHED("Finalizados")
+}
+
+private fun Order.matchesFilter(filter: OrdersFilter): Boolean = when (filter) {
+    OrdersFilter.ACTIVE -> !isFinished()
+    OrdersFilter.FINISHED -> isFinished()
+}
+
 private fun Order.estimatedWindow(): String = when (status.lowercase()) {
+    "scheduled" -> "Agendado"
     "pendente", "recebido" -> "≈ 25–45 min"
     "preparando", "em_preparo" -> "≈ 15–30 min"
     "pronto_para_entrega", "pronto" -> "≈ 10–20 min"
@@ -119,10 +139,42 @@ private fun Order.createdLabel(): String {
     return createdAt
 }
 
+/** Campos de pedido são imutáveis no insert; snapshots novos trazem CEP/cidade/UF e cotação financeira. */
+private fun Order.isPickupOrder(): Boolean = neighborhood.equals("RETIRADA", ignoreCase = true) ||
+    deliveryAddress.equals("Retirada na loja", ignoreCase = true)
+
+private fun Order.historyDeliveryAddress(): String {
+    if (isPickupOrder()) return "Retirada na loja"
+    val address = deliveryAddress.trim()
+    val location = listOf(deliveryCity.trim(), deliveryState.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(" - ")
+    val cep = deliveryCep.filter(Char::isDigit).takeIf { it.length == 8 }
+        ?.let { "CEP ${it.take(5)}-${it.drop(5)}" }
+    return listOf(address, neighborhood.trim(), location, cep.orEmpty())
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(" · ")
+        .ifBlank { "Endereço registrado no pedido" }
+}
+
+private fun Order.historyDeliveryMeta(): String? {
+    if (isPickupOrder()) return null
+    val snapshot = deliveryQuoteSnapshot ?: return null
+    val source = when (snapshot.distanceSource.lowercase()) {
+        "fixed" -> "Taxa fixa confirmada"
+        else -> "≈ ${String.format(Locale("pt", "BR"), "%.1f", snapshot.distanceKm)} km da loja"
+    }
+    return "$source · ${money(snapshot.deliveryFee)}"
+}
+
+private fun Order.confirmedDeliveryFee(): Double = deliveryQuoteSnapshot?.deliveryFee ?: deliveryFee
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersHistoryScreen(
     viewModel: OrdersViewModel,
+    initialOrderId: String? = null,
     onNavigateToRoute: (String) -> Unit,
     onNavigateToCart: () -> Unit,
     onExploreClick: () -> Unit
@@ -130,14 +182,30 @@ fun OrdersHistoryScreen(
     val orders by viewModel.ordersList.collectAsState()
     val cart by viewModel.cartState.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-    val activeOrders = orders.filterNot { it.isFinished() }
-    val previousOrders = orders.filter { it.isFinished() }
+    val selectedFilter = remember { mutableStateOf(OrdersFilter.ACTIVE) }
+    val listState = rememberLazyListState()
+    val filteredOrders = orders.filter { it.matchesFilter(selectedFilter.value) }
+    val activeOrders = filteredOrders.filterNot { it.isFinished() }
+    val previousOrders = filteredOrders.filter { it.isFinished() }
     val orderPendingCancellation = remember { mutableStateOf<Order?>(null) }
     val orderPendingRating = remember { mutableStateOf<Order?>(null) }
     val ratingValue = remember { mutableStateOf(5) }
     val ratingComment = remember { mutableStateOf("") }
     val orderPendingRefund = remember { mutableStateOf<Order?>(null) }
     val refundDescription = remember { mutableStateOf("") }
+
+    LaunchedEffect(initialOrderId, orders) {
+        val target = orders.firstOrNull { it.id == initialOrderId } ?: return@LaunchedEffect
+        selectedFilter.value = if (target.isFinished()) OrdersFilter.FINISHED else OrdersFilter.ACTIVE
+    }
+
+    LaunchedEffect(initialOrderId, filteredOrders, uiState.isRefreshingOrders) {
+        val targetIndex = filteredOrders.indexOfFirst { it.id == initialOrderId }
+        if (targetIndex >= 0) {
+            val prefixItems = 2 + if (uiState.isRefreshingOrders) 1 else 0
+            listState.animateScrollToItem(prefixItems + targetIndex)
+        }
+    }
 
     orderPendingCancellation.value?.let { order ->
         AlertDialog(
@@ -232,9 +300,11 @@ fun OrdersHistoryScreen(
         )
     }
 
-    LaunchedEffect(Unit) {
+    val ordersRefreshInterval = if (orders.any { !it.isFinished() }) 5_000L else 30_000L
+    LaunchedEffect(ordersRefreshInterval) {
+        viewModel.refreshOrders()
         while (true) {
-            delay(5_000)
+            delay(ordersRefreshInterval)
             viewModel.refreshOrders()
         }
     }
@@ -249,6 +319,17 @@ fun OrdersHistoryScreen(
                     }
                 },
                 actions = {
+                    if (uiState.isRefreshingOrders) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp).padding(end = 4.dp),
+                            strokeWidth = 2.dp,
+                            color = ItaSuperPrimary
+                        )
+                    } else {
+                        IconButton(onClick = viewModel::refreshOrders, modifier = Modifier.testTag("refresh_orders_button")) {
+                            Icon(Icons.Default.Refresh, "Atualizar pedidos", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     IconButton(onClick = onNavigateToCart, modifier = Modifier.testTag("orders_to_cart_button")) {
                         BadgedBox(badge = {
                             if (cart.totalItemCount > 0) Badge(containerColor = ItaSuperPrimary) {
@@ -259,21 +340,59 @@ fun OrdersHistoryScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },
-        bottomBar = { ItaSuperBottomNavBar(currentRoute = "pedidos", onNavigateToRoute = onNavigateToRoute) }
+        bottomBar = { ItaSuperBottomNavBar(currentRoute = "pedidos", onNavigateToRoute = onNavigateToRoute) },
+        containerColor = Color(0xFFFAFAFA)
     ) { innerPadding ->
-        if (orders.isEmpty()) {
+        if (orders.isEmpty() && uiState.isRefreshingOrders) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = ItaSuperPrimary)
+                    Text("Buscando seus pedidos...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else if (orders.isEmpty()) {
             EmptyOrdersState(innerPadding, onExploreClick)
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item { Spacer(Modifier.height(2.dp)) }
+                item {
+                    OrdersFilterBar(
+                        selected = selectedFilter.value,
+                        activeCount = orders.count { !it.isFinished() },
+                        onSelect = { selectedFilter.value = it }
+                    )
+                }
+                if (uiState.isRefreshingOrders) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                            Text("Atualizando pedidos", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (filteredOrders.isEmpty()) {
+                    item {
+                        Text(
+                            text = "Nenhum pedido nesta categoria.",
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 28.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 if (activeOrders.isNotEmpty()) {
-                    item { OrderSectionTitle("PEDIDOS EM ANDAMENTO (${activeOrders.size})") }
                     items(activeOrders, key = { it.id }) { order ->
                         ActiveOrderCard(
                             order = order,
@@ -282,12 +401,12 @@ fun OrdersHistoryScreen(
                             onConfirmDelivery = { viewModel.confirmDelivery(order) },
                             onCancelOrder = { orderPendingCancellation.value = order },
                             isConfirmingDelivery = uiState.confirmingDeliveryOrderId == order.id,
-                            isCancelling = uiState.cancellingOrderId == order.id
+                            isCancelling = uiState.cancellingOrderId == order.id,
+                            isHighlighted = order.id == initialOrderId
                         )
                     }
                 }
                 if (previousOrders.isNotEmpty()) {
-                    item { OrderSectionTitle("ANTERIORES (${previousOrders.size})") }
                     items(previousOrders, key = { it.id }) { order ->
                         PreviousOrderCard(
                             order = order,
@@ -307,13 +426,51 @@ fun OrdersHistoryScreen(
 }
 
 @Composable
-private fun OrderSectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-    )
+private fun OrdersFilterBar(
+    selected: OrdersFilter,
+    activeCount: Int,
+    onSelect: (OrdersFilter) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp)
+    ) {
+        OrdersFilter.entries.forEach { filter ->
+            val selectedFilter = filter == selected
+            TextButton(
+                onClick = { onSelect(filter) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+                colors = ButtonDefaults.textButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = if (selectedFilter) ItaSuperPrimary else Color(0xFF737373)
+                ),
+                shape = RoundedCornerShape(0.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(
+                        text = if (filter == OrdersFilter.ACTIVE) "Em andamento ($activeCount)" else filter.label,
+                        fontSize = 14.sp,
+                        fontWeight = if (selectedFilter) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(if (selectedFilter) ItaSuperPrimary else Color.Transparent)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -354,50 +511,76 @@ private fun ActiveOrderCard(
     onConfirmDelivery: () -> Unit,
     onCancelOrder: () -> Unit,
     isConfirmingDelivery: Boolean,
-    isCancelling: Boolean
+    isCancelling: Boolean,
+    isHighlighted: Boolean = false
 ) {
     val presentation = order.presentation()
     val isWaitingPayment = order.status.lowercase() in setOf("aguardando_pagamento", "aguardando_comprovante", "comprovante_enviado")
+    val showDetails = remember(order.id) { mutableStateOf(false) }
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .border(if (isHighlighted) 2.dp else 1.dp, if (isHighlighted) ItaSuperPrimary else ItaSuperBorder, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 StatusPill(presentation)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(order.estimatedWindow(), style = MaterialTheme.typography.labelMedium, color = ItaSuperPrimary, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(10.dp))
-                    Text(order.shortCode(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(order.estimatedWindow(), style = MaterialTheme.typography.labelMedium, color = Color(0xFF5D5D5D), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(9.dp))
+                    Text(order.shortCode(), style = MaterialTheme.typography.labelSmall, color = Color(0xFF737373))
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            HorizontalDivider(color = Color(0xFFEEEEEE))
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(order.storeName.ifBlank { "Loja" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                    Text(money(order.total), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
+                    Text(order.storeName.ifBlank { "Loja" }, style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), fontWeight = FontWeight.ExtraBold)
+                    Text(money(order.total), style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp), fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
                 }
-                if (!isWaitingPayment) OrderTimeline(order.presentation().stage)
+                if (!isWaitingPayment) OrderTimeline(presentation.stage)
+                if (order.status.equals("scheduled", ignoreCase = true)) {
+                    Text(
+                        text = order.releaseAt.takeIf { it.isNotBlank() }
+                            ?.let { "Seu pedido será liberado para a loja no horário de abertura." }
+                            ?: "Seu pedido está agendado e será liberado no horário escolhido.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ItaSuperPrimary
+                    )
+                }
 
                 if (order.deliveryPin.isNotBlank() && order.neighborhood.uppercase() != "RETIRADA") {
                     DeliveryPinCard(order.deliveryPin)
                 }
+                ActiveOrderDetailsRows(
+                    order = order,
+                    detailsVisible = showDetails.value,
+                    onToggleDetails = { showDetails.value = !showDetails.value }
+                )
+                if (showDetails.value) OrderFinancialSummary(order)
 
                 if (order.status == "aguardando_pagamento" && order.paymentMethod == "pix") {
-                    Button(onClick = onPayPix, colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary), modifier = Modifier.fillMaxWidth()) {
-                        Text("Pagar com PIX", fontWeight = FontWeight.Bold)
-                    }
+                    Button(
+                        onClick = onPayPix,
+                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Pagar com PIX", fontWeight = FontWeight.Bold) }
                 }
                 if (order.status == "aguardando_comprovante" && order.paymentMethod == "pix_direto") {
-                    Button(onClick = onPixDirect, colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary), modifier = Modifier.fillMaxWidth()) {
-                        Text("Enviar comprovante PIX", fontWeight = FontWeight.Bold)
-                    }
+                    Button(
+                        onClick = onPixDirect,
+                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Enviar comprovante PIX", fontWeight = FontWeight.Bold) }
                 }
 
                 val canConfirmDelivery = order.status.lowercase() in setOf("saiu_entrega", "em_transito") && !order.deliveryConfirmedByClient
@@ -406,7 +589,8 @@ private fun ActiveOrderCard(
                         onClick = onConfirmDelivery,
                         enabled = !isConfirmingDelivery,
                         colors = ButtonDefaults.buttonColors(containerColor = ItaSuperSuccess),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
@@ -414,16 +598,15 @@ private fun ActiveOrderCard(
                     }
                 }
 
-                OrderFinancialSummary(order)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(order.createdLabel(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(order.createdLabel(), style = MaterialTheme.typography.labelSmall, color = Color(0xFF737373))
                     val canCancel = order.status.lowercase() in setOf("pendente", "recebido", "preparando", "em_preparo", "pronto_para_entrega")
                     if (canCancel) {
                         TextButton(onClick = onCancelOrder, enabled = !isCancelling) {
-                            Text(if (isCancelling) "Cancelando..." else "Cancelar pedido", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (isCancelling) "Cancelando..." else "Cancelar pedido", color = Color(0xFF4E4E4E), fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Text(paymentLabel(order.paymentMethod), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(paymentLabel(order.paymentMethod), style = MaterialTheme.typography.labelSmall, color = Color(0xFF737373))
                     }
                 }
             }
@@ -446,22 +629,48 @@ private fun StatusPill(presentation: OrderStatusPresentation) {
 @Composable
 private fun OrderTimeline(activeStage: Int) {
     val labels = listOf("Recebido", "Preparando", "Pronto", "A caminho", "Entregue")
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        labels.forEachIndexed { index, label ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            labels.forEachIndexed { index, _ ->
+                val reached = index <= activeStage
                 Box(
-                    modifier = Modifier.size(28.dp).clip(CircleShape).background(if (index <= activeStage) ItaSuperPrimary else MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(if (reached) ItaSuperPrimary else Color(0xFFF0F0F0)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (index == 3) Icons.Default.LocalShipping else Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = if (index <= activeStage) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
+                        tint = if (reached) Color.White else Color(0xFF8D8D8D),
+                        modifier = Modifier.size(15.dp)
                     )
                 }
-                Spacer(Modifier.height(5.dp))
-                Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = if (index <= activeStage) ItaSuperPrimary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                if (index < labels.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(if (index < activeStage) ItaSuperPrimary.copy(alpha = 0.42f) else Color(0xFFE2E2E2))
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            labels.forEachIndexed { index, label ->
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = if (index <= activeStage) ItaSuperPrimary else Color(0xFF777777),
+                    maxLines = 1
+                )
             }
         }
     }
@@ -471,27 +680,121 @@ private fun OrderTimeline(activeStage: Int) {
 private fun DeliveryPinCard(pin: String) {
     val context = LocalContext.current
     Column(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ItaSuperHighlightBg).padding(14.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFFFF8F3))
+            .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Lock, null, tint = ItaSuperPrimary, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Código de entrega", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+            Text("Código de entrega", fontWeight = FontWeight.ExtraBold, color = Color(0xFF262626), style = MaterialTheme.typography.titleMedium)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(9.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(pin.chunked(1).joinToString(" "), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
-            TextButton(onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Código de entrega", pin))
-            }) { Text("Copiar", color = ItaSuperPrimary, fontWeight = FontWeight.Bold) }
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Código de entrega", pin))
+                },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("Copiar", color = ItaSuperPrimary, fontWeight = FontWeight.Bold)
+            }
         }
-        Text("Informe ao motoboy apenas quando receber seu pedido.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Text("Informe ao motoboy apenas quando receber seu pedido.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF686868))
+    }
+}
+
+@Composable
+private fun ActiveOrderDetailsRows(
+    order: Order,
+    detailsVisible: Boolean,
+    onToggleDetails: () -> Unit
+) {
+    val deliveryAddress = order.historyDeliveryAddress()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = Color(0xFF414141),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (order.isPickupOrder()) "Retirada" else "Endereço de entrega",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    deliveryAddress,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF686868),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF858585))
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 13.dp), color = Color(0xFFEEEEEE))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onToggleDetails)
+                .testTag("toggle_order_details"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Receipt, contentDescription = null, tint = Color(0xFF414141), modifier = Modifier.size(23.dp))
+            Spacer(Modifier.width(13.dp))
+            Text(
+                if (detailsVisible) "Ocultar detalhes do pedido" else "Ver detalhes do pedido",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF858585))
+        }
+        HorizontalDivider(modifier = Modifier.padding(top = 13.dp), color = Color(0xFFEEEEEE))
+    }
+}
+
+@Composable
+private fun OrderDeliverySnapshotCard(order: Order) {
+    val deliveryAddress = order.historyDeliveryAddress()
+    val deliveryMeta = order.historyDeliveryMeta()
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            if (order.isPickupOrder()) "Retirada" else "Endereço de entrega",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold
+        )
+        Text(deliveryAddress, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        deliveryMeta?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = ItaSuperPrimary, fontWeight = FontWeight.Medium)
+        }
     }
 }
 
 @Composable
 private fun OrderFinancialSummary(order: Order) {
+    val confirmedDeliveryFee = order.confirmedDeliveryFee()
     Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -505,7 +808,12 @@ private fun OrderFinancialSummary(order: Order) {
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         SummaryLine("Subtotal", money(order.subtotal))
-        if (order.deliveryFee > 0) SummaryLine("Taxa de entrega", money(order.deliveryFee))
+        if (!order.isPickupOrder() && (confirmedDeliveryFee > 0 || order.deliveryQuoteSnapshot?.freeDeliveryApplied == true)) {
+            SummaryLine(
+                "Taxa de entrega",
+                if (confirmedDeliveryFee > 0) money(confirmedDeliveryFee) else "Grátis"
+            )
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Total", fontWeight = FontWeight.ExtraBold)
             Text(money(order.total), fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
@@ -530,10 +838,13 @@ private fun PreviousOrderCard(
 ) {
     val presentation = order.presentation()
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .border(1.dp, ItaSuperBorder, RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -550,6 +861,7 @@ private fun PreviousOrderCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            OrderDeliverySnapshotCard(order)
             if (order.status.lowercase() in setOf("entregue", "finalizado")) {
                 OutlinedButton(onClick = onRepeatOrder, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = ItaSuperPrimary)
