@@ -84,6 +84,7 @@ class HomeViewModel : ViewModel() {
     private var currentLongitude: Double? = null
     private var catalogGeneration = 0
     private var lastLoadedOrderUserId = ""
+    private var recentStoreIds: List<String> = emptyList()
 
     init {
         val userSession = UserSessionRepository.userSession.value
@@ -126,8 +127,10 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             StoreRepository.stores.collect { updatedStores ->
                 val storesWithDistance = storesWithCalculatedDistance(updatedStores)
-                refreshRegionalCatalog(storesWithDistance)
-                refreshRecentStores(storesWithDistance)
+                // O repositório também emite quando só muda a presença do motoboy.
+                // Nesse caso, atualizamos cards e avisos sem buscar produtos/pedidos de novo.
+                refreshRegionalCatalog(storesWithDistance, refreshProductSections = false)
+                refreshRecentStores(storesWithDistance, refreshOrderIds = false)
             }
         }
 
@@ -156,6 +159,7 @@ class HomeViewModel : ViewModel() {
                     errorMessage = null
                 )
                 refreshRegionalCatalog(currentStores)
+                refreshRecentStores(currentStores)
             }
         }
     }
@@ -171,7 +175,10 @@ class HomeViewModel : ViewModel() {
      * Fonte única do catálogo regional. Toda vitrine da Home recebe a mesma lista de
      * lojas da cidade ativa; filtros de interface são aplicados somente após esse recorte.
      */
-    private fun refreshRegionalCatalog(sourceStores: List<Store> = storesWithCalculatedDistance(StoreRepository.stores.value)) {
+    private fun refreshRegionalCatalog(
+        sourceStores: List<Store> = storesWithCalculatedDistance(StoreRepository.stores.value),
+        refreshProductSections: Boolean = true
+    ) {
         val activeCity = _uiState.value.activeCity.ifBlank {
             UserSessionRepository.userSession.value.activeLocationCity.ifBlank {
                 UserSessionRepository.userSession.value.addressCity
@@ -214,8 +221,10 @@ class HomeViewModel : ViewModel() {
             ).take(2),
             requiresAddress = normalizedCity.isBlank()
         )
-        loadDiscoverProducts(regionalStores, generation)
-        loadAffordableProducts(regionalStores, generation)
+        if (refreshProductSections) {
+            loadDiscoverProducts(regionalStores, generation)
+            loadAffordableProducts(regionalStores, generation)
+        }
     }
 
     /**
@@ -223,22 +232,31 @@ class HomeViewModel : ViewModel() {
      * Aqui reutilizamos a consulta autenticada já usada na área de pedidos e
      * cruzamos os IDs com o catálogo público para obter logo e metadados atuais.
      */
-    private fun refreshRecentStores(sourceStores: List<Store>) {
+    private fun refreshRecentStores(sourceStores: List<Store>, refreshOrderIds: Boolean = true) {
         val session = UserSessionRepository.userSession.value
         if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) {
+            recentStoreIds = emptyList()
             _uiState.value = _uiState.value.copy(recentStores = emptyList())
             return
         }
+        if (!refreshOrderIds) {
+            applyRecentStores(sourceStores)
+            return
+        }
         viewModelScope.launch {
-            val recentStoreIds = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
+            recentStoreIds = SupabaseClient.fetchOrdersForClient(session.userId, session.accessToken)
                 .map { it.storeId }
                 .distinct()
                 .take(6)
-            val storesById = sourceStores.associateBy { it.id }
-            _uiState.value = _uiState.value.copy(
-                recentStores = recentStoreIds.mapNotNull { storesById[it] }
-            )
+            applyRecentStores(sourceStores)
         }
+    }
+
+    private fun applyRecentStores(sourceStores: List<Store>) {
+        val storesById = sourceStores.associateBy { it.id }
+        _uiState.value = _uiState.value.copy(
+            recentStores = recentStoreIds.mapNotNull { storesById[it] }
+        )
     }
 
     /**

@@ -34,6 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -67,6 +70,8 @@ import com.example.ui.store.StoreInfoScreen
 import com.example.ui.store.StoreDetailViewModel
 import com.example.ui.theme.ItaSuperTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,6 +110,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ItaSuperApp() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val userSession by UserSessionRepository.userSession.collectAsState()
     val pendingPushDestination by PushNotificationManager.pendingDestination.collectAsState()
     val pendingPushOrderId by PushNotificationManager.pendingOrderId.collectAsState()
@@ -157,6 +163,20 @@ fun ItaSuperApp() {
             StoreRepository.refreshStoresFromSupabase()
             if (userSession.isLoggedIn) {
                 ordersViewModel.refreshOrders()
+            }
+        }
+    }
+
+    // A disponibilidade expira por tempo (13 minutos) e também muda quando o
+    // entregador volta a enviar presença. A consulta leve ocorre apenas quando
+    // a Activity está visível; o repeatOnLifecycle cancela o loop em segundo plano.
+    LaunchedEffect(lifecycleOwner, isOnline) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (isOnline) {
+                while (isActive) {
+                    StoreRepository.refreshDriverAvailability()
+                    delay(15_000L)
+                }
             }
         }
     }

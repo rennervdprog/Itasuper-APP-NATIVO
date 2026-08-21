@@ -80,7 +80,8 @@ fun CartScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val cart by viewModel.cartState.collectAsState()
-    val store = cart.storeId?.let { StoreRepository.getStoreById(it) }
+    val stores by StoreRepository.stores.collectAsState()
+    val store = cart.storeId?.let { storeId -> stores.firstOrNull { it.id == storeId } }
     val isStoreClosed = store?.isOpen == false
     val minimumOrder = store?.minOrder ?: 0.0
     val belowMinimum = minimumOrder > 0.0 && cart.subtotal < minimumOrder

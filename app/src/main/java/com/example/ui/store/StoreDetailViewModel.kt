@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
@@ -215,6 +213,30 @@ class StoreDetailViewModel : ViewModel() {
     val cartState: StateFlow<CartState> = CartRepository.cartState
     val allProducts: StateFlow<List<Product>> = _rawProducts.asStateFlow()
 
+    init {
+        // O detalhe mantém seus dados completos, mas recebe apenas os campos de
+        // disponibilidade do catálogo compartilhado para refletir imediatamente
+        // a saída/retorno do motoboy sem recarregar cardápio ou fechar a tela.
+        viewModelScope.launch {
+            StoreRepository.stores.collect { catalog ->
+                val state = _uiState.value
+                val currentStore = state.store ?: return@collect
+                val catalogStore = catalog.firstOrNull { it.id == currentStore.id } ?: return@collect
+                if (
+                    currentStore.hasAvailableDriver != catalogStore.hasAvailableDriver ||
+                    currentStore.deliveryAvailabilityMessage != catalogStore.deliveryAvailabilityMessage
+                ) {
+                    _uiState.value = state.copy(
+                        store = currentStore.copy(
+                            hasAvailableDriver = catalogStore.hasAvailableDriver,
+                            deliveryAvailabilityMessage = catalogStore.deliveryAvailabilityMessage
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     val filteredProducts: StateFlow<List<Product>> = combine(
         _rawProducts,
         _uiState
@@ -335,27 +357,28 @@ class StoreDetailViewModel : ViewModel() {
         )
     }
 
-    /** Atualiza a disponibilidade de entrega no detalhe sem esconder o cardápio ou bloquear retirada. */
+    /**
+     * Faz uma leitura canônica inicial ao abrir a loja. Depois disso, a atualização
+     * vem do StoreRepository compartilhado, que consulta todas as lojas próprias
+     * enquanto o app está em primeiro plano.
+     */
     private fun observeDeliveryAvailability(storeId: String) {
         deliveryAvailabilityJob?.cancel()
         val currentStore = _uiState.value.store ?: return
         if (!currentStore.deliveryMode.equals("own", ignoreCase = true)) return
 
         deliveryAvailabilityJob = viewModelScope.launch {
-            while (isActive) {
-                val availability = runCatching {
-                    SupabaseClient.fetchStoreDeliveryAvailability(storeId)
-                }.getOrNull()
-                val state = _uiState.value
-                if (availability != null && state.store?.id == storeId) {
-                    _uiState.value = state.copy(
-                        store = state.store.copy(
-                            hasAvailableDriver = availability.canAcceptDeliveryOrders,
-                            deliveryAvailabilityMessage = availability.reasonMessage
-                        )
+            val availability = runCatching {
+                SupabaseClient.fetchStoreDeliveryAvailability(storeId)
+            }.getOrNull() ?: return@launch
+            val state = _uiState.value
+            if (state.store?.id == storeId) {
+                _uiState.value = state.copy(
+                    store = state.store.copy(
+                        hasAvailableDriver = availability.canAcceptDeliveryOrders,
+                        deliveryAvailabilityMessage = availability.reasonMessage
                     )
-                }
-                delay(30_000L)
+                )
             }
         }
     }

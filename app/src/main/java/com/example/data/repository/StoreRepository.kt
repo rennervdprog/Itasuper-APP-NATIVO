@@ -7,6 +7,8 @@ import com.example.data.remote.SupabaseClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class SearchCategory(
     val id: String,
@@ -38,6 +40,7 @@ object StoreRepository {
 
     private val _stores = MutableStateFlow<List<Store>>(emptyList())
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()
+    private val availabilityRefreshMutex = Mutex()
 
     /**
      * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda ou timeout.
@@ -52,6 +55,40 @@ object StoreRepository {
         }
         return StoreRefreshResult(isSuccess = false, stores = _stores.value)
     }
+
+    /**
+     * Atualiza somente a disponibilidade dos motoboys das lojas próprias.
+     * A fonte é a mesma RPC canônica usada pelo checkout: vínculo aceito,
+     * entregador ativo/online e último heartbeat dentro de 13 minutos.
+     * Falhas transitórias preservam o último estado conhecido para não piscar
+     * nem esconder lojas enquanto a rede está instável.
+     */
+    suspend fun refreshDriverAvailability(): Boolean = availabilityRefreshMutex.withLock {
+        val currentStores = _stores.value
+        if (currentStores.none { it.deliveryMode.equals("own", ignoreCase = true) }) return@withLock true
+
+        val onlineDriverStoreIds = SupabaseClient.fetchStoreIdsWithOnlineDrivers() ?: return@withLock false
+        val updatedStores = applyDriverAvailability(currentStores, onlineDriverStoreIds)
+        if (updatedStores != currentStores) _stores.value = updatedStores
+        true
+    }
+
+    internal fun applyDriverAvailability(stores: List<Store>, onlineDriverStoreIds: Set<String>): List<Store> =
+        stores.map { store ->
+            if (!store.deliveryMode.equals("own", ignoreCase = true)) {
+                store
+            } else {
+                val available = onlineDriverStoreIds.contains(store.id)
+                store.copy(
+                    hasAvailableDriver = available,
+                    deliveryAvailabilityMessage = if (available) {
+                        ""
+                    } else {
+                        "Esta loja está sem entregador disponível no momento."
+                    }
+                )
+            }
+        }
 
     private val _lastOrder = MutableStateFlow<LastOrder?>(null)
     val lastOrder: StateFlow<LastOrder?> = _lastOrder.asStateFlow()

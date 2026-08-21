@@ -1200,7 +1200,8 @@ object SupabaseClient {
      * pública da vitrine Capacitor. `null` significa indisponibilidade temporária da RPC
      * e permite que o chamador mantenha o catálogo para não produzir uma Home vazia.
      */
-    private fun fetchStoreIdsWithOnlineDrivers(): Set<String>? {
+    /** Consulta pública leve usada pela Home, busca, carrinho e detalhe para refletir a disponibilidade atual sem recarregar o catálogo. */
+    fun fetchStoreIdsWithOnlineDrivers(): Set<String>? {
         return try {
             val payload = "{}".toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()
