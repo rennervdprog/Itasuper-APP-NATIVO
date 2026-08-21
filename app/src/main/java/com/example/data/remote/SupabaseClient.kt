@@ -2597,6 +2597,7 @@ object SupabaseClient {
                     status = item.optString("status", "pendente"),
                     createdAt = item.optString("created_at", ""),
                     confirmedAt = item.optString("confirmed_at", ""),
+                    refundRequestExpiresAt = item.optString("refund_request_expires_at", ""),
                     deliveryPin = item.optString("delivery_pin", ""),
                     neighborhood = item.optString("neighborhood", ""),
                     deliveryCep = item.optString("delivery_cep", ""),

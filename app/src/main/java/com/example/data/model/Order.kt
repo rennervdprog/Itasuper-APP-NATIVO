@@ -17,6 +17,8 @@ data class Order(
     val status: String = "Em preparação",
     val createdAt: String,
     val confirmedAt: String = "",
+    /** ISO do prazo canônico de abertura de caso PIX Direto emitido pelo servidor. */
+    val refundRequestExpiresAt: String = "",
     val deliveryPin: String = "",
     val neighborhood: String = "",
     val deliveryCep: String = "",

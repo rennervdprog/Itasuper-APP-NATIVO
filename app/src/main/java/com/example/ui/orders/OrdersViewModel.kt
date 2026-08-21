@@ -688,10 +688,19 @@ class OrdersViewModel : ViewModel() {
 
     fun requestRefund(order: Order, reason: String, description: String, onComplete: (Boolean) -> Unit) {
         val session = UserSessionRepository.userSession.value
-        val refundable = RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status)
+        val refundable = RefundEligibility.canOpenPixDiretoCase(
+            order.paymentMethod,
+            order.status,
+            order.refundRequestExpiresAt
+        )
         if (!refundable) {
+            val message = if (order.paymentMethod == "pix_direto" && order.status.lowercase() in setOf("entregue", "finalizado")) {
+                RefundEligibility.EXPIRED_MESSAGE
+            } else {
+                RefundEligibility.INELIGIBLE_MESSAGE
+            }
             _uiState.value = _uiState.value.copy(
-                errorMessage = RefundEligibility.INELIGIBLE_MESSAGE
+                errorMessage = message
             )
             onComplete(false)
             return

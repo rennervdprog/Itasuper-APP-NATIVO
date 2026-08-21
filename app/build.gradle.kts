@@ -18,8 +18,8 @@ android {
     applicationId = "app.itasuper.cliente"
     minSdk = 24
     targetSdk = 36
-    versionCode = 9
-    versionName = "1.0.8-realtime-disponibilidade"
+    versionCode = 11
+    versionName = "1.0.10-descobrir-reembolso-24h"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

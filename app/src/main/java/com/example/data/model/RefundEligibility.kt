@@ -1,13 +1,32 @@
 package com.example.data.model
 
+import java.time.Instant
+
 /**
  * Regra visual compartilhada. O Supabase continua sendo a autoridade final:
- * além deste critério, exige PIX Direto confirmado e ownership do pedido.
+ * exige PIX Direto confirmado, pedido concluído, ownership e prazo de 24 horas aberto.
  */
 object RefundEligibility {
-    fun canOpenPixDiretoCase(paymentMethod: String, status: String): Boolean =
-        paymentMethod == "pix_direto" && status.lowercase() in setOf("entregue", "finalizado")
+    fun canOpenPixDiretoCase(
+        paymentMethod: String,
+        status: String,
+        refundRequestExpiresAt: String,
+        nowEpochMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (paymentMethod != "pix_direto" || status.lowercase() !in setOf("entregue", "finalizado")) {
+            return false
+        }
+
+        val expiresAtEpochMillis = runCatching {
+            Instant.parse(refundRequestExpiresAt).toEpochMilli()
+        }.getOrNull() ?: return false
+
+        return expiresAtEpochMillis > nowEpochMillis
+    }
 
     const val INELIGIBLE_MESSAGE =
-        "Somente pedidos pagos por PIX Direto confirmado podem abrir um caso de reembolso pela plataforma."
+        "Somente pedidos pagos por PIX Direto confirmado e dentro de 24 horas da conclusão podem abrir um caso de reembolso pela plataforma."
+
+    const val EXPIRED_MESSAGE =
+        "O prazo de 24 horas após a conclusão do pedido para solicitar reembolso expirou."
 }

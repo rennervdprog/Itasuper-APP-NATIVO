@@ -871,7 +871,7 @@ private fun PreviousOrderCard(
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
-                    if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status)) {
+                    if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status, order.refundRequestExpiresAt)) {
                         TextButton(onClick = onRefundOrder) { Text("Analisar reembolso") }
                     }
                 }

@@ -47,7 +47,7 @@ sealed class BottomNavItem(
     val testTag: String
 ) {
     object Home : BottomNavItem("home", "Início", R.drawable.ic_ita_home, "nav_home")
-    object Search : BottomNavItem("busca", "Busca", R.drawable.ic_ita_search, "nav_busca")
+    object Search : BottomNavItem("busca", "Descobrir", R.drawable.ic_ita_search, "nav_busca")
     object Orders : BottomNavItem("pedidos", "Pedidos", R.drawable.ic_ita_receipt, "nav_pedidos")
     object Notifications : BottomNavItem("notificacoes", "Avisos", R.drawable.ic_ita_bell, "nav_notificacoes")
     object Profile : BottomNavItem("perfil", "Perfil", R.drawable.ic_ita_profile, "nav_perfil")
