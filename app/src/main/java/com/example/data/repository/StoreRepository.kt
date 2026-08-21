@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.withLock
 
 data class SearchCategory(
@@ -67,7 +68,11 @@ object StoreRepository {
         val currentStores = _stores.value
         if (currentStores.none { it.deliveryMode.equals("own", ignoreCase = true) }) return@withLock true
 
-        val onlineDriverStoreIds = SupabaseClient.fetchStoreIdsWithOnlineDrivers() ?: return@withLock false
+        // A RPC é consultada fora da Main thread e tem limite curto: uma degradação
+        // transitória do banco não pode congelar a Home nem substituir um estado válido.
+        val onlineDriverStoreIds = withTimeoutOrNull(8_000L) {
+            SupabaseClient.fetchStoreIdsWithOnlineDrivers()
+        } ?: return@withLock false
         val updatedStores = applyDriverAvailability(currentStores, onlineDriverStoreIds)
         if (updatedStores != currentStores) _stores.value = updatedStores
         true

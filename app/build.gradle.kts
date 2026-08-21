@@ -18,8 +18,8 @@ android {
     applicationId = "app.itasuper.cliente"
     minSdk = 24
     targetSdk = 36
-    versionCode = 8
-    versionName = "1.0.7-reembolso-pix-direto"
+    versionCode = 9
+    versionName = "1.0.8-realtime-disponibilidade"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

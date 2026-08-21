@@ -1202,8 +1202,8 @@ object SupabaseClient {
      * e permite que o chamador mantenha o catálogo para não produzir uma Home vazia.
      */
     /** Consulta pública leve usada pela Home, busca, carrinho e detalhe para refletir a disponibilidade atual sem recarregar o catálogo. */
-    fun fetchStoreIdsWithOnlineDrivers(): Set<String>? {
-        return try {
+    suspend fun fetchStoreIdsWithOnlineDrivers(): Set<String>? = withContext(Dispatchers.IO) {
+        try {
             val payload = "{}".toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()
                 .url("$SUPABASE_URL/rest/v1/rpc/stores_with_online_drivers")
