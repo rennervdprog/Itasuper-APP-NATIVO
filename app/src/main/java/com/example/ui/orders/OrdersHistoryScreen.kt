@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Order
+import com.example.data.model.RefundEligibility
 import com.example.ui.navigation.ItaSuperBottomNavBar
 import com.example.ui.theme.ItaSuperBorder
 import com.example.ui.theme.ItaSuperHighlightBg
@@ -265,10 +266,10 @@ fun OrdersHistoryScreen(
     orderPendingRefund.value?.let { order ->
         AlertDialog(
             onDismissRequest = { orderPendingRefund.value = null },
-            title = { Text("Solicitar reembolso") },
+            title = { Text("Solicitar análise de reembolso") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("O crédito será analisado pela plataforma e, se aprovado, retornará à sua carteira ItaSuper.")
+                    Text("O PIX foi transferido diretamente para a loja. O ItaSuper abrirá um caso para que a loja registre a devolução e o comprovante. Nenhum saldo será adicionado automaticamente à sua carteira.")
                     OutlinedTextField(
                         value = refundDescription.value,
                         onValueChange = { refundDescription.value = it },
@@ -279,7 +280,7 @@ fun OrdersHistoryScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.requestRefund(order, "outro", refundDescription.value) { success ->
+                    viewModel.requestRefund(order, "other", refundDescription.value) { success ->
                         if (success) {
                             orderPendingRefund.value = null
                             refundDescription.value = ""
@@ -870,8 +871,8 @@ private fun PreviousOrderCard(
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
-                    if (order.paymentMethod !in setOf("dinheiro", "pix_machine", "cartao")) {
-                        TextButton(onClick = onRefundOrder) { Text("Solicitar reembolso") }
+                    if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status)) {
+                        TextButton(onClick = onRefundOrder) { Text("Analisar reembolso") }
                     }
                 }
             }

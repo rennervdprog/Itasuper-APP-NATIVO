@@ -2124,30 +2124,39 @@ object SupabaseClient {
         }
     }
 
-    suspend fun requestRefund(order: com.example.data.model.Order, userId: String, reason: String, description: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
-        if (order.id.isBlank() || order.storeId.isBlank() || userId.isBlank() || accessToken.isBlank()) return@withContext false
+    /**
+     * Abre um caso de devolução exclusivamente para PIX Direto confirmado.
+     * A identidade e a elegibilidade são validadas pela RPC; o aplicativo não
+     * envia valor de crédito, modalidade nem identidade do solicitante.
+     */
+    suspend fun requestPixDiretoRefund(orderId: String, reason: String, description: String, accessToken: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (orderId.isBlank() || accessToken.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Sessão ou pedido inválido."))
+        }
         try {
             val body = JSONObject().apply {
-                put("order_id", order.id)
-                put("store_id", order.storeId)
-                put("requester_id", userId)
-                put("reason", reason)
-                put("description", description.trim().ifBlank { JSONObject.NULL })
-                put("refund_type", "wallet_credit")
-                put("requested_amount", order.total)
+                put("p_order_id", orderId)
+                put("p_reason", reason)
+                put("p_description", description.trim().ifBlank { JSONObject.NULL })
+                put("p_evidence_urls", JSONArray())
             }
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/refund_requests")
+                .url("$SUPABASE_URL/rest/v1/rpc/create_pix_direto_refund_case")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Prefer", "return=minimal")
                 .post(body.toString().toRequestBody(jsonMediaType))
                 .build()
-            httpClient.newCall(request).execute().use { it.isSuccessful }
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) return@withContext Result.success(Unit)
+                val raw = response.body?.string().orEmpty()
+                val message = runCatching { JSONObject(raw).optString("message").ifBlank { JSONObject(raw).optString("hint") } }.getOrDefault("")
+                Result.failure(IllegalStateException(message.ifBlank { "Não foi possível abrir a solicitação de PIX Direto." }))
+            }
         } catch (error: Exception) {
-            Log.e(TAG, "Erro ao solicitar reembolso", error)
-            false
+            Log.e(TAG, "Erro ao solicitar devolução de PIX Direto", error)
+            Result.failure(error)
         }
     }
 

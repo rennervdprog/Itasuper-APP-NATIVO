@@ -7,6 +7,7 @@ import com.example.data.model.DeliveryAddressInput
 import com.example.data.model.DeliveryQuote
 import com.example.data.model.DeliveryQuoteFailure
 import com.example.data.model.Order
+import com.example.data.model.RefundEligibility
 import com.example.data.model.LoyaltyConfig
 import com.example.data.model.SavedAddress
 import com.example.data.model.normalizeBrazilianUf
@@ -687,17 +688,27 @@ class OrdersViewModel : ViewModel() {
 
     fun requestRefund(order: Order, reason: String, description: String, onComplete: (Boolean) -> Unit) {
         val session = UserSessionRepository.userSession.value
-        val status = order.status.lowercase()
-        val refundable = status in setOf("entregue", "finalizado") && order.paymentMethod !in setOf("dinheiro", "pix_machine", "cartao")
+        val refundable = RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status)
         if (!refundable) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Este pedido não é elegível para reembolso pela plataforma.")
+            _uiState.value = _uiState.value.copy(
+                errorMessage = RefundEligibility.INELIGIBLE_MESSAGE
+            )
+            onComplete(false)
+            return
+        }
+        if (session.accessToken.isBlank()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Sua sessão expirou. Entre novamente para solicitar a análise.")
             onComplete(false)
             return
         }
         viewModelScope.launch {
-            val success = SupabaseClient.requestRefund(order, session.userId, reason, description, session.accessToken)
-            if (!success) _uiState.value = _uiState.value.copy(errorMessage = "Não foi possível enviar a solicitação de reembolso.")
-            onComplete(success)
+            val result = SupabaseClient.requestPixDiretoRefund(order.id, reason, description, session.accessToken)
+            if (result.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = result.exceptionOrNull()?.message ?: "Não foi possível abrir a solicitação de PIX Direto."
+                )
+            }
+            onComplete(result.isSuccess)
         }
     }
 
