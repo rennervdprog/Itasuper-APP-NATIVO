@@ -18,8 +18,8 @@ android {
     applicationId = "app.itasuper.cliente"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 3
+    versionName = "1.0.2-home-aviso-entrega"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

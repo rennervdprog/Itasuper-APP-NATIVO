@@ -867,7 +867,15 @@ object SupabaseClient {
     }
 
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
-    suspend fun fetchActiveStores(includeUnavailableOwnDeliveryStores: Boolean = false): StoreCatalogResult = withContext(Dispatchers.IO) {
+    /**
+     * Regra de vitrine do cliente: a falta de motoboy não remove lojas próprias.
+     * Ela apenas bloqueia a modalidade Entrega no checkout canônico e informa o
+     * aviso no card. Somente lojas exclusivas de PDV ficam fora da vitrine.
+     */
+    internal fun keepClientCatalogStores(stores: List<Store>): List<Store> =
+        stores.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
+
+    suspend fun fetchActiveStores(): StoreCatalogResult = withContext(Dispatchers.IO) {
         try {
             val openingHours = fetchOpeningHours()
 
@@ -1144,24 +1152,17 @@ object SupabaseClient {
                     storeList.add(store)
                 }
 
-                // Mesma regra de vitrine do Capacitor: lojas exclusivas de PDV não recebem
-                // pedidos de delivery. Quando a RPC responder, só ficam as lojas com pelo
-                // menos um entregador online vinculado. Em falha temporária da RPC, preserva
-                // o catálogo elegível para não esvaziar a Home por erro de rede.
-                val deliveryEligibleStores = storeList.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
+                // A presença do motoboy não define se a loja aparece: ela define
+                // somente se Entrega pode ser concluída. Dessa forma, a Home mostra o
+                // cardápio e o aviso mesmo durante a indisponibilidade temporária.
                 val onlineDriverStoreIds = fetchStoreIdsWithOnlineDrivers()
-                val visibleStores = when {
-                    includeUnavailableOwnDeliveryStores || onlineDriverStoreIds == null -> deliveryEligibleStores
-                    else -> deliveryEligibleStores.filter { store ->
-                        !store.deliveryMode.equals("own", ignoreCase = true) || store.id in onlineDriverStoreIds
-                    }
-                }
+                val catalogStores = keepClientCatalogStores(storeList)
 
                 // A visão pública não expõe todos os overrides VIP. A vitrine consulta a
                 // mesma RPC usada pela cotação para mostrar o preço-base correto de cada loja.
                 StoreCatalogResult(
                     isSuccess = true,
-                    stores = visibleStores.map { sourceStore ->
+                    stores = catalogStores.map { sourceStore ->
                     val driverAvailabilityKnown = sourceStore.deliveryMode.equals("own", ignoreCase = true) && onlineDriverStoreIds != null
                     val store = sourceStore.copy(
                         hasAvailableDriver = when {
@@ -1329,7 +1330,7 @@ object SupabaseClient {
         try {
             // Reutiliza o mapper central para manter os campos e as regras do card
             // de loja idênticos entre Home, Busca e Detalhe.
-            fetchActiveStores(includeUnavailableOwnDeliveryStores = true).stores.firstOrNull { it.id == storeId }
+            fetchActiveStores().stores.firstOrNull { it.id == storeId }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching store $storeId", e)
             null

@@ -2080,7 +2080,7 @@ private fun HomeStoreListSection(
             )
             if (activeCity.isNotBlank()) {
                 Text(
-                    text = "$regionalStoreCount disponíveis",
+                    text = if (regionalStoreCount == 1) "1 loja" else "$regionalStoreCount lojas",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = ManropeFontFamily,
                         color = ItaSuperTextSecondary,
@@ -2211,7 +2211,7 @@ private fun HomeStoreListSection(
                 Text(
                     text = when {
                         regionalStoreCount > 0 && hasActiveFilters -> "Nenhuma loja encontrada com os filtros selecionados"
-                        activeCity.isNotBlank() -> "No momento, não há lojas com entrega disponível em $activeCity"
+                        activeCity.isNotBlank() -> "Ainda não há lojas cadastradas em $activeCity"
                         else -> "Nenhuma loja encontrada para esse filtro"
                     },
                     style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2374,6 +2374,7 @@ private fun StoreCardItem(
     }
     val deliveryDetails = listOfNotNull(deliveryTime, deliveryFee).joinToString("  •  ")
     val openingMessage = nextStoreOpeningLabel(store)
+    val deliveryUnavailable = store.deliveryMode.equals("own", ignoreCase = true) && store.hasAvailableDriver == false
 
     Column(
         modifier = Modifier
@@ -2434,6 +2435,22 @@ private fun StoreCardItem(
                             fontSize = 13.sp,
                             color = if (store.isFreeDelivery) ItaSuperSuccess else Color(0xFF686868),
                             fontWeight = if (store.isFreeDelivery) FontWeight.SemiBold else FontWeight.Medium
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (deliveryUnavailable) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = store.deliveryAvailabilityMessage.ifBlank {
+                            "Entrega indisponível no momento"
+                        },
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            color = Color(0xFFC13550)
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
