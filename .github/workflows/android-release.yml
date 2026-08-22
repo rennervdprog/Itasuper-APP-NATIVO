@@ -3,9 +3,15 @@ name: Android Release AAB and APK
 on:
   workflow_dispatch:
     inputs:
-      release_label:
-        description: "Identificação interna da build, por exemplo 1.0.1"
+      version_code:
+        description: "Número interno crescente. Use sempre um número maior que a versão já instalada, por exemplo 12."
         required: true
+        default: "12"
+        type: string
+      version_name:
+        description: "Versão exibida ao cliente, por exemplo 1.0.11"
+        required: true
+        default: "1.0.11"
         type: string
 
 permissions:
@@ -25,6 +31,8 @@ jobs:
       STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      APP_VERSION_CODE: ${{ inputs.version_code }}
+      APP_VERSION_NAME: ${{ inputs.version_name }}
 
     steps:
       - name: Checkout
@@ -37,14 +45,17 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      - name: Validate signing secrets
+      - name: Validate release inputs and signing secrets
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$APP_VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo "version_code deve ser um número inteiro maior que zero."; exit 1; }
+          test -n "$APP_VERSION_NAME" || { echo "version_name não pode ficar vazio."; exit 1; }
           test -n "$KEYSTORE_BASE64" || { echo "ANDROID_UPLOAD_KEYSTORE_BASE64 não configurado."; exit 1; }
           test -n "$STORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD não configurado."; exit 1; }
           test -n "$KEY_ALIAS" || { echo "ANDROID_KEY_ALIAS não configurado."; exit 1; }
           test -n "$KEY_PASSWORD" || { echo "ANDROID_KEY_PASSWORD não configurado."; exit 1; }
+          echo "Gerando versão $APP_VERSION_NAME (code $APP_VERSION_CODE)."
 
       - name: Restore signing key in ephemeral runner storage
         shell: bash
@@ -67,7 +78,7 @@ jobs:
       - name: Publish signed AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: itasuper-cliente-aab-${{ inputs.release_label }}-${{ github.run_number }}
+          name: itasuper-cliente-aab-v${{ inputs.version_name }}-code${{ inputs.version_code }}-${{ github.run_number }}
           path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
@@ -75,7 +86,7 @@ jobs:
       - name: Publish signed APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: itasuper-cliente-apk-${{ inputs.release_label }}-${{ github.run_number }}
+          name: itasuper-cliente-apk-v${{ inputs.version_name }}-code${{ inputs.version_code }}-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14

@@ -10,6 +10,23 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+// Para uma atualização Android ser instalável, APP_VERSION_CODE deve ser maior que o da versão já instalada.
+// Os valores podem ser alterados no Android Studio/terminal com -PAPP_VERSION_CODE e -PAPP_VERSION_NAME,
+// ou definidos pelo workflow de release no GitHub Actions.
+val appVersionCode = (
+  providers.gradleProperty("APP_VERSION_CODE")
+    .orElse(providers.environmentVariable("APP_VERSION_CODE"))
+    .orNull
+    ?: "12"
+).toIntOrNull() ?: error("APP_VERSION_CODE precisa ser um número inteiro positivo")
+val appVersionName =
+  providers.gradleProperty("APP_VERSION_NAME")
+    .orElse(providers.environmentVariable("APP_VERSION_NAME"))
+    .orNull
+    ?: "1.0.11"
+
+require(appVersionCode > 0) { "APP_VERSION_CODE precisa ser maior que zero" }
+
 android {
   namespace = "com.example"
   compileSdk = 36
@@ -18,8 +35,8 @@ android {
     applicationId = "app.itasuper.cliente"
     minSdk = 24
     targetSdk = 36
-    versionCode = 11
-    versionName = "1.0.10-descobrir-reembolso-24h"
+    versionCode = appVersionCode
+    versionName = appVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
