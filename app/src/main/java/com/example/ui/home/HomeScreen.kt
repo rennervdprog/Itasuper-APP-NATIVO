@@ -632,6 +632,7 @@ private fun HomeExplorationCategoryItem(
         "icecream", "acai", "açaí" -> R.drawable.ic_lucide_soup
         "local_bar", "bebidas" -> R.drawable.ic_lucide_martini
         "shopping_cart", "mercado", "market" -> R.drawable.ic_lucide_shopping_basket
+        "pharmacy", "farmacia", "farmácia", "farmacias" -> R.drawable.ic_lucide_pharmacy
         else -> R.drawable.ic_lucide_hamburger
     }
     val label = category.name.ifBlank { category.id.replaceFirstChar { it.uppercase() } }

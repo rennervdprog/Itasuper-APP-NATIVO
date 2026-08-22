@@ -490,6 +490,13 @@ class StoreDetailViewModel : ViewModel() {
     fun addSelectedProductToCart() {
         val state = _uiState.value
         val product = state.selectedProductForModal ?: return
+
+        if (product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout") {
+            _uiState.value = state.copy(
+                modalError = "Este produto exige validação da farmácia e não pode ser incluído no checkout comum do ItaSuper."
+            )
+            return
+        }
         
         // Validate required groups
         for (group in state.modalAddonGroups) {

@@ -114,7 +114,17 @@ class CartStorage(context: Context) {
         hasStuffedCrust = optBoolean("has_stuffed_crust", false),
         isCombo = optBoolean("is_combo", false),
         isPastelFlavor = optBoolean("is_pastel_flavor", false),
-        isBeverage = optBoolean("is_beverage", false)
+        isBeverage = optBoolean("is_beverage", false),
+        requiresPrescription = optBoolean("requires_prescription", false),
+        isControlled = optBoolean("controlled", false),
+        pharmacySaleMode = optString("pharmacy_sale_mode", "platform_checkout"),
+        pharmacyType = optString("pharmacy_type", ""),
+        activeIngredient = optString("active_ingredient", ""),
+        dosage = optString("dosage", ""),
+        pharmaForm = optString("pharma_form", ""),
+        manufacturer = optString("manufacturer", ""),
+        packQuantity = optString("pack_quantity", ""),
+        isGeneric = optBoolean("is_generic", false)
     ).takeIf { it.id.isNotBlank() && it.storeId.isNotBlank() }
 
     private fun Product.toJson() = JSONObject().apply {
@@ -132,6 +142,16 @@ class CartStorage(context: Context) {
         put("is_combo", isCombo)
         put("is_pastel_flavor", isPastelFlavor)
         put("is_beverage", isBeverage)
+        put("requires_prescription", requiresPrescription)
+        put("controlled", isControlled)
+        put("pharmacy_sale_mode", pharmacySaleMode)
+        put("pharmacy_type", pharmacyType)
+        put("active_ingredient", activeIngredient)
+        put("dosage", dosage)
+        put("pharma_form", pharmaForm)
+        put("manufacturer", manufacturer)
+        put("pack_quantity", packQuantity)
+        put("is_generic", isGeneric)
     }
 
     private fun JSONArray.toAddons() = buildList {

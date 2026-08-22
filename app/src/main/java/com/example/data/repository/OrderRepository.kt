@@ -58,6 +58,17 @@ object OrderRepository {
         if (items.isEmpty()) {
             return Result.failure(IllegalStateException("Sua sacola está vazia."))
         }
+        if (items.any { item ->
+                item.product.requiresPrescription ||
+                    item.product.isControlled ||
+                    item.product.pharmacySaleMode != "platform_checkout"
+            }) {
+            return Result.failure(
+                IllegalStateException(
+                    "Há um produto que exige validação da farmácia. Remova o item para finalizar pelo checkout comum do ItaSuper."
+                )
+            )
+        }
 
         // A carteira é debitada depois do insert com lock no banco; o total inicial não pode antecipá-la.
         val totalBeforeWallet = (subtotal + deliveryFee - discount - loyaltyDiscount).coerceAtLeast(0.0)

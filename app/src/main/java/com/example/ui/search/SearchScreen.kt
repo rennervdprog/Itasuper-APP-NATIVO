@@ -347,7 +347,7 @@ private fun DiscoverCuratedCategories(
     categories: List<SearchCategory>,
     onSelect: (String) -> Unit
 ) {
-    val wanted = listOf("pizzaria", "acai", "marmita")
+    val wanted = listOf("pizzaria", "acai", "marmita", "farmacias")
     val curated = wanted.mapNotNull { wantedId ->
         categories.firstOrNull { it.id.equals(wantedId, ignoreCase = true) }
     }
@@ -377,10 +377,11 @@ private fun DiscoverCuratedCategories(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            curated.forEachIndexed { index, category ->
-                val iconRes = when (index) {
-                    0 -> R.drawable.ic_lucide_pizza
-                    1 -> R.drawable.ic_lucide_soup
+            curated.forEach { category ->
+                val iconRes = when (category.id) {
+                    "pizzaria" -> R.drawable.ic_lucide_pizza
+                    "acai" -> R.drawable.ic_lucide_soup
+                    "farmacias" -> R.drawable.ic_lucide_pharmacy
                     else -> R.drawable.ic_lucide_package_open
                 }
                 Column(

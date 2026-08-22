@@ -297,6 +297,10 @@ fun StoreDetailScreen(
             }
         } else {
             val store = uiState.store
+            val isPharmacyStore = store?.let { currentStore ->
+                currentStore.category.equals("farmacias", ignoreCase = true) ||
+                    currentStore.secondaryCategories.any { it.equals("farmacias", ignoreCase = true) }
+            } ?: false
             val hasPizzaCategory = store?.let { currentStore ->
                 currentStore.category.lowercase().contains("pizza") ||
                     currentStore.secondaryCategories.any { it.lowercase().contains("pizza") }
@@ -416,6 +420,57 @@ fun StoreDetailScreen(
                         },
                         onInfoClick = onNavigateToInfo
                     )
+                }
+
+                if (isPharmacyStore) {
+                    item(key = "pharmacy_store_notice") {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFE8F7F3),
+                            border = BorderStroke(1.dp, Color(0xFF0F766E).copy(alpha = 0.22f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF0F766E).copy(alpha = 0.14f),
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0F766E),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Catálogo de farmácia",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF115E59)
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = "Itens liberados podem ser adicionados à sacola. Produtos sujeitos à validação aparecem com aviso e não entram no checkout comum.",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = Color(0xFF356B66),
+                                            lineHeight = 17.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (isDeliveryUnavailable) {
@@ -1217,6 +1272,7 @@ private fun ProductShowcaseTile(
     onAddClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val requiresPharmacyValidation = product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout"
     Column(
         modifier = modifier
             .clickable { onCardClick() }
@@ -1251,16 +1307,16 @@ private fun ProductShowcaseTile(
                     .align(Alignment.BottomEnd)
                     .padding(6.dp)
                     .size(28.dp)
-                    .clickable { onAddClick() }
+                    .clickable { if (requiresPharmacyValidation) onCardClick() else onAddClick() }
                     .testTag("add_product_button_${product.id}"),
                 shape = CircleShape,
-                color = ItaSuperPrimary,
+                color = if (requiresPharmacyValidation) Color(0xFF0F766E) else ItaSuperPrimary,
                 shadowElevation = 2.dp
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Adicionar ${product.name}",
+                        imageVector = if (requiresPharmacyValidation) Icons.Default.Search else Icons.Default.Add,
+                        contentDescription = if (requiresPharmacyValidation) "Ver detalhes de ${product.name}" else "Adicionar ${product.name}",
                         tint = Color.White,
                         modifier = Modifier.size(17.dp)
                     )
@@ -1279,6 +1335,23 @@ private fun ProductShowcaseTile(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+        if (product.requiresPrescription || product.isControlled || product.isGeneric) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = when {
+                    product.isControlled -> "Validação da farmácia"
+                    product.requiresPrescription -> "Receita obrigatória"
+                    else -> "Genérico"
+                },
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = if (product.isGeneric) Color(0xFF2563EB) else Color(0xFF0F766E),
+                    fontSize = 10.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = String.format("R$ %.2f", product.price).replace(".", ","),
@@ -1418,6 +1491,7 @@ fun ProductDetailSheetContent(
     } else {
         uiState.modalAddonGroups.filter { it.minSelect == 0 }
     }
+    val requiresPharmacyValidation = product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout"
 
     Column(
         modifier = Modifier
@@ -1490,6 +1564,39 @@ fun ProductDetailSheetContent(
                 fontWeight = FontWeight.Bold,
                 color = ItaSuperPrimary
             )
+
+            if (requiresPharmacyValidation || product.isGeneric || product.dosage.isNotBlank() || product.activeIngredient.isNotBlank() || product.manufacturer.isNotBlank() || product.packQuantity.isNotBlank()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (requiresPharmacyValidation) Color(0xFFFFF4E5) else Color(0xFFE8F7F3),
+                    border = BorderStroke(1.dp, if (requiresPharmacyValidation) Color(0xFFF59E0B).copy(alpha = 0.30f) else Color(0xFF0F766E).copy(alpha = 0.20f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        if (requiresPharmacyValidation) {
+                            Text(
+                                text = "Validação pela farmácia necessária",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFF92400E))
+                            )
+                            Text(
+                                text = "Este item é somente para consulta e não entra no checkout comum do ItaSuper.",
+                                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF92400E), lineHeight = 17.sp)
+                            )
+                        }
+                        if (product.isGeneric) Text("Genérico", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFF2563EB)))
+                        listOfNotNull(
+                            product.activeIngredient.takeIf { it.isNotBlank() }?.let { "Princípio ativo: $it" },
+                            product.dosage.takeIf { it.isNotBlank() }?.let { "Dosagem: $it" },
+                            product.pharmaForm.takeIf { it.isNotBlank() }?.let { "Apresentação: $it" },
+                            product.packQuantity.takeIf { it.isNotBlank() }?.let { "Embalagem: $it" },
+                            product.manufacturer.takeIf { it.isNotBlank() }?.let { "Fabricante: $it" }
+                        ).forEach { detail ->
+                            Text(detail, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF356B66)))
+                        }
+                    }
+                }
+            }
         }
 
         if (uiState.modalAddonsLoading) {
@@ -1667,7 +1774,7 @@ fun ProductDetailSheetContent(
             // Na etapa de detalhes o produto apenas avança; a validação ocorre na personalização.
             Button(
                 onClick = if (!isCustomizationStep && uiState.modalTotalSteps > 1) onNextCustomization else onAddToCartClick,
-                enabled = !uiState.modalAddonsLoading && if (!isCustomizationStep && uiState.modalTotalSteps > 1) true else uiState.canAddToCart,
+                enabled = !requiresPharmacyValidation && !uiState.modalAddonsLoading && (if (!isCustomizationStep && uiState.modalTotalSteps > 1) true else uiState.canAddToCart),
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
@@ -1677,6 +1784,7 @@ fun ProductDetailSheetContent(
             ) {
                 Text(
                     text = when {
+                        requiresPharmacyValidation -> "Validação pela farmácia necessária"
                         uiState.modalAddonsLoading -> "Carregando opções..."
                         !isCustomizationStep && uiState.modalTotalSteps > 1 -> "Próximo: Personalizar"
                         else -> "Adicionar • ${String.format("R$ %.2f", uiState.modalTotalPrice).replace(".", ",")}"

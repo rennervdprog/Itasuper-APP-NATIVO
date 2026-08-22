@@ -168,7 +168,10 @@ object CartRepository {
         selectedAddons: List<SelectedAddonItem> = emptyList(),
         storeDeliveryFeeType: String = "",
         storeOfficialDeliveryFee: Double? = null
-    ) {
+    ): Boolean {
+        if (product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout") {
+            return false
+        }
         val current = _cartState.value
         val rememberedProfile = deliveryProfiles[product.storeId]
         val effectiveFeeType = storeDeliveryFeeType.ifBlank { rememberedProfile?.feeType.orEmpty() }
@@ -185,7 +188,7 @@ object CartRepository {
                     officialDeliveryQuoteKey = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) }?.let { "fixed:${product.storeId}" }
                 )
             )
-            return
+            return true
         }
 
         val existingIndex = current.items.indexOfFirst {
@@ -212,6 +215,7 @@ object CartRepository {
                 (effectiveOfficialFee ?: current.storeOfficialDeliveryFee)?.let { "fixed:${product.storeId}" }
             } else null
         ))
+        return true
     }
 
     /**
