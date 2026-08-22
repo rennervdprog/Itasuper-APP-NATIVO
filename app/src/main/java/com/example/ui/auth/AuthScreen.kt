@@ -138,6 +138,7 @@ fun AuthScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color(0xFFFFFAF7))
                 .padding(paddingValues)
                 .imePadding()
                 .verticalScroll(rememberScrollState())
@@ -147,15 +148,15 @@ fun AuthScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 4.dp, bottom = 32.dp)
-                    .border(1.dp, Color(0xFFF2E7E0), RoundedCornerShape(28.dp)),
-                shape = RoundedCornerShape(28.dp),
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 2.dp, bottom = 28.dp)
+                    .border(1.dp, Color(0xFFF3E5DD), RoundedCornerShape(30.dp)),
+                shape = RoundedCornerShape(30.dp),
                 color = Color.White,
-                shadowElevation = 0.dp
+                shadowElevation = 10.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AuthTabRow(
@@ -217,35 +218,36 @@ private fun AuthHeader() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(238.dp)
+            .height(222.dp)
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFFFEEE4), Color(0xFFFFFAF7))
+                    colors = listOf(Color(0xFFFFF0E7), Color(0xFFFFFAF7))
                 )
             ),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Image(
                 painter = painterResource(id = R.drawable.itasuper_brand_icon),
                 contentDescription = "Ícone oficial ItaSuper",
-                modifier = Modifier.size(78.dp)
+                modifier = Modifier.size(66.dp)
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Image(
                 painter = painterResource(id = R.drawable.itasuper_brand_wordmark_cropped),
                 contentDescription = "ItaSuper",
                 modifier = Modifier
-                    .width(208.dp)
-                    .height(48.dp)
+                    .width(196.dp)
+                    .height(44.dp)
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Seu mercado e delivery em um só app",
+                text = "Mercado e delivery, do seu jeito.",
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    color = Color(0xFF6C5B53),
+                    color = Color(0xFF766159),
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -260,6 +262,7 @@ private fun AuthModeIntro(mode: AuthMode) {
         text = if (isLogin) "Que bom ter você de volta" else "Sua próxima compra começa aqui",
         style = MaterialTheme.typography.titleLarge.copy(
             fontWeight = FontWeight.ExtraBold,
+            fontSize = 26.sp,
             color = Color(0xFF251A15)
         ),
         textAlign = TextAlign.Center
@@ -267,7 +270,10 @@ private fun AuthModeIntro(mode: AuthMode) {
     Spacer(modifier = Modifier.height(6.dp))
     Text(
         text = if (isLogin) "Entre para encontrar suas lojas favoritas e acompanhar seus pedidos." else "Crie sua conta para pedir com rapidez, segurança e praticidade.",
-        style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF796860)),
+        style = MaterialTheme.typography.bodyMedium.copy(
+            color = Color(0xFF796860),
+            lineHeight = 22.sp
+        ),
         textAlign = TextAlign.Center
     )
 }
@@ -280,9 +286,9 @@ private fun AuthTabRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(Color(0xFFFFF1E8))
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color(0xFFFFF0E8))
             .padding(4.dp)
     ) {
         val isLogin = selectedMode is AuthMode.Login
@@ -291,7 +297,7 @@ private fun AuthTabRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxSize()
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(if (isLogin) ItaSuperPrimary else Color.Transparent)
                 .clickable { onModeSelected(AuthMode.Login) }
                 .testTag("tab_login"),
@@ -301,6 +307,7 @@ private fun AuthTabRow(
                 text = "Entrar",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
                     color = if (isLogin) Color.White else Color(0xFF6C5B53)
                 )
             )
@@ -310,7 +317,7 @@ private fun AuthTabRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxSize()
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(if (!isLogin) ItaSuperPrimary else Color.Transparent)
                 .clickable { onModeSelected(AuthMode.Register) }
                 .testTag("tab_register"),
@@ -320,6 +327,7 @@ private fun AuthTabRow(
                 text = "Criar conta",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
                     color = if (!isLogin) Color.White else Color(0xFF6C5B53)
                 )
             )
@@ -353,10 +361,12 @@ private fun LoginForm(
             ),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(62.dp)
                 .testTag("login_email_input"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -387,10 +397,12 @@ private fun LoginForm(
             keyboardActions = KeyboardActions(onDone = { onLoginClick() }),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(62.dp)
                 .testTag("login_password_input"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -423,9 +435,9 @@ private fun LoginForm(
             enabled = !uiState.isLoading,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(56.dp)
                 .testTag("login_submit_button"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = ItaSuperPrimary
             )
@@ -446,6 +458,29 @@ private fun LoginForm(
                     )
                 )
             }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = ItaSuperPrimary,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                text = "Acesso seguro e dados protegidos",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color(0xFF806D64),
+                    fontWeight = FontWeight.Medium
+                )
+            )
         }
 
     }
@@ -473,9 +508,14 @@ private fun RegisterForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(60.dp)
                 .testTag("reg_name_input"),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary, focusedLabelColor = ItaSuperPrimary)
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
+                focusedLabelColor = ItaSuperPrimary
+            )
         )
 
         // CPF / CNPJ com máscara e validação
@@ -489,9 +529,14 @@ private fun RegisterForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(60.dp)
                 .testTag("reg_cpf_input"),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary, focusedLabelColor = ItaSuperPrimary)
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
+                focusedLabelColor = ItaSuperPrimary
+            )
         )
 
         // WhatsApp com DDD
@@ -505,9 +550,14 @@ private fun RegisterForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(60.dp)
                 .testTag("reg_whatsapp_input"),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary, focusedLabelColor = ItaSuperPrimary)
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
+                focusedLabelColor = ItaSuperPrimary
+            )
         )
 
         // Senha
@@ -530,19 +580,24 @@ private fun RegisterForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(60.dp)
                 .testTag("reg_password_input"),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary, focusedLabelColor = ItaSuperPrimary)
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ItaSuperPrimary,
+                unfocusedBorderColor = Color(0xFFE5DED9),
+                focusedLabelColor = ItaSuperPrimary
+            )
         )
 
         // Box de PIN de entrega (4 dígitos numéricos)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF6F1))
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -578,9 +633,14 @@ private fun RegisterForm(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Next),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(60.dp)
                         .testTag("reg_pin_input"),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary)
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ItaSuperPrimary,
+                        unfocusedBorderColor = Color(0xFFE5DED9),
+                        focusedLabelColor = ItaSuperPrimary
+                    )
                 )
 
                 // PIN Confirmation
@@ -595,9 +655,14 @@ private fun RegisterForm(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(60.dp)
                         .testTag("reg_pin_confirm_input"),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ItaSuperPrimary)
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ItaSuperPrimary,
+                        unfocusedBorderColor = Color(0xFFE5DED9),
+                        focusedLabelColor = ItaSuperPrimary
+                    )
                 )
 
                 // Visual Pin Match Indicator
@@ -673,9 +738,9 @@ private fun RegisterForm(
             enabled = !uiState.isLoading,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(56.dp)
                 .testTag("register_submit_button"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
         ) {
             if (uiState.isLoading) {
