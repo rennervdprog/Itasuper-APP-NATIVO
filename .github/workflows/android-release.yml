@@ -1,4 +1,4 @@
-name: Android Release Bundle
+name: Android Release AAB and APK
 
 on:
   workflow_dispatch:
@@ -16,8 +16,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-signed-aab:
-    name: Build signed Android App Bundle
+  build-signed-release:
+    name: Build signed Android release artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -60,15 +60,23 @@ jobs:
           EOF
           chmod 600 "$KEYSTORE_PATH" keystore.properties
 
-      - name: Build signed release bundle
+      - name: Build signed release artifacts
         shell: bash
-        run: ./gradlew --no-daemon --max-workers=1 bundleRelease
+        run: ./gradlew --no-daemon --max-workers=1 :app:bundleRelease :app:assembleRelease
 
-      - name: Publish bundle artifact
+      - name: Publish signed AAB artifact
         uses: actions/upload-artifact@v4
         with:
           name: itasuper-cliente-aab-${{ inputs.release_label }}-${{ github.run_number }}
           path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: itasuper-cliente-apk-${{ inputs.release_label }}-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
 
