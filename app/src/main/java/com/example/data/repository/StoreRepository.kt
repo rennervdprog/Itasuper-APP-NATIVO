@@ -71,30 +71,19 @@ object StoreRepository {
     private val _stores = MutableStateFlow<List<Store>>(emptyList())
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()
     private val availabilityRefreshMutex = Mutex()
-    private val catalogRefreshMutex = Mutex()
-    private const val CATALOG_CACHE_TTL_MS = 2 * 60 * 1000L
-    private var lastCatalogRefreshAt = 0L
 
     /**
      * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda ou timeout.
      * Uma resposta remota vazia e bem-sucedida é aplicada, pois pode indicar que não há
      * entregadores disponíveis para as lojas próprias naquele instante.
      */
-    suspend fun refreshStoresFromSupabase(force: Boolean = false): StoreRefreshResult = catalogRefreshMutex.withLock {
-        val now = System.currentTimeMillis()
-        val hasFreshCatalog = _stores.value.isNotEmpty() &&
-            now - lastCatalogRefreshAt in 0..CATALOG_CACHE_TTL_MS
-        if (!force && hasFreshCatalog) {
-            return@withLock StoreRefreshResult(isSuccess = true, stores = _stores.value)
-        }
-
+    suspend fun refreshStoresFromSupabase(): StoreRefreshResult {
         val catalog = SupabaseClient.fetchActiveStores()
         if (catalog.isSuccess) {
             _stores.value = catalog.stores
-            lastCatalogRefreshAt = System.currentTimeMillis()
-            return@withLock StoreRefreshResult(isSuccess = true, stores = catalog.stores)
+            return StoreRefreshResult(isSuccess = true, stores = catalog.stores)
         }
-        StoreRefreshResult(isSuccess = false, stores = _stores.value)
+        return StoreRefreshResult(isSuccess = false, stores = _stores.value)
     }
 
     /**

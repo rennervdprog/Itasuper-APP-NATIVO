@@ -22,7 +22,6 @@ import com.example.data.model.SavedAddress
 import com.example.data.model.Store
 import com.example.data.model.normalizeBrazilianUf
 import com.example.data.model.StoreSettings
-import com.example.data.repository.StoreRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -834,7 +833,7 @@ object SupabaseClient {
 
     suspend fun fetchOpeningHours(): List<OpeningHour> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/opening_hours?select=store_id,day_of_week,open_time,close_time,is_closed_all_day"
+            val url = "$SUPABASE_URL/rest/v1/opening_hours?select=*"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1388,11 +1387,8 @@ object SupabaseClient {
     suspend fun fetchStoreById(storeId: String): Store? = withContext(Dispatchers.IO) {
         if (storeId.isBlank()) return@withContext null
         try {
-            // A Home e a Busca compartilham o catálogo. Reutilizar o snapshot evita
-            // recarregar todas as lojas ao abrir um detalhe já conhecido.
-            StoreRepository.getStoreById(storeId)?.let { return@withContext it }
-
-            // Fallback preservado para deep links abertos antes do catálogo carregar.
+            // Reutiliza o mapper central para manter os campos e as regras do card
+            // de loja idênticos entre Home, Busca e Detalhe.
             fetchActiveStores().stores.firstOrNull { it.id == storeId }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching store $storeId", e)
@@ -1475,7 +1471,7 @@ object SupabaseClient {
     // 4b. FETCH PROMO BANNERS FROM SUPABASE
     suspend fun fetchBanners(): List<com.example.data.model.Banner> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/banners?select=id,title,name,image_url,target_store_id,store_id,description&is_active=eq.true"
+            val url = "$SUPABASE_URL/rest/v1/banners?select=*&is_active=eq.true"
 
             val request = Request.Builder()
                 .url(url)
@@ -1488,7 +1484,7 @@ object SupabaseClient {
             var responseText = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val fallbackUrl = "$SUPABASE_URL/rest/v1/banners?select=id,title,name,image_url,target_store_id,store_id,description"
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/banners?select=*"
                 val fallbackRequest = Request.Builder()
                     .url(fallbackUrl)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1536,7 +1532,7 @@ object SupabaseClient {
     // 4c. FETCH MENU SECTIONS FOR STORE
     suspend fun fetchMenuSectionsForStore(storeId: String): List<MenuSection> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/menu_sections?select=id,store_id,name,sort_order&store_id=eq.$storeId&order=sort_order.asc"
+            val url = "$SUPABASE_URL/rest/v1/menu_sections?select=*&store_id=eq.$storeId&order=sort_order.asc"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1548,7 +1544,7 @@ object SupabaseClient {
             var responseText = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val fallbackUrl = "$SUPABASE_URL/rest/v1/menu_sections?select=id,store_id,name,sort_order&store_id=eq.$storeId"
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/menu_sections?select=*"
                 val fallbackRequest = Request.Builder()
                     .url(fallbackUrl)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1593,7 +1589,7 @@ object SupabaseClient {
     // 5. FETCH PRODUCTS FOR STORE
     suspend fun fetchProductsForStore(storeId: String): List<Product> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/products?select=id,name,description,price,image_url,section_id,is_available,sold_by_weight,metadata&store_id=eq.$storeId&order=name.asc"
+            val url = "$SUPABASE_URL/rest/v1/products?select=*&store_id=eq.$storeId&order=name.asc"
 
             val request = Request.Builder()
                 .url(url)
@@ -3009,7 +3005,7 @@ object SupabaseClient {
                 val storeIds = openStores.map { it.id }
                 val idFilter = storeIds.joinToString(",")
                 val ordering = if (orderByPrice) "&price=gt.0&order=price.asc" else ""
-                val url = "$SUPABASE_URL/rest/v1/products?select=id,store_id,name,price,image_url,is_available&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
+                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
