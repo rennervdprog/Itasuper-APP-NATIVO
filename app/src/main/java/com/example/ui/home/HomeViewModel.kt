@@ -12,6 +12,7 @@ import com.example.data.remote.SupabaseClient
 import com.example.data.repository.CartRepository
 import com.example.data.repository.StoreRepository
 import com.example.data.repository.UserSessionRepository
+import com.example.location.CurrentLocationProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -139,13 +140,13 @@ class HomeViewModel : ViewModel() {
         loadBanners()
     }
 
-    fun loadStores() {
+    fun loadStores(force: Boolean = true) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoadingStores = true,
                 errorMessage = null
             )
-            val refreshResult = StoreRepository.refreshStoresFromSupabase()
+            val refreshResult = StoreRepository.refreshStoresFromSupabase(force = force)
             val currentStores = storesWithCalculatedDistance(refreshResult.stores)
 
             if (!refreshResult.isSuccess) {
@@ -385,7 +386,7 @@ class HomeViewModel : ViewModel() {
         val directDeliveryOnly = _uiState.value.isDirectDeliveryFilterActive
         return regionalStores.filter { store ->
             val categories = listOf(store.category) + store.secondaryCategories
-            val matchCategory = currentCategory == "todas" || categories.any { it.equals(currentCategory, ignoreCase = true) }
+            val matchCategory = StoreRepository.matchesCategory(store, currentCategory)
             val matchQuery = query.isEmpty() ||
                 store.name.lowercase().contains(query) ||
                 categories.any { it.lowercase().contains(query) } ||
@@ -490,82 +491,57 @@ class HomeViewModel : ViewModel() {
     }
 
     fun fetchGpsLocation(context: Context) {
-        try {
-            _uiState.value = _uiState.value.copy(isRefreshingLocation = true)
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
-            if (locationManager != null) {
-                val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                if (hasFine || hasCoarse) {
-                    val gpsLoc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    val networkLoc = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                    val bestLoc = gpsLoc ?: networkLoc
-                    if (bestLoc != null) {
-                        // Converte lat/lng em endereço legível (rua + bairro) via Geocoder nativo do Android
-                        var resolvedStreet = "Sua Localização GPS"
-                        var resolvedNumber = "${String.format(java.util.Locale.US, "%.4f", bestLoc.latitude)}, ${String.format(java.util.Locale.US, "%.4f", bestLoc.longitude)}"
-                        var resolvedNeighborhood = ""
-                        var resolvedCity = UserSessionRepository.userSession.value.addressCity
-                        var resolvedState = UserSessionRepository.userSession.value.addressState
-                        try {
-                            val geocoder = android.location.Geocoder(context, java.util.Locale("pt", "BR"))
-                            @Suppress("DEPRECATION")
-                            val addresses = geocoder.getFromLocation(bestLoc.latitude, bestLoc.longitude, 1)
-                            val addr = addresses?.firstOrNull()
-                            if (addr != null) {
-                                val thoroughfare = addr.thoroughfare ?: addr.subLocality ?: addr.locality
-                                if (!thoroughfare.isNullOrBlank()) {
-                                    resolvedStreet = thoroughfare
-                                    resolvedNumber = addr.subThoroughfare ?: ""
-                                    resolvedNeighborhood = addr.subLocality ?: addr.subAdminArea ?: ""
-                                    resolvedCity = addr.locality ?: addr.subAdminArea ?: resolvedCity
-                                    resolvedState = addr.adminArea ?: resolvedState
-                                }
-                            }
-                        } catch (geoEx: Exception) {
-                            android.util.Log.e("HomeViewModel", "Geocoder failed, mantendo coordenadas cruas", geoEx)
-                        }
-
-                        currentLatitude = bestLoc.latitude
-                        currentLongitude = bestLoc.longitude
-                        UserSessionRepository.updateActiveLocation(
-                            street = resolvedStreet,
-                            number = resolvedNumber,
-                            neighborhood = resolvedNeighborhood,
-                            city = resolvedCity,
-                            state = resolvedState,
-                            latitude = bestLoc.latitude,
-                            longitude = bestLoc.longitude
-                        )
-                        _uiState.value = _uiState.value.copy(
-                            streetName = resolvedStreet,
-                            streetNumber = resolvedNumber,
-                            activeCity = resolvedCity,
-                            requiresAddress = resolvedCity.isBlank(),
-                            isRefreshingLocation = false,
-                            snackbarMessage = "Localização atualizada com sucesso!"
-                        )
-                        refreshRegionalCatalog()
-                        loadStores()
-                        return
-                    }
-                }
+        _uiState.value = _uiState.value.copy(isRefreshingLocation = true)
+        viewModelScope.launch {
+            val current = try {
+                CurrentLocationProvider.getCurrentAddress(context)
+            } catch (error: Exception) {
+                android.util.Log.e("HomeViewModel", "Error fetching current GPS", error)
+                null
             }
-            _uiState.value = _uiState.value.copy(
-                isRefreshingLocation = false,
-                snackbarMessage = "Não foi possível obter GPS. Usando endereço cadastrado."
+
+            if (current == null || current.city.isBlank()) {
+                UserSessionRepository.clearActiveLocation()
+                _uiState.value = _uiState.value.copy(
+                    isRefreshingLocation = false,
+                    snackbarMessage = "Não foi possível obter a localização atual. Usando endereço cadastrado."
+                )
+                refreshRegionalCatalog()
+                loadStores()
+                return@launch
+            }
+
+            currentLatitude = current.latitude
+            currentLongitude = current.longitude
+            UserSessionRepository.updateActiveLocation(
+                street = current.street,
+                number = current.number,
+                neighborhood = current.neighborhood,
+                city = current.city,
+                state = current.state,
+                cep = current.cep,
+                latitude = current.latitude,
+                longitude = current.longitude
             )
-        } catch (e: Exception) {
-            android.util.Log.e("HomeViewModel", "Error fetching GPS", e)
+
+            val hasCompleteAddress = current.street.isNotBlank() &&
+                current.number.isNotBlank() &&
+                current.neighborhood.isNotBlank() &&
+                current.cep.length == 8
             _uiState.value = _uiState.value.copy(
+                streetName = current.street.ifBlank { "Localização atual" },
+                streetNumber = current.number,
+                activeCity = current.city,
+                requiresAddress = !hasCompleteAddress,
                 isRefreshingLocation = false,
-                snackbarMessage = "Endereço cadastrado ativo."
+                snackbarMessage = if (hasCompleteAddress) {
+                    "Localização atualizada com sucesso!"
+                } else {
+                    "Localização encontrada. Confirme rua, número e CEP."
+                }
             )
+            refreshRegionalCatalog()
+            loadStores()
         }
     }
 
@@ -587,6 +563,29 @@ class HomeViewModel : ViewModel() {
 
     fun closeLocationOrAddressDialog() {
         _uiState.value = _uiState.value.copy(showAddressChoiceDialog = false)
+    }
+
+    /** Seleciona o endereço cadastrado como fonte única, removendo GPS anterior da sessão. */
+    fun useRegisteredAddress() {
+        val session = UserSessionRepository.userSession.value
+        currentLatitude = null
+        currentLongitude = null
+        CartRepository.setDeliveryCoordinates(null, null)
+        UserSessionRepository.clearActiveLocation()
+        _uiState.value = _uiState.value.copy(
+            showAddressChoiceDialog = false,
+            streetName = session.addressStreet,
+            streetNumber = session.addressNumber,
+            activeCity = session.addressCity,
+            requiresAddress = session.addressCity.isBlank(),
+            snackbarMessage = if (session.addressStreet.isBlank()) {
+                "Cadastre um endereço para continuar."
+            } else {
+                "Endereço cadastrado selecionado."
+            }
+        )
+        refreshRegionalCatalog()
+        loadStores()
     }
 
     fun openAddressForm() {

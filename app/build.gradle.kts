@@ -17,13 +17,13 @@ val appVersionCode = (
   providers.gradleProperty("APP_VERSION_CODE")
     .orElse(providers.environmentVariable("APP_VERSION_CODE"))
     .orNull
-    ?: "12"
+    ?: "25"
 ).toIntOrNull() ?: error("APP_VERSION_CODE precisa ser um número inteiro positivo")
 val appVersionName =
   providers.gradleProperty("APP_VERSION_NAME")
     .orElse(providers.environmentVariable("APP_VERSION_NAME"))
     .orNull
-    ?: "1.0.11"
+    ?: "1.0.24"
 
 require(appVersionCode > 0) { "APP_VERSION_CODE precisa ser maior que zero" }
 
@@ -164,7 +164,7 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
+  implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

@@ -30,7 +30,8 @@ class CatalogVisibilityRuleTest {
         val onlineOwnDelivery = store(id = "com-motoboy", hasAvailableDriver = true)
 
         val catalog = SupabaseClient.keepClientCatalogStores(
-            listOf(offlineOwnDelivery, onlineOwnDelivery)
+            listOf(offlineOwnDelivery, onlineOwnDelivery),
+            mapOf("sem-motoboy" to 5, "com-motoboy" to 5)
         )
 
         assertEquals(listOf("sem-motoboy", "com-motoboy"), catalog.map { it.id })
@@ -44,7 +45,8 @@ class CatalogVisibilityRuleTest {
         val pdvOnlyStore = store(id = "pdv", planType = "pdv_only")
 
         val catalog = SupabaseClient.keepClientCatalogStores(
-            listOf(clientStore, pdvOnlyStore)
+            listOf(clientStore, pdvOnlyStore),
+            mapOf("cliente" to 5, "pdv" to 5)
         )
 
         assertEquals(listOf("cliente"), catalog.map { it.id })

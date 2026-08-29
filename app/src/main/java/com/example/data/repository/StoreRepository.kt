@@ -40,22 +40,61 @@ object StoreRepository {
 
     val categories = searchCategories.map { CategoryItem(it.id, it.name, it.iconName) }
 
+    /**
+     * Mantém Home e Descobrir alinhados ao filtrar categorias.
+     * Além do ID/nome exibido, considera aliases cadastrados para a categoria;
+     * por isso uma loja classificada como "Adega" também aparece em Bebidas.
+     */
+    fun matchesCategory(store: Store, categoryId: String): Boolean {
+        if (categoryId.equals("todas", ignoreCase = true)) return true
+        val selected = searchCategories.firstOrNull { it.id.equals(categoryId, ignoreCase = true) }
+            ?: return false
+        val acceptedTerms = (listOf(selected.id, selected.name) + selected.matchingTerms)
+            .map(::normalizeCategoryText)
+            .filter { it.isNotBlank() }
+        val storeCategories = (listOf(store.category) + store.secondaryCategories)
+            .map(::normalizeCategoryText)
+            .filter { it.isNotBlank() }
+        return storeCategories.any { storeCategory ->
+            acceptedTerms.any { term ->
+                storeCategory == term || storeCategory.contains(term) || term.contains(storeCategory)
+            }
+        }
+    }
+
+    private fun normalizeCategoryText(value: String): String =
+        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase()
+            .trim()
+
     private val _stores = MutableStateFlow<List<Store>>(emptyList())
     val stores: StateFlow<List<Store>> = _stores.asStateFlow()
     private val availabilityRefreshMutex = Mutex()
+    private val catalogRefreshMutex = Mutex()
+    private const val CATALOG_CACHE_TTL_MS = 2 * 60 * 1000L
+    private var lastCatalogRefreshAt = 0L
 
     /**
      * Atualiza o catálogo sem apagar o último snapshot válido em caso de queda ou timeout.
      * Uma resposta remota vazia e bem-sucedida é aplicada, pois pode indicar que não há
      * entregadores disponíveis para as lojas próprias naquele instante.
      */
-    suspend fun refreshStoresFromSupabase(): StoreRefreshResult {
+    suspend fun refreshStoresFromSupabase(force: Boolean = false): StoreRefreshResult = catalogRefreshMutex.withLock {
+        val now = System.currentTimeMillis()
+        val hasFreshCatalog = _stores.value.isNotEmpty() &&
+            now - lastCatalogRefreshAt in 0..CATALOG_CACHE_TTL_MS
+        if (!force && hasFreshCatalog) {
+            return@withLock StoreRefreshResult(isSuccess = true, stores = _stores.value)
+        }
+
         val catalog = SupabaseClient.fetchActiveStores()
         if (catalog.isSuccess) {
             _stores.value = catalog.stores
-            return StoreRefreshResult(isSuccess = true, stores = catalog.stores)
+            lastCatalogRefreshAt = System.currentTimeMillis()
+            return@withLock StoreRefreshResult(isSuccess = true, stores = catalog.stores)
         }
-        return StoreRefreshResult(isSuccess = false, stores = _stores.value)
+        StoreRefreshResult(isSuccess = false, stores = _stores.value)
     }
 
     /**

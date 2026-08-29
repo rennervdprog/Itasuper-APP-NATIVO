@@ -2,10 +2,7 @@ package com.example.ui.search
 
 import android.app.Application
 import android.content.Context
-import android.content.pm.PackageManager
-import android.location.LocationManager
 import android.util.Log
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.DiscoverProduct
@@ -15,6 +12,7 @@ import com.example.data.repository.SearchCategory
 import com.example.data.repository.SearchHistoryRepository
 import com.example.data.repository.StoreRepository
 import com.example.data.repository.UserSessionRepository
+import com.example.location.CurrentLocationProvider
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,6 +44,9 @@ fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2:
     return r * c
 }
 
+fun supportsPickup(deliveryMode: String): Boolean =
+    deliveryMode.equals("pickup", ignoreCase = true) || deliveryMode.equals("both", ignoreCase = true)
+
 enum class DiscoverQuickFilter(val label: String) {
     OPEN_NOW("Aberto agora"),
     DELIVERY_AVAILABLE("Entrega disponível"),
@@ -60,7 +61,8 @@ data class SearchUiState(
     val activeQuickFilter: DiscoverQuickFilter? = null,
     val userLocation: Pair<Double, Double>? = null,
     val isLocationPermissionGranted: Boolean = false,
-    val isFetchingGps: Boolean = false
+    val isFetchingGps: Boolean = false,
+    val isLoadingDiscovery: Boolean = false
 )
 
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
@@ -122,14 +124,23 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch {
             regionalStores.collect { stores ->
-                val openStores = stores.filter { it.isOpen }
-                val eligibleStores = openStores.ifEmpty { stores }
-                val products = SupabaseClient.fetchDiscoverProducts(
-                    openStores = eligibleStores,
-                    limit = 60
-                )
-                _searchableProducts.value = products
-                _featuredProducts.value = products.take(6)
+                _uiState.value = _uiState.value.copy(isLoadingDiscovery = true)
+                try {
+                    val openStores = stores.filter { it.isOpen }
+                    val eligibleStores = openStores.ifEmpty { stores }
+                    val products = SupabaseClient.fetchDiscoverProducts(
+                        openStores = eligibleStores,
+                        limit = 60
+                    )
+                    _searchableProducts.value = products
+                    _featuredProducts.value = products.take(6)
+                } catch (error: Exception) {
+                    Log.w("SearchViewModel", "Não foi possível carregar os destaques da descoberta", error)
+                    _searchableProducts.value = emptyList()
+                    _featuredProducts.value = emptyList()
+                } finally {
+                    _uiState.value = _uiState.value.copy(isLoadingDiscovery = false)
+                }
             }
         }
     }
@@ -173,14 +184,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         val matched = stores.filter { store ->
             val normStoreName = store.name.normalizeText()
             val normCategories = (listOf(store.category) + store.secondaryCategories).map { it.normalizeText() }
-            val matchesCategory = selectedCat == null || run {
-                val terms = selectedCat.matchingTerms.map { it.normalizeText() }
-                normCategories.any { category ->
-                    category == selectedCat.id ||
-                        category == selectedCat.name.normalizeText() ||
-                        terms.any { term -> category.contains(term) || term.contains(category) }
-                }
-            }
+            val matchesCategory = selectedCat == null ||
+                StoreRepository.matchesCategory(store, selectedCat.id)
             val matchesQuery = normQuery.length < 2 ||
                 normStoreName.contains(normQuery) ||
                 normCategories.any { it.contains(normQuery) } ||
@@ -189,7 +194,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 DiscoverQuickFilter.OPEN_NOW -> store.isOpen
                 DiscoverQuickFilter.DELIVERY_AVAILABLE -> !store.deliveryMode.equals("own", true) || store.hasAvailableDriver == true
                 DiscoverQuickFilter.FREE_FEE -> store.isFreeDelivery
-                DiscoverQuickFilter.PICKUP -> store.deliveryMode.equals("pickup", true)
+                DiscoverQuickFilter.PICKUP -> supportsPickup(store.deliveryMode)
                 null -> true
             }
             matchesCategory && matchesQuery && matchesQuickFilter
@@ -245,30 +250,38 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun synchronizeLocation(context: Context) {
-        val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
         val granted = hasFine || hasCoarse
         _uiState.value = _uiState.value.copy(isLocationPermissionGranted = granted)
         if (granted) requestGpsLocation(context)
     }
 
     fun requestGpsLocation(context: Context) {
-        try {
-            _uiState.value = _uiState.value.copy(isFetchingGps = true)
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            val hasFine = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val hasCoarse = ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val location = if (locationManager != null && (hasFine || hasCoarse)) {
-                locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            } else null
+        _uiState.value = _uiState.value.copy(isFetchingGps = true)
+        viewModelScope.launch {
+            val current = try {
+                CurrentLocationProvider.getCurrentAddress(context)
+            } catch (error: Exception) {
+                Log.e("SearchViewModel", "Erro ao atualizar localização atual na descoberta", error)
+                null
+            }
+            if (current != null && current.city.isNotBlank()) {
+                UserSessionRepository.updateActiveLocation(
+                    street = current.street,
+                    number = current.number,
+                    neighborhood = current.neighborhood,
+                    city = current.city,
+                    state = current.state,
+                    cep = current.cep,
+                    latitude = current.latitude,
+                    longitude = current.longitude
+                )
+            }
             _uiState.value = _uiState.value.copy(
-                userLocation = location?.let { it.latitude to it.longitude } ?: _uiState.value.userLocation,
+                userLocation = current?.let { it.latitude to it.longitude } ?: _uiState.value.userLocation,
                 isFetchingGps = false
             )
-        } catch (error: Exception) {
-            Log.e("SearchViewModel", "Erro ao atualizar localização na descoberta", error)
-            _uiState.value = _uiState.value.copy(isFetchingGps = false)
         }
     }
 }

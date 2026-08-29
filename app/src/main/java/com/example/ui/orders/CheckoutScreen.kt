@@ -341,12 +341,42 @@ fun CheckoutScreen(
                             }
                         } else {
                             // Cadastro, edição ou confirmação da localização atual.
+                            val isGpsAddress = uiState.usingGpsAddress
+                            if (isGpsAddress) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFFFF3E8))
+                                        .border(1.dp, Color(0xFFF7CBAE), RoundedCornerShape(14.dp))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        text = "Localização atual selecionada",
+                                        fontWeight = FontWeight.Bold,
+                                        color = ItaSuperPrimary,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = if (uiState.number.isBlank()) {
+                                            "1. Digite o número do imóvel. 2. Aguarde a confirmação da entrega. 3. Role até o final e toque em Confirmar e Enviar Pedido."
+                                        } else {
+                                            "Confira o número do imóvel. Depois aguarde a confirmação da entrega e toque em Confirmar e Enviar Pedido no final da tela."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = uiState.cep,
                                     onValueChange = { viewModel.updateCep(it) },
                                     label = { Text("CEP") },
                                     placeholder = { Text("00000-000") },
+                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -362,7 +392,7 @@ fun CheckoutScreen(
 
                                 Button(
                                     onClick = { viewModel.searchAddressByCep() },
-                                    enabled = !uiState.isSearchingCep && uiState.cep.isNotBlank(),
+                                    enabled = !isGpsAddress && !uiState.isSearchingCep && uiState.cep.isNotBlank(),
                                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
@@ -402,6 +432,7 @@ fun CheckoutScreen(
                                     value = uiState.street,
                                     onValueChange = { viewModel.updateStreet(it) },
                                     label = { Text("Rua / Logradouro") },
+                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -442,6 +473,7 @@ fun CheckoutScreen(
                                     value = uiState.neighborhood,
                                     onValueChange = { viewModel.updateNeighborhood(it) },
                                     label = { Text("Bairro") },
+                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -459,6 +491,7 @@ fun CheckoutScreen(
                                     value = uiState.city,
                                     onValueChange = { viewModel.updateCity(it) },
                                     label = { Text("Cidade") },
+                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -480,6 +513,7 @@ fun CheckoutScreen(
                                 onValueChange = { viewModel.updateState(it) },
                                 label = { Text("UF (opcional)") },
                                 placeholder = { Text("Ex: RJ") },
+                                readOnly = isGpsAddress,
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = ItaSuperPrimary,
@@ -499,6 +533,7 @@ fun CheckoutScreen(
                                 value = uiState.complement,
                                 onValueChange = { viewModel.updateComplement(it) },
                                 label = { Text("Complemento / Ponto de Referência (opcional)") },
+                                readOnly = isGpsAddress,
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -515,7 +550,25 @@ fun CheckoutScreen(
                                 onClick = { viewModel.saveCurrentAddress() },
                                 modifier = Modifier.align(Alignment.End)
                             ) {
-                                Text("Salvar como endereço")
+                                Text(if (isGpsAddress) "Salvar para próximas compras" else "Salvar como endereço")
+                            }
+                            if (isGpsAddress) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Button(
+                                    onClick = viewModel::confirmGpsAddressForCheckout,
+                                    enabled = !uiState.isQuotingDelivery && !uiState.isSearchingCep,
+                                    colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(54.dp)
+                                        .testTag("confirm_gps_address_button")
+                                ) {
+                                    Text(
+                                        text = "Confirmar localização e usar neste pedido",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
 
@@ -559,7 +612,13 @@ fun CheckoutScreen(
                                 }
                                 else -> {
                                     Text(
-                                        text = "Preencha CEP, rua, número e bairro para calcular a entrega.",
+                                        text = if (uiState.usingGpsAddress && uiState.number.isBlank()) {
+                                            "Digite o número do imóvel para calcular a entrega."
+                                        } else if (uiState.usingGpsAddress) {
+                                            "Confira o endereço e aguarde a confirmação da entrega para prosseguir."
+                                        } else {
+                                            "Preencha CEP, rua, número e bairro para calcular a entrega."
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -981,7 +1040,10 @@ fun CheckoutScreen(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("Enviando pedido ao Supabase...", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Enviando pedido para ${cart.storeName.ifBlank { "a loja" }}...",
+                            fontWeight = FontWeight.Bold
+                        )
                     } else {
                         Text(
                             text = if (cart.deliveryType == "DELIVERY" && uiState.isQuotingDelivery) {
@@ -1129,7 +1191,7 @@ fun OrderSuccessDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Número do Pedido: ${order.id}",
+                        text = order.customerOrderLabel(),
                         fontWeight = FontWeight.Bold,
                         color = ItaSuperPrimary,
                         style = MaterialTheme.typography.bodyLarge
@@ -1139,7 +1201,7 @@ fun OrderSuccessDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Seu pedido foi enviado para ${order.storeName} e o status oficial foi registrado no banco de dados.",
+                    text = "Seu pedido foi enviado para ${order.storeName.ifBlank { "a loja" }}. Acompanhe o andamento em Meus Pedidos.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

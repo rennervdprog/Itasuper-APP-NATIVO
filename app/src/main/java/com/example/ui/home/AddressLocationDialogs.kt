@@ -1,5 +1,7 @@
 package com.example.ui.home
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,19 +10,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,11 +53,36 @@ import com.example.ui.theme.ItaSuperTextSecondary
 @Composable
 fun LocationOrAddressDialog(
     visible: Boolean,
+    registeredStreet: String,
+    registeredNumber: String,
+    registeredNeighborhood: String,
+    registeredCity: String,
+    currentStreet: String,
+    currentNumber: String,
+    currentNeighborhood: String,
+    currentCity: String,
+    isRefreshingLocation: Boolean,
     onDismiss: () -> Unit,
+    onUseRegisteredAddress: () -> Unit,
     onAllowLocation: () -> Unit,
     onRegisterAddress: () -> Unit
 ) {
     if (!visible) return
+
+    val registeredLine = listOf(registeredStreet.trim(), registeredNumber.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(", ")
+    val registeredDetails = listOf(registeredNeighborhood.trim(), registeredCity.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+    val currentLine = listOf(currentStreet.trim(), currentNumber.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(", ")
+    val currentDetails = listOf(currentNeighborhood.trim(), currentCity.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+    val hasRegisteredAddress = registeredLine.isNotBlank() || registeredDetails.isNotBlank()
+    val hasCurrentAddress = currentLine.isNotBlank() || currentDetails.isNotBlank()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -62,40 +95,119 @@ fun LocationOrAddressDialog(
         },
         title = {
             Text(
-                text = "Como você quer informar sua região?",
+                text = "Escolha o endereço de entrega",
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.Bold,
                 color = ItaSuperTextPrimary
             )
         },
         text = {
-            Text(
-                text = "A localização ajuda a encontrar lojas que entregam para você. Se preferir, cadastre seu endereço manualmente.",
-                textAlign = TextAlign.Center,
-                color = ItaSuperTextSecondary
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onAllowLocation,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
-            ) {
-                Icon(Icons.Default.MyLocation, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Permitir localização", fontWeight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Selecione um endereço cadastrado ou use sua localização atual.",
+                    textAlign = TextAlign.Center,
+                    color = ItaSuperTextSecondary
+                )
+
+                if (hasRegisteredAddress) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onUseRegisteredAddress),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFF7F0),
+                        border = BorderStroke(1.dp, ItaSuperPrimary)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Home,
+                                contentDescription = null,
+                                tint = ItaSuperPrimary,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Endereço cadastrado",
+                                    fontWeight = FontWeight.Bold,
+                                    color = ItaSuperTextPrimary
+                                )
+                                Text(
+                                    text = registeredLine.ifBlank { registeredDetails },
+                                    color = ItaSuperTextPrimary,
+                                    maxLines = 1
+                                )
+                                if (registeredLine.isNotBlank() && registeredDetails.isNotBlank()) {
+                                    Text(
+                                        text = registeredDetails,
+                                        color = ItaSuperTextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Selecionar endereço cadastrado",
+                                tint = ItaSuperPrimary
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onRegisterAddress,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Default.PinDrop, contentDescription = null, tint = ItaSuperPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Cadastrar endereço", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                    }
+                }
+
+                HorizontalDivider()
+
+                OutlinedButton(
+                    onClick = onAllowLocation,
+                    enabled = !isRefreshingLocation,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (isRefreshingLocation) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.MyLocation, contentDescription = null, tint = ItaSuperPrimary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text("Usar localização atual", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+                        if (hasCurrentAddress) {
+                            Text(
+                                text = listOf(currentLine, currentDetails)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ItaSuperTextSecondary,
+                                maxLines = 1
+                            )
+                        } else {
+                            Text(
+                                "Atualizar pelo GPS",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ItaSuperTextSecondary
+                            )
+                        }
+                    }
+                }
             }
         },
+        confirmButton = {},
         dismissButton = {
-            OutlinedButton(
-                onClick = onRegisterAddress,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Default.PinDrop, contentDescription = null, tint = ItaSuperPrimary)
-                Spacer(Modifier.width(8.dp))
-                Text("Cadastrar endereço", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
+            TextButton(onClick = onRegisterAddress) {
+                Text("Editar endereço", color = ItaSuperPrimary)
             }
         }
     )

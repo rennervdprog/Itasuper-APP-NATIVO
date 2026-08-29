@@ -22,7 +22,11 @@ import com.example.data.model.SavedAddress
 import com.example.data.model.Store
 import com.example.data.model.normalizeBrazilianUf
 import com.example.data.model.StoreSettings
+import com.example.data.repository.StoreRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -830,7 +834,7 @@ object SupabaseClient {
 
     suspend fun fetchOpeningHours(): List<OpeningHour> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/opening_hours?select=*"
+            val url = "$SUPABASE_URL/rest/v1/opening_hours?select=store_id,day_of_week,open_time,close_time,is_closed_all_day"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -867,13 +871,68 @@ object SupabaseClient {
     }
 
     // 4. FETCH STORES FROM STORES_PUBLIC VIEW
+    private const val MIN_CLIENT_CATALOG_PRODUCTS = 5
+
     /**
      * Regra de vitrine do cliente: a falta de motoboy não remove lojas próprias.
      * Ela apenas bloqueia a modalidade Entrega no checkout canônico e informa o
-     * aviso no card. Somente lojas exclusivas de PDV ficam fora da vitrine.
+     * aviso no card. Somente lojas exclusivas de PDV ou com menos de cinco produtos
+     * visíveis ficam fora da vitrine.
      */
-    internal fun keepClientCatalogStores(stores: List<Store>): List<Store> =
-        stores.filterNot { it.planType.equals("pdv_only", ignoreCase = true) }
+    internal fun keepClientCatalogStores(
+        stores: List<Store>,
+        productCounts: Map<String, Int?>
+    ): List<Store> = stores.filter { store ->
+        !store.planType.equals("pdv_only", ignoreCase = true) &&
+            (productCounts[store.id]?.let { it >= MIN_CLIENT_CATALOG_PRODUCTS } ?: true)
+    }
+
+    /** Mantém o mesmo conceito de produto que o detalhe da loja oferece ao cliente. */
+    internal fun isClientCatalogProduct(item: JSONObject): Boolean {
+        val name = item.optString("name", "").trim()
+        if (name.isBlank() || item.optBoolean("sold_by_weight", false)) return false
+        val metadata = item.optJSONObject("metadata") ?: item.optString("metadata", "")
+            .takeIf { it.trim().startsWith("{") }
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        return metadata?.optBoolean("pdv_only", false) != true &&
+            metadata?.optBoolean("hidden", false) != true
+    }
+
+    private suspend fun fetchClientProductCount(storeId: String): Int? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        var offset = 0
+        var visibleCount = 0
+        val pageSize = 100
+        repeat(100) {
+            val url = "$SUPABASE_URL/rest/v1/products?select=id,name,sold_by_weight,metadata&store_id=eq.$storeId&order=id.asc&limit=$pageSize&offset=$offset"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext null
+            val page = JSONArray(body)
+            for (index in 0 until page.length()) {
+                if (isClientCatalogProduct(page.optJSONObject(index) ?: continue)) visibleCount++
+                if (visibleCount >= MIN_CLIENT_CATALOG_PRODUCTS) return@withContext MIN_CLIENT_CATALOG_PRODUCTS
+            }
+            if (page.length() < pageSize) return@withContext visibleCount
+            offset += pageSize
+        }
+        visibleCount
+    }
+
+    private suspend fun fetchClientProductCounts(storeIds: List<String>): Map<String, Int?> =
+        withContext(Dispatchers.IO) {
+            coroutineScope {
+                storeIds.distinct().filter { it.isNotBlank() }.map { storeId ->
+                    async { storeId to fetchClientProductCount(storeId) }
+                }.awaitAll().toMap()
+            }
+        }
 
     suspend fun fetchActiveStores(): StoreCatalogResult = withContext(Dispatchers.IO) {
         try {
@@ -1155,8 +1214,9 @@ object SupabaseClient {
                 // A presença do motoboy não define se a loja aparece: ela define
                 // somente se Entrega pode ser concluída. Dessa forma, a Home mostra o
                 // cardápio e o aviso mesmo durante a indisponibilidade temporária.
+                val productCounts = fetchClientProductCounts(storeList.map { it.id })
                 val onlineDriverStoreIds = fetchStoreIdsWithOnlineDrivers()
-                val catalogStores = keepClientCatalogStores(storeList)
+                val catalogStores = keepClientCatalogStores(storeList, productCounts)
 
                 // A visão pública não expõe todos os overrides VIP. A vitrine consulta a
                 // mesma RPC usada pela cotação para mostrar o preço-base correto de cada loja.
@@ -1328,8 +1388,11 @@ object SupabaseClient {
     suspend fun fetchStoreById(storeId: String): Store? = withContext(Dispatchers.IO) {
         if (storeId.isBlank()) return@withContext null
         try {
-            // Reutiliza o mapper central para manter os campos e as regras do card
-            // de loja idênticos entre Home, Busca e Detalhe.
+            // A Home e a Busca compartilham o catálogo. Reutilizar o snapshot evita
+            // recarregar todas as lojas ao abrir um detalhe já conhecido.
+            StoreRepository.getStoreById(storeId)?.let { return@withContext it }
+
+            // Fallback preservado para deep links abertos antes do catálogo carregar.
             fetchActiveStores().stores.firstOrNull { it.id == storeId }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching store $storeId", e)
@@ -1412,7 +1475,7 @@ object SupabaseClient {
     // 4b. FETCH PROMO BANNERS FROM SUPABASE
     suspend fun fetchBanners(): List<com.example.data.model.Banner> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/banners?select=*&is_active=eq.true"
+            val url = "$SUPABASE_URL/rest/v1/banners?select=id,title,name,image_url,target_store_id,store_id,description&is_active=eq.true"
 
             val request = Request.Builder()
                 .url(url)
@@ -1425,7 +1488,7 @@ object SupabaseClient {
             var responseText = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val fallbackUrl = "$SUPABASE_URL/rest/v1/banners?select=*"
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/banners?select=id,title,name,image_url,target_store_id,store_id,description"
                 val fallbackRequest = Request.Builder()
                     .url(fallbackUrl)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1473,7 +1536,7 @@ object SupabaseClient {
     // 4c. FETCH MENU SECTIONS FOR STORE
     suspend fun fetchMenuSectionsForStore(storeId: String): List<MenuSection> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/menu_sections?store_id=eq.$storeId&order=sort_order.asc"
+            val url = "$SUPABASE_URL/rest/v1/menu_sections?select=id,store_id,name,sort_order&store_id=eq.$storeId&order=sort_order.asc"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1485,7 +1548,7 @@ object SupabaseClient {
             var responseText = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val fallbackUrl = "$SUPABASE_URL/rest/v1/menu_sections?select=*"
+                val fallbackUrl = "$SUPABASE_URL/rest/v1/menu_sections?select=id,store_id,name,sort_order&store_id=eq.$storeId"
                 val fallbackRequest = Request.Builder()
                     .url(fallbackUrl)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
@@ -1530,7 +1593,7 @@ object SupabaseClient {
     // 5. FETCH PRODUCTS FOR STORE
     suspend fun fetchProductsForStore(storeId: String): List<Product> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/products?select=*&store_id=eq.$storeId&order=name.asc"
+            val url = "$SUPABASE_URL/rest/v1/products?select=id,name,description,price,image_url,category,section_id,is_available,sold_by_weight,has_stuffed_crust,is_combo,is_pastel_flavor,is_beverage,metadata&store_id=eq.$storeId&order=name.asc"
 
             val request = Request.Builder()
                 .url(url)
@@ -2353,8 +2416,10 @@ object SupabaseClient {
                     put("number", address.number.trim())
                     put("complement", address.complement.trim())
                     put("neighborhood", address.neighborhood.trim())
-                    // Cidade e UF da sessão podem estar desatualizadas. A função oficial
-                    // as resolve novamente pelo CEP e devolve o snapshot normalizado.
+                    // Cidade e UF preenchidas pelo CEP ajudam a geocodificação estruturada;
+                    // a função oficial ainda normaliza e devolve o snapshot canônico.
+                    put("city", address.city.trim())
+                    put("state", address.normalizedState())
                     put("cep", address.normalizedCep())
                 })
             }
@@ -2944,7 +3009,7 @@ object SupabaseClient {
                 val storeIds = openStores.map { it.id }
                 val idFilter = storeIds.joinToString(",")
                 val ordering = if (orderByPrice) "&price=gt.0&order=price.asc" else ""
-                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
+                val url = "$SUPABASE_URL/rest/v1/products?select=id,store_id,name,price,image_url,is_available&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("apikey", SUPABASE_ANON_KEY)

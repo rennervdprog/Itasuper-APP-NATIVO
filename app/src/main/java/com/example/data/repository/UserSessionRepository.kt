@@ -207,6 +207,7 @@ object UserSessionRepository {
         neighborhood: String,
         city: String,
         state: String,
+        cep: String = "",
         latitude: Double? = null,
         longitude: Double? = null
     ) {
@@ -215,10 +216,28 @@ object UserSessionRepository {
             activeLocationStreet = street,
             activeLocationNumber = number,
             activeLocationNeighborhood = neighborhood,
+            activeLocationCep = cep,
             activeLocationCity = city,
             activeLocationState = state,
             activeLocationLatitude = latitude,
-            activeLocationLongitude = longitude
+            activeLocationLongitude = longitude,
+            activeLocationUpdatedAt = System.currentTimeMillis()
+        )
+        persistCurrentSession()
+    }
+
+    /** Remove uma posição GPS antiga para que ela nunca seja reutilizada como se fosse atual. */
+    fun clearActiveLocation() {
+        _userSession.value = _userSession.value.copy(
+            activeLocationStreet = "",
+            activeLocationNumber = "",
+            activeLocationNeighborhood = "",
+            activeLocationCep = "",
+            activeLocationCity = "",
+            activeLocationState = "",
+            activeLocationLatitude = null,
+            activeLocationLongitude = null,
+            activeLocationUpdatedAt = 0L
         )
         persistCurrentSession()
     }

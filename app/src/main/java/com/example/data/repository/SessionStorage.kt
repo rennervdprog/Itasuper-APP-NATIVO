@@ -48,10 +48,12 @@ class SessionStorage(context: Context) {
             .putString(KEY_ACTIVE_LOCATION_STREET, session.activeLocationStreet)
             .putString(KEY_ACTIVE_LOCATION_NUMBER, session.activeLocationNumber)
             .putString(KEY_ACTIVE_LOCATION_NEIGHBORHOOD, session.activeLocationNeighborhood)
+            .putString(KEY_ACTIVE_LOCATION_CEP, session.activeLocationCep)
             .putString(KEY_ACTIVE_LOCATION_CITY, session.activeLocationCity)
             .putString(KEY_ACTIVE_LOCATION_STATE, session.activeLocationState)
             .putString(KEY_ACTIVE_LOCATION_LATITUDE, session.activeLocationLatitude?.toString().orEmpty())
             .putString(KEY_ACTIVE_LOCATION_LONGITUDE, session.activeLocationLongitude?.toString().orEmpty())
+            .putLong(KEY_ACTIVE_LOCATION_UPDATED_AT, session.activeLocationUpdatedAt)
             .putString(KEY_PIX_KEY_TYPE, session.pixKeyType)
             .putString(KEY_PIX_KEY, session.pixKey)
             .apply()
@@ -84,10 +86,12 @@ class SessionStorage(context: Context) {
             activeLocationStreet = preferences.getString(KEY_ACTIVE_LOCATION_STREET, "").orEmpty(),
             activeLocationNumber = preferences.getString(KEY_ACTIVE_LOCATION_NUMBER, "").orEmpty(),
             activeLocationNeighborhood = preferences.getString(KEY_ACTIVE_LOCATION_NEIGHBORHOOD, "").orEmpty(),
+            activeLocationCep = preferences.getString(KEY_ACTIVE_LOCATION_CEP, "").orEmpty(),
             activeLocationCity = preferences.getString(KEY_ACTIVE_LOCATION_CITY, "").orEmpty(),
             activeLocationState = preferences.getString(KEY_ACTIVE_LOCATION_STATE, "").orEmpty(),
             activeLocationLatitude = preferences.getString(KEY_ACTIVE_LOCATION_LATITUDE, "").orEmpty().toDoubleOrNull(),
             activeLocationLongitude = preferences.getString(KEY_ACTIVE_LOCATION_LONGITUDE, "").orEmpty().toDoubleOrNull(),
+            activeLocationUpdatedAt = preferences.getLong(KEY_ACTIVE_LOCATION_UPDATED_AT, 0L),
             pixKeyType = preferences.getString(KEY_PIX_KEY_TYPE, "").orEmpty(),
             pixKey = preferences.getString(KEY_PIX_KEY, "").orEmpty(),
             isSessionRestored = false
@@ -121,10 +125,12 @@ class SessionStorage(context: Context) {
         const val KEY_ACTIVE_LOCATION_STREET = "active_location_street"
         const val KEY_ACTIVE_LOCATION_NUMBER = "active_location_number"
         const val KEY_ACTIVE_LOCATION_NEIGHBORHOOD = "active_location_neighborhood"
+        const val KEY_ACTIVE_LOCATION_CEP = "active_location_cep"
         const val KEY_ACTIVE_LOCATION_CITY = "active_location_city"
         const val KEY_ACTIVE_LOCATION_STATE = "active_location_state"
         const val KEY_ACTIVE_LOCATION_LATITUDE = "active_location_latitude"
         const val KEY_ACTIVE_LOCATION_LONGITUDE = "active_location_longitude"
+        const val KEY_ACTIVE_LOCATION_UPDATED_AT = "active_location_updated_at"
         const val KEY_PIX_KEY_TYPE = "pix_key_type"
         const val KEY_PIX_KEY = "pix_key"
     }

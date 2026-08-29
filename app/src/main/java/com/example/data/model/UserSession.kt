@@ -25,10 +25,12 @@ data class UserSession(
     val activeLocationStreet: String = "",
     val activeLocationNumber: String = "",
     val activeLocationNeighborhood: String = "",
+    val activeLocationCep: String = "",
     val activeLocationCity: String = "",
     val activeLocationState: String = "",
     val activeLocationLatitude: Double? = null,
     val activeLocationLongitude: Double? = null,
+    val activeLocationUpdatedAt: Long = 0L,
     val pixKeyType: String = "",
     val pixKey: String = ""
 )

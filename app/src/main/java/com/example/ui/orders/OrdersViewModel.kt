@@ -124,6 +124,45 @@ class OrdersViewModel : ViewModel() {
 
     private var addressEditedByCustomer = false
     private var benefitsLoadingStoreId: String? = null
+    private val profileAddressId = "__profile_address__"
+
+    private fun profileSavedAddress(session: com.example.data.model.UserSession): SavedAddress? {
+        val hasAnyAddressData = listOf(
+            session.addressStreet,
+            session.addressNumber,
+            session.addressNeighborhood,
+            session.addressCity,
+            session.addressCep
+        ).any { it.isNotBlank() }
+        if (!hasAnyAddressData) return null
+        return SavedAddress(
+            id = profileAddressId,
+            label = "Endereço do perfil",
+            street = session.addressStreet,
+            number = session.addressNumber,
+            complement = session.addressComplement,
+            neighborhood = session.addressNeighborhood,
+            city = session.addressCity,
+            state = normalizeBrazilianUf(session.addressState),
+            referencePoint = session.addressReferencePoint,
+            cep = session.addressCep.filter(Char::isDigit).take(8),
+            isDefault = true
+        )
+    }
+
+    private fun mergeProfileAddress(
+        session: com.example.data.model.UserSession,
+        remoteAddresses: List<SavedAddress>
+    ): List<SavedAddress> {
+        val profile = profileSavedAddress(session) ?: return remoteAddresses
+        fun normalized(value: String) = value.trim().lowercase().replace(Regex("\\s+"), " ")
+        val withoutDuplicate = remoteAddresses.filterNot { address ->
+            normalized(address.street) == normalized(profile.street) &&
+                normalized(address.number) == normalized(profile.number) &&
+                address.cep.filter(Char::isDigit) == profile.cep
+        }
+        return listOf(profile) + withoutDuplicate
+    }
     private var inFlightDeliveryQuoteKey: String? = null
     private var ordersRefreshInFlight = false
 
@@ -423,9 +462,14 @@ class OrdersViewModel : ViewModel() {
             applyAddress(selected, session)
             return
         }
-        val hasProfileAddress = session.addressStreet.isNotBlank() &&
-            session.addressNumber.isNotBlank() &&
-            session.addressNeighborhood.isNotBlank()
+        val hasProfileAddress = DeliveryAddressInput(
+            street = session.addressStreet,
+            number = session.addressNumber,
+            neighborhood = session.addressNeighborhood,
+            city = session.addressCity,
+            state = session.addressState,
+            cep = session.addressCep
+        ).isComplete()
         CartRepository.setDeliveryCoordinates(null, null)
         _uiState.value = _uiState.value.copy(
             cep = session.addressCep,
@@ -444,19 +488,28 @@ class OrdersViewModel : ViewModel() {
 
     private fun applyAddress(address: SavedAddress, session: com.example.data.model.UserSession) {
         val resolvedState = normalizeBrazilianUf(
-            address.state.ifBlank { session.addressState.ifBlank { session.activeLocationState } }
+            address.state.ifBlank { session.addressState }
         )
-        val resolvedCity = address.city.ifBlank { session.addressCity.ifBlank { session.activeLocationCity } }
+        val resolvedCity = address.city.ifBlank { session.addressCity }
+        val resolvedCep = address.cep.filter(Char::isDigit).take(8)
+        val completeAddress = DeliveryAddressInput(
+            street = address.street,
+            number = address.number,
+            neighborhood = address.neighborhood,
+            city = resolvedCity,
+            state = resolvedState,
+            cep = resolvedCep
+        ).isComplete()
         CartRepository.setDeliveryCoordinates(address.latitude, address.longitude)
         _uiState.value = _uiState.value.copy(
-            cep = address.cep,
+            cep = resolvedCep,
             street = address.street,
             number = address.number,
             neighborhood = address.neighborhood,
             city = resolvedCity,
             state = resolvedState,
             complement = listOf(address.complement, address.referencePoint).filter { it.isNotBlank() }.joinToString(" · "),
-            showAddressEditor = false,
+            showAddressEditor = !completeAddress,
             showGpsAddressConfirmation = activeLocationDiffersFromAddress(session, address),
             usingGpsAddress = false,
             selectedSavedAddressId = address.id
@@ -464,6 +517,7 @@ class OrdersViewModel : ViewModel() {
     }
 
     private fun activeLocationDiffersFromAddress(session: com.example.data.model.UserSession, address: SavedAddress?): Boolean {
+        if (!isActiveLocationFresh(session)) return false
         val latitude = session.activeLocationLatitude
         val longitude = session.activeLocationLongitude
         if (address?.latitude != null && address.longitude != null && latitude != null && longitude != null) {
@@ -495,8 +549,11 @@ class OrdersViewModel : ViewModel() {
         if (!session.isLoggedIn || session.userId.isBlank() || session.accessToken.isBlank()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingSavedAddresses = true)
-            val addresses = SupabaseClient.fetchSavedAddresses(session.userId, session.accessToken)
+            val remoteAddresses = SupabaseClient.fetchSavedAddresses(session.userId, session.accessToken)
+            val addresses = mergeProfileAddress(session, remoteAddresses)
             val selectedId = _uiState.value.selectedSavedAddressId
+                ?.takeIf { id -> addresses.any { it.id == id } }
+                ?: profileSavedAddress(session)?.id
                 ?: addresses.firstOrNull { it.isDefault }?.id
                 ?: addresses.firstOrNull()?.id
             _uiState.value = _uiState.value.copy(
@@ -584,20 +641,79 @@ class OrdersViewModel : ViewModel() {
 
     fun useGpsAddressForCheckout() {
         val session = UserSessionRepository.userSession.value
+        if (!isActiveLocationFresh(session)) {
+            _uiState.value = _uiState.value.copy(
+                showGpsAddressConfirmation = false,
+                errorMessage = "Atualize sua localização atual antes de usá-la no checkout."
+            )
+            return
+        }
+
+        val gpsCep = session.activeLocationCep.filter(Char::isDigit).take(8)
         addressEditedByCustomer = true
         CartRepository.setDeliveryCoordinates(session.activeLocationLatitude, session.activeLocationLongitude)
         _uiState.value = _uiState.value.copy(
-            street = session.activeLocationStreet.ifBlank { _uiState.value.street },
+            // Nunca mistura o CEP/complemento do endereço salvo com a posição atual.
+            cep = gpsCep,
+            street = session.activeLocationStreet,
             number = session.activeLocationNumber,
-            neighborhood = session.activeLocationNeighborhood.ifBlank { _uiState.value.neighborhood },
-            city = session.activeLocationCity.ifBlank { _uiState.value.city },
-            state = normalizeBrazilianUf(session.activeLocationState.ifBlank { _uiState.value.state }),
+            neighborhood = session.activeLocationNeighborhood,
+            city = session.activeLocationCity,
+            state = normalizeBrazilianUf(session.activeLocationState),
+            complement = "",
             showAddressEditor = true,
             showGpsAddressConfirmation = false,
             usingGpsAddress = true,
-            cepError = null
+            selectedSavedAddressId = null,
+            cepError = null,
+            deliveryQuoteFailure = null,
+            errorMessage = if (gpsCep.length == 8) null else {
+                "Não identificamos o CEP da localização atual. Preencha o CEP para calcular a entrega."
+            }
         )
         invalidateDeliveryQuote()
+    }
+
+    fun confirmGpsAddressForCheckout() {
+        val state = _uiState.value
+        if (!state.usingGpsAddress) return
+        val address = DeliveryAddressInput(
+            street = state.street,
+            number = state.number,
+            neighborhood = state.neighborhood,
+            city = state.city,
+            state = state.state,
+            cep = state.cep
+        )
+        if (!address.isComplete()) {
+            _uiState.value = state.copy(
+                errorMessage = if (state.number.isBlank()) {
+                    "Informe o número do imóvel para confirmar a localização."
+                } else {
+                    "Aguarde o endereço ser preenchido para confirmar a localização."
+                }
+            )
+            return
+        }
+        val cart = cartState.value
+        val quoteReady = cart.hasOfficialDeliveryQuote || state.deliveryQuote?.isSuccessfulDelivery == true
+        if (!quoteReady) {
+            _uiState.value = state.copy(
+                errorMessage = if (state.isQuotingDelivery) {
+                    "Aguarde a confirmação da entrega antes de prosseguir."
+                } else {
+                    "Não foi possível confirmar a entrega para este endereço. Revise os dados e tente novamente."
+                }
+            )
+            return
+        }
+        addressEditedByCustomer = false
+        _uiState.value = state.copy(
+            showAddressEditor = false,
+            showGpsAddressConfirmation = false,
+            errorMessage = null,
+            selectedSavedAddressId = null
+        )
     }
 
     fun openAddressEditor() {
@@ -880,43 +996,43 @@ class OrdersViewModel : ViewModel() {
     // Address & ViaCEP handlers
     fun updateCep(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(cep = value.filter(Char::isDigit).take(8), cepError = null, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(cep = value.filter(Char::isDigit).take(8), cepError = null, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateStreet(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(street = value, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(street = value, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateNumber(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(number = value, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(number = value, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateNeighborhood(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(neighborhood = value, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(neighborhood = value, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateCity(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(city = value, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(city = value, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateState(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(state = normalizeBrazilianUf(value), showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(state = normalizeBrazilianUf(value), showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
     fun updateComplement(value: String) {
         addressEditedByCustomer = true
-        _uiState.value = _uiState.value.copy(complement = value, showAddressEditor = true)
+        _uiState.value = _uiState.value.copy(complement = value, showAddressEditor = true, selectedSavedAddressId = null)
         invalidateDeliveryQuote()
     }
 
@@ -933,8 +1049,10 @@ class OrdersViewModel : ViewModel() {
         viewModelScope.launch {
             val result = SupabaseClient.fetchAddressByCep(cepInput)
             if (result != null) {
+                val normalizedCep = result.cep.filter(Char::isDigit).take(8).ifBlank { cepInput.filter(Char::isDigit).take(8) }
                 _uiState.value = _uiState.value.copy(
                     isSearchingCep = false,
+                    cep = normalizedCep,
                     street = result.street.ifBlank { _uiState.value.street },
                     neighborhood = result.neighborhood.ifBlank { _uiState.value.neighborhood },
                     city = result.city.ifBlank { _uiState.value.city },

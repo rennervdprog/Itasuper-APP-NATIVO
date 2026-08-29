@@ -190,10 +190,24 @@ fun HomeScreen(
 
     LocationOrAddressDialog(
         visible = uiState.showAddressChoiceDialog,
+        registeredStreet = userSession.addressStreet,
+        registeredNumber = userSession.addressNumber,
+        registeredNeighborhood = userSession.addressNeighborhood,
+        registeredCity = userSession.addressCity,
+        currentStreet = userSession.activeLocationStreet,
+        currentNumber = userSession.activeLocationNumber,
+        currentNeighborhood = userSession.activeLocationNeighborhood,
+        currentCity = userSession.activeLocationCity,
+        isRefreshingLocation = uiState.isRefreshingLocation,
         onDismiss = viewModel::closeLocationOrAddressDialog,
+        onUseRegisteredAddress = viewModel::useRegisteredAddress,
         onAllowLocation = {
             viewModel.closeLocationOrAddressDialog()
-            showPermissionsDialog = true
+            if (PermissionUtils.hasLocationPermission(context)) {
+                viewModel.fetchGpsLocation(context)
+            } else {
+                showPermissionsDialog = true
+            }
         },
         onRegisterAddress = viewModel::openAddressForm
     )
@@ -235,6 +249,7 @@ fun HomeScreen(
         ) {
             HomeHeaderSection(
                 uiState = uiState,
+                userSession = userSession,
                 viewModel = viewModel,
                 onNavigateToOrders = onNavigateToOrders,
                 onNavigateToNotifications = { onNavigateToRoute("notificacoes") },
@@ -326,6 +341,7 @@ fun HomeScreen(
 @Composable
 private fun HomeHeaderSection(
     uiState: HomeUiState,
+    userSession: com.example.data.model.UserSession,
     viewModel: HomeViewModel,
     onNavigateToOrders: () -> Unit,
     onNavigateToNotifications: () -> Unit,
@@ -357,57 +373,54 @@ private fun HomeHeaderSection(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 val activeCity = uiState.activeCity.trim()
-                if (activeCity.isBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { onRequestPermissions() }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lucide_map_pin),
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Informe sua cidade",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                color = ItaSuperPrimary
-                            )
-                        )
+                val displayAddress = listOf(uiState.streetName.trim(), uiState.streetNumber.trim())
+                    .filter { it.isNotBlank() }
+                    .joinToString(", ")
+                val hasAddress = displayAddress.isNotBlank() || activeCity.isNotBlank()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        if (hasAddress) viewModel.openLocationOrAddressDialog() else onRequestPermissions()
                     }
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { viewModel.openLocationOrAddressDialog() }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lucide_map_pin),
-                            contentDescription = null,
-                            tint = ItaSuperPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_map_pin),
+                        contentDescription = null,
+                        tint = ItaSuperPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = activeCity,
+                            text = displayAddress.ifBlank { "Informe seu endereço" },
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontFamily = ManropeFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = ItaSuperTextPrimary
+                                color = if (hasAddress) ItaSuperTextPrimary else ItaSuperPrimary
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lucide_chevron_down),
-                            contentDescription = "Alterar cidade",
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        if (activeCity.isNotBlank() && displayAddress.isNotBlank()) {
+                            Text(
+                                text = activeCity,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = ManropeFontFamily,
+                                    fontSize = 12.sp,
+                                    color = ItaSuperTextSecondary
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_chevron_down),
+                        contentDescription = "Alterar endereço",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -625,14 +638,14 @@ private fun HomeExplorationCategoryItem(
 ) {
     val iconRes = when (category.iconName.lowercase()) {
         "layout_grid", "todas", "todos", "all" -> R.drawable.ic_lucide_layout_grid
-        "fastfood", "lanche", "hamburger", "hamburguer" -> R.drawable.ic_lucide_hamburger
-        "local_pizza", "pizza" -> R.drawable.ic_lucide_pizza
-        "restaurant" -> R.drawable.ic_lucide_package_open
-        "bakery_dining", "pastel" -> R.drawable.ic_lucide_sandwich
-        "icecream", "acai", "açaí" -> R.drawable.ic_lucide_soup
-        "local_bar", "bebidas" -> R.drawable.ic_lucide_martini
-        "shopping_cart", "mercado", "market" -> R.drawable.ic_lucide_shopping_basket
-        "pharmacy", "farmacia", "farmácia", "farmacias" -> R.drawable.ic_lucide_pharmacy
+        "fastfood", "lanche", "hamburger", "hamburguer" -> R.drawable.ic_preview_burger
+        "local_pizza", "pizza" -> R.drawable.ic_preview_pizza
+        "restaurant", "marmita" -> R.drawable.ic_preview_marmita
+        "bakery_dining", "pastel" -> R.drawable.ic_home_category_pastel
+        "icecream", "acai", "açaí" -> R.drawable.ic_preview_acai
+        "local_bar", "bebidas" -> R.drawable.ic_preview_drink
+        "shopping_cart", "mercado", "market" -> R.drawable.ic_preview_basket
+        "pharmacy", "farmacia", "farmácia", "farmacias" -> R.drawable.ic_preview_pharmacy
         else -> R.drawable.ic_lucide_hamburger
     }
     val label = category.name.ifBlank { category.id.replaceFirstChar { it.uppercase() } }
@@ -658,7 +671,7 @@ private fun HomeExplorationCategoryItem(
                     painter = painterResource(iconRes),
                     contentDescription = label,
                     tint = Color.Unspecified,
-                    modifier = Modifier.size(30.dp)
+                    modifier = Modifier.size(32.dp)
                 )
             }
         }
@@ -2110,19 +2123,51 @@ private fun HomeStoreListSection(
         Spacer(modifier = Modifier.height(8.dp))
 
         if (isLoading) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 40.dp),
-                contentAlignment = Alignment.Center
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = ItaSuperPrimary)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Carregando lojas...",
-                        style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    )
+                repeat(5) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFEDEDED))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.68f)
+                                    .height(14.dp)
+                                    .clip(RoundedCornerShape(7.dp))
+                                    .background(Color(0xFFEDEDED))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.45f)
+                                    .height(11.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFF1F1F1))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.58f)
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(Color(0xFFF1F1F1))
+                            )
+                        }
+                    }
                 }
             }
         } else if (requiresAddress) {
@@ -2373,7 +2418,13 @@ private fun StoreCardItem(
             else -> "Taxa $fee"
         }
     }
-    val deliveryDetails = listOfNotNull(deliveryTime, deliveryFee).joinToString("  •  ")
+    val distanceLabel = store.distanceKm
+        ?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.let { distance ->
+            if (distance < 1.0) "${(distance * 1000).toInt()} m" else
+                String.format(java.util.Locale("pt", "BR"), "%.1f km", distance)
+        }
+    val deliveryDetails = listOfNotNull(deliveryTime, deliveryFee, distanceLabel).joinToString("  •  ")
     val openingMessage = nextStoreOpeningLabel(store)
     val deliveryUnavailable = store.deliveryMode.equals("own", ignoreCase = true) && store.hasAvailableDriver == false
 

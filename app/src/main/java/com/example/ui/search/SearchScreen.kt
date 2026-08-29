@@ -50,6 +50,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,6 +80,8 @@ import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
 import com.example.ui.theme.ManropeFontFamily
+import com.example.ui.permissions.LocationAndPermissionsDialog
+import com.example.ui.permissions.PermissionUtils
 import java.util.Locale
 
 @Composable
@@ -95,6 +100,15 @@ fun SearchScreen(
     val searchableProducts by viewModel.searchableProducts.collectAsStateWithLifecycle()
     val trendingStores by viewModel.trendingStores.collectAsStateWithLifecycle()
     val filteredStores by viewModel.filteredStores.collectAsStateWithLifecycle()
+    var showPermissionsDialog by remember { mutableStateOf(false) }
+
+    LocationAndPermissionsDialog(
+        showDialog = showPermissionsDialog,
+        onDismiss = { showPermissionsDialog = false },
+        onLocationPermissionResult = { granted ->
+            if (granted) viewModel.requestGpsLocation(context)
+        }
+    )
 
     LaunchedEffect(Unit) { viewModel.synchronizeLocation(context) }
 
@@ -118,6 +132,13 @@ fun SearchScreen(
                 query = uiState.rawQuery,
                 onQueryChange = viewModel::onQueryChange,
                 onClearQuery = viewModel::clearQuery,
+                onLocationClick = {
+                    if (PermissionUtils.hasLocationPermission(context)) {
+                        viewModel.requestGpsLocation(context)
+                    } else {
+                        showPermissionsDialog = true
+                    }
+                },
                 onSubmit = {
                     viewModel.submitSearch(uiState.rawQuery)
                     focusManager.clearFocus()
@@ -137,6 +158,7 @@ fun SearchScreen(
             } else {
                 DiscoverLanding(
                     city = city,
+                    isLoadingDiscovery = uiState.isLoadingDiscovery,
                     quickFilter = uiState.activeQuickFilter,
                     categories = viewModel.searchCategories,
                     featuredProducts = featuredProducts,
@@ -159,6 +181,7 @@ private fun DiscoverHeader(
     query: String,
     onQueryChange: (String) -> Unit,
     onClearQuery: () -> Unit,
+    onLocationClick: () -> Unit,
     onSubmit: () -> Unit
 ) {
     Column(
@@ -177,7 +200,13 @@ private fun DiscoverHeader(
             )
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onLocationClick)
+                .padding(vertical = 3.dp)
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_map_pin),
                 contentDescription = null,
@@ -243,6 +272,7 @@ private fun DiscoverHeader(
 @Composable
 private fun DiscoverLanding(
     city: String,
+    isLoadingDiscovery: Boolean,
     quickFilter: DiscoverQuickFilter?,
     categories: List<SearchCategory>,
     featuredProducts: List<DiscoverProduct>,
@@ -270,7 +300,10 @@ private fun DiscoverLanding(
                 onSelect = onCategory
             )
         }
-        if (featuredProducts.isNotEmpty()) {
+        if (isLoadingDiscovery && featuredProducts.isEmpty() && trendingStores.isEmpty()) {
+            item { DiscoverLoadingSkeleton() }
+        }
+        if (!isLoadingDiscovery && featuredProducts.isNotEmpty()) {
             item {
                 DiscoverSectionHeader(
                     title = "Em alta em ${city.ifBlank { "sua cidade" }}",
@@ -280,7 +313,7 @@ private fun DiscoverLanding(
             itemsIndexed(featuredProducts, key = { index, product -> "discover_product_${index}_${product.id}" }) { _, product ->
                 DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
             }
-        } else if (trendingStores.isNotEmpty()) {
+        } else if (!isLoadingDiscovery && trendingStores.isNotEmpty()) {
             item { DiscoverSectionHeader(title = "Em alta em ${city.ifBlank { "sua cidade" }}") }
             itemsIndexed(trendingStores.take(4), key = { index, store -> "discover_store_${index}_${store.id}" }) { _, store ->
                 DiscoverStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
@@ -293,6 +326,50 @@ private fun DiscoverLanding(
                     onSearch = onRecentSearch,
                     onClear = onClearRecentSearches
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverLoadingSkeleton() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        repeat(3) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFEDEDED))
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.7f)
+                            .height(13.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Color(0xFFEDEDED))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.45f)
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFF1F1F1))
+                    )
+                }
             }
         }
     }
@@ -347,7 +424,7 @@ private fun DiscoverCuratedCategories(
     categories: List<SearchCategory>,
     onSelect: (String) -> Unit
 ) {
-    val wanted = listOf("pizzaria", "acai", "marmita", "farmacias")
+    val wanted = listOf("pizzaria", "acai", "marmita", "bebidas", "farmacias")
     val curated = wanted.mapNotNull { wantedId ->
         categories.firstOrNull { it.id.equals(wantedId, ignoreCase = true) }
     }
@@ -379,10 +456,12 @@ private fun DiscoverCuratedCategories(
         ) {
             curated.forEach { category ->
                 val iconRes = when (category.id) {
-                    "pizzaria" -> R.drawable.ic_lucide_pizza
-                    "acai" -> R.drawable.ic_lucide_soup
-                    "farmacias" -> R.drawable.ic_lucide_pharmacy
-                    else -> R.drawable.ic_lucide_package_open
+                    "pizzaria" -> R.drawable.ic_preview_pizza
+                    "acai" -> R.drawable.ic_preview_acai
+                    "marmita" -> R.drawable.ic_preview_marmita
+                    "bebidas" -> R.drawable.ic_preview_drink
+                    "farmacias" -> R.drawable.ic_preview_pharmacy
+                    else -> R.drawable.ic_lucide_hamburger
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -401,7 +480,7 @@ private fun DiscoverCuratedCategories(
                                 painter = painterResource(iconRes),
                                 contentDescription = category.name,
                                 tint = Color.Unspecified,
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }
