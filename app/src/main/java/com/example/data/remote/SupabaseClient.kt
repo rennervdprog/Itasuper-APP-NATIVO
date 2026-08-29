@@ -1593,7 +1593,7 @@ object SupabaseClient {
     // 5. FETCH PRODUCTS FOR STORE
     suspend fun fetchProductsForStore(storeId: String): List<Product> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/products?select=id,name,description,price,image_url,category,section_id,is_available,sold_by_weight,has_stuffed_crust,is_combo,is_pastel_flavor,is_beverage,metadata&store_id=eq.$storeId&order=name.asc"
+            val url = "$SUPABASE_URL/rest/v1/products?select=id,name,description,price,image_url,section_id,is_available,sold_by_weight,metadata&store_id=eq.$storeId&order=name.asc"
 
             val request = Request.Builder()
                 .url(url)
