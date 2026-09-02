@@ -19,6 +19,8 @@ data class Order(
     val confirmedAt: String = "",
     /** ISO do prazo canônico de abertura de caso PIX Direto emitido pelo servidor. */
     val refundRequestExpiresAt: String = "",
+    /** ISO do prazo de 20 minutos para envio do comprovante PIX Direto. */
+    val pixExpiresAt: String = "",
     val deliveryPin: String = "",
     val neighborhood: String = "",
     val deliveryCep: String = "",

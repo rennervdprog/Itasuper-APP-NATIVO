@@ -2631,12 +2631,25 @@ object SupabaseClient {
             val attachResponse = httpClient.newCall(attachRequest).execute()
             val attachBody = attachResponse.body?.string().orEmpty()
             if (!attachResponse.isSuccessful) {
-                return@withContext Result.failure(IllegalStateException(parseErrorMessage(attachBody, "O comprovante foi enviado, mas não pôde ser associado ao pedido.")))
+                removePixProof(path, bearer)
+                return@withContext Result.failure(IllegalStateException(parseErrorMessage(attachBody, "O comprovante não pôde ser associado ao pedido.")))
             }
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Error uploading PIX direct proof", e)
             Result.failure(IllegalStateException("Falha de conexão ao enviar o comprovante."))
+        }
+    }
+
+    private fun removePixProof(path: String, bearer: String) {
+        runCatching {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/storage/v1/object/pix-proofs/$path")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", bearer)
+                .delete()
+                .build()
+            httpClient.newCall(request).execute().use { }
         }
     }
 
@@ -2689,6 +2702,7 @@ object SupabaseClient {
                     createdAt = item.optString("created_at", ""),
                     confirmedAt = item.optString("confirmed_at", ""),
                     refundRequestExpiresAt = item.optString("refund_request_expires_at", ""),
+                    pixExpiresAt = item.optString("pix_expires_at", ""),
                     deliveryPin = item.optString("delivery_pin", ""),
                     neighborhood = item.optString("neighborhood", ""),
                     deliveryCep = item.optString("delivery_cep", ""),

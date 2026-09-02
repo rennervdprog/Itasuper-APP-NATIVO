@@ -75,6 +75,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.time.Instant
+import kotlinx.coroutines.delay
 import com.example.data.model.Order
 import com.example.data.model.RefundEligibility
 import com.example.ui.navigation.ItaSuperBottomNavBar
@@ -993,6 +995,20 @@ private fun PixDirectPaymentDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val expiresAtMillis = state.order?.pixExpiresAt?.let { raw ->
+        runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
+    }
+    val nowMillis = remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(expiresAtMillis) {
+        while (true) {
+            nowMillis.value = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val remainingMillis = expiresAtMillis?.minus(nowMillis.value)?.coerceAtLeast(0L) ?: 0L
+    val deadlineExpired = expiresAtMillis == null || remainingMillis == 0L
+    val remainingMinutes = remainingMillis / 60_000L
+    val remainingSeconds = (remainingMillis % 60_000L) / 1_000L
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val mimeType = context.contentResolver.getType(uri).orEmpty().ifBlank { "application/octet-stream" }
@@ -1045,6 +1061,21 @@ private fun PixDirectPaymentDialog(
                     Text(state.instructions, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                if (deadlineExpired) {
+                    Text(
+                        if (expiresAtMillis == null) "Prazo do PIX indisponível. Solicite um novo pedido à loja."
+                        else "Prazo para envio do comprovante encerrado.",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Text(
+                        "Envie o comprovante em %02d:%02d".format(remainingMinutes, remainingSeconds),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 when {
                     state.isUploading -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1059,7 +1090,11 @@ private fun PixDirectPaymentDialog(
                         fontWeight = FontWeight.Bold
                     )
                     state.errorMessage != null -> Text(state.errorMessage, color = MaterialTheme.colorScheme.error)
-                    else -> Text("Envie um comprovante JPG, PNG ou PDF de até 5 MB.", style = MaterialTheme.typography.bodySmall)
+                    else -> Text(
+                        if (deadlineExpired) "O envio não está mais disponível para este pedido."
+                        else "Envie um comprovante JPG, PNG ou PDF de até 5 MB.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },
@@ -1067,7 +1102,7 @@ private fun PixDirectPaymentDialog(
             if (!state.proofSent) {
                 Button(
                     onClick = { filePicker.launch(arrayOf("image/jpeg", "image/png", "application/pdf")) },
-                    enabled = !state.isUploading,
+                    enabled = !state.isUploading && !deadlineExpired,
                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
                 ) {
                     Text(if (state.isUploading) "Enviando…" else "Enviar comprovante")
