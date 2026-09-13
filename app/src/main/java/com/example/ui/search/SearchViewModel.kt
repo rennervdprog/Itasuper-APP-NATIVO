@@ -47,6 +47,19 @@ fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2:
 fun supportsPickup(deliveryMode: String): Boolean =
     deliveryMode.equals("pickup", ignoreCase = true) || deliveryMode.equals("both", ignoreCase = true)
 
+/**
+ * Converte a categoria recebida pela rota no id canônico do catálogo.
+ * Um id desconhecido vira null para que a Busca abra completa em vez de vazia,
+ * caso a Home passe a usar um vocabulário que esta tela ainda não conhece.
+ */
+fun resolveInitialCategoryId(categoryId: String?): String? {
+    val normalized = categoryId?.trim().orEmpty()
+    if (normalized.isBlank()) return null
+    return StoreRepository.searchCategories
+        .firstOrNull { it.id.equals(normalized, ignoreCase = true) }
+        ?.id
+}
+
 enum class DiscoverQuickFilter(val label: String) {
     OPEN_NOW("Aberto agora"),
     DELIVERY_AVAILABLE("Entrega disponível"),
@@ -68,6 +81,7 @@ data class SearchUiState(
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
     private val searchHistoryRepo = SearchHistoryRepository(application)
+    private var initialCategoryApplied = false
     private val _uiState = MutableStateFlow(SearchUiState())
     private val _featuredProducts = MutableStateFlow<List<DiscoverProduct>>(emptyList())
     private val _searchableProducts = MutableStateFlow<List<DiscoverProduct>>(emptyList())
@@ -201,6 +215,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
         matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Aplica a categoria recebida pela rota uma única vez por navegação.
+     * Um id desconhecido é ignorado para que a Busca abra completa em vez de
+     * vazia caso a Home mude de vocabulário antes desta tela.
+     */
+    fun applyInitialCategory(categoryId: String?) {
+        if (initialCategoryApplied) return
+        initialCategoryApplied = true
+        val resolved = resolveInitialCategoryId(categoryId) ?: return
+        _uiState.value = _uiState.value.copy(selectedCategoryId = resolved)
+    }
 
     fun onQueryChange(newQuery: String) {
         _uiState.value = _uiState.value.copy(rawQuery = newQuery)

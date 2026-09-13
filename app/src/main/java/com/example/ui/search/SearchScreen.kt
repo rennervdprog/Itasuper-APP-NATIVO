@@ -88,7 +88,8 @@ import java.util.Locale
 fun SearchScreen(
     viewModel: SearchViewModel,
     onNavigateToStore: (String) -> Unit,
-    onNavigateToRoute: (String) -> Unit
+    onNavigateToRoute: (String) -> Unit,
+    initialCategoryId: String? = null
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -111,6 +112,10 @@ fun SearchScreen(
     )
 
     LaunchedEffect(Unit) { viewModel.synchronizeLocation(context) }
+
+    // A categoria chega pela rota quando a Home envia o cliente para o catálogo
+    // completo de um destaque; o ViewModel garante que só é aplicada uma vez.
+    LaunchedEffect(initialCategoryId) { viewModel.applyInitialCategory(initialCategoryId) }
 
     Scaffold(
         bottomBar = {

@@ -231,7 +231,16 @@ fun ItaSuperApp() {
             )
         }
 
-        composable("busca") {
+        composable(
+            route = "busca?categoria={categoria}",
+            arguments = listOf(
+                navArgument("categoria") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             val searchViewModel: SearchViewModel = viewModel()
             SearchScreen(
                 viewModel = searchViewModel,
@@ -246,7 +255,8 @@ fun ItaSuperApp() {
                             restoreState = true
                         }
                     }
-                }
+                },
+                initialCategoryId = backStackEntry.arguments?.getString("categoria")
             )
         }
 
