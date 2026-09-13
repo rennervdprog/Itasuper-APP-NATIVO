@@ -380,7 +380,11 @@ fun ItaSuperApp() {
         }
         LegalConsentGate(
             session = userSession,
-            viewModel = legalConsentViewModel
+            viewModel = legalConsentViewModel,
+            onNavigateToProfile = {
+                legalConsentViewModel.setRefusalPanelVisible(false)
+                navController.navigate("perfil") { launchSingleTop = true }
+            }
         )
         if (!isOnline) {
             OfflineConnectivityBanner()

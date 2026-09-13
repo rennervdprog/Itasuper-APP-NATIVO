@@ -21,10 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GppGood
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -32,6 +35,9 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,21 +63,30 @@ import com.example.data.model.LegalDocumentLinks
 import com.example.data.model.PendingLegalChanges
 import com.example.data.model.UserSession
 import com.example.ui.theme.ItaSuperPrimary
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Composable
 fun LegalConsentGate(
     session: UserSession,
-    viewModel: LegalConsentViewModel
+    viewModel: LegalConsentViewModel,
+    onNavigateToProfile: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val pending = uiState.pending ?: return
     if (!uiState.requiresAcceptance) return
 
-    BackHandler(enabled = true) { }
+    // Em aviso prévio (modo notice) os Termos §6.3 garantem 30 dias corridos em que nada
+    // muda para o usuário: bloquear a tela nesse período faria o app contradizer o contrato.
+    // Só o modo binding, com a vigência já em curso, prende o usuário aqui.
+    val isBlocking = uiState.isBlocking
+    // O Dialog consome o botão voltar por conta própria; o BackHandler abaixo só existe
+    // para o caso de o diálogo ainda não ter o foco da janela.
+    BackHandler(enabled = true) { if (!isBlocking) viewModel.dismissNotice() }
     Dialog(
-        onDismissRequest = { },
+        onDismissRequest = { if (!isBlocking) viewModel.dismissNotice() },
         properties = DialogProperties(
-            dismissOnBackPress = false,
+            dismissOnBackPress = !isBlocking,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false
         )
@@ -87,7 +102,11 @@ fun LegalConsentGate(
             shadowElevation = 10.dp
         ) {
             Column {
-                LegalConsentHeader(pending)
+                LegalConsentHeader(
+                    pending = pending,
+                    isBlocking = isBlocking,
+                    onClose = viewModel::dismissNotice
+                )
                 HorizontalDivider(color = Color(0xFFEEEEEE))
 
                 Column(
@@ -101,7 +120,11 @@ fun LegalConsentGate(
                         text = "Veja abaixo somente o que mudou desde o seu último aceite.",
                         style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF686868))
                     )
-                    LegalRequirementNotice()
+                    if (isBlocking) {
+                        LegalRequirementNotice()
+                    } else {
+                        LegalAdvanceNotice(pending)
+                    }
 
                     if (pending.needsTerms) {
                         LegalChangesCard(
@@ -192,9 +215,45 @@ fun LegalConsentGate(
                         } else {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Aceitar e continuar", fontWeight = FontWeight.ExtraBold)
+                            Text(
+                                // Aceitar antes da vigência é permitido e vale como aceite.
+                                if (isBlocking) "Aceitar e continuar" else "Aceitar desde já",
+                                fontWeight = FontWeight.ExtraBold
+                            )
                         }
                     }
+
+                    if (!isBlocking) {
+                        OutlinedButton(
+                            onClick = viewModel::dismissNotice,
+                            enabled = uiState.canDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("Ver depois", fontWeight = FontWeight.Bold, color = Color(0xFF4D4D4D))
+                        }
+                    }
+
+                    // Consentimento sob bloqueio total e sem saída não é consentimento livre
+                    // (LGPD art. 8º, §4º). A recusa aponta para exclusão de conta e suporte.
+                    TextButton(
+                        onClick = { viewModel.setRefusalPanelVisible(!uiState.showRefusalPanel) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Não concordo com as mudanças",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = Color(0xFF737373),
+                                textDecoration = TextDecoration.Underline
+                            )
+                        )
+                    }
+                    if (uiState.showRefusalPanel) {
+                        LegalRefusalPanel(onOpenProfile = onNavigateToProfile)
+                    }
+
                     Text(
                         text = "Consentimento registrado com data e hora.",
                         modifier = Modifier.fillMaxWidth(),
@@ -208,9 +267,13 @@ fun LegalConsentGate(
 }
 
 @Composable
-private fun LegalConsentHeader(pending: PendingLegalChanges) {
+private fun LegalConsentHeader(
+    pending: PendingLegalChanges,
+    isBlocking: Boolean,
+    onClose: () -> Unit
+) {
     Row(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+        modifier = Modifier.padding(start = 20.dp, end = 10.dp, top = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -224,7 +287,10 @@ private fun LegalConsentHeader(pending: PendingLegalChanges) {
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("Termos atualizados", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold))
+            Text(
+                if (isBlocking) "Termos atualizados" else "Aviso de mudança nos Termos",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold)
+            )
             Text(
                 "Termos v${pending.currentTermsVersion} · Privacidade v${pending.currentPrivacyVersion}",
                 style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF686868))
@@ -232,13 +298,23 @@ private fun LegalConsentHeader(pending: PendingLegalChanges) {
         }
         Surface(
             shape = RoundedCornerShape(50),
-            color = Color(0xFFFFF0E6)
+            color = if (isBlocking) Color(0xFFFFF0E6) else Color(0xFFE8F1FF)
         ) {
             Text(
-                "Obrigatório",
+                if (isBlocking) "Obrigatório" else "Aviso prévio",
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                style = MaterialTheme.typography.labelSmall.copy(color = ItaSuperPrimary, fontWeight = FontWeight.ExtraBold)
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = if (isBlocking) ItaSuperPrimary else Color(0xFF1B5FB8),
+                    fontWeight = FontWeight.ExtraBold
+                )
             )
+        }
+        if (!isBlocking) {
+            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "Fechar aviso", tint = Color(0xFF737373), modifier = Modifier.size(18.dp))
+            }
+        } else {
+            Spacer(Modifier.width(10.dp))
         }
     }
 }
@@ -260,6 +336,110 @@ private fun LegalRequirementNotice() {
             style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF715000))
         )
     }
+}
+
+/**
+ * Aviso prévio: mostra a data de vigência e quantos dias faltam. Enquanto este período
+ * corre, nada muda para o usuário — o app só informa.
+ */
+@Composable
+private fun LegalAdvanceNotice(pending: PendingLegalChanges) {
+    val formattedDate = remember(pending.effectiveDate) { formatLegalEffectiveDate(pending.effectiveDate) }
+    val days = pending.daysUntilEffective?.coerceAtLeast(0)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFEAF2FF))
+            .padding(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFF1B5FB8), modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(9.dp))
+        Column {
+            Text(
+                buildString {
+                    append("Estas mudanças passam a valer")
+                    if (formattedDate != null) append(" em $formattedDate") else append(" em breve")
+                    append(".")
+                },
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF123E78), fontWeight = FontWeight.Bold)
+            )
+            Text(
+                when {
+                    days == null -> "Até lá nada muda para você e não é preciso fazer nada agora."
+                    days <= 0 -> "Até a virada nada muda para você e não é preciso fazer nada agora."
+                    days == 1 -> "Falta 1 dia. Até lá nada muda para você e não é preciso fazer nada agora."
+                    else -> "Faltam $days dias. Até lá nada muda para você e não é preciso fazer nada agora."
+                },
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF2C5C96))
+            )
+        }
+    }
+}
+
+/**
+ * Caminho de recusa. Não há como "recusar e seguir usando" — o que existe é sair:
+ * exportar/excluir a conta no perfil, ou falar com o suporte.
+ */
+@Composable
+private fun LegalRefusalPanel(onOpenProfile: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF7F7F7))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            "Você não precisa concordar. Se preferir não seguir com as novas versões, pode pedir seus dados ou encerrar sua conta a qualquer momento.",
+            style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF4D4D4D))
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .clickable(onClick = onOpenProfile),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.GppGood, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Meus dados e excluir conta", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFF4D4D4D)))
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .clickable {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalDocumentLinks.SUPPORT_WHATSAPP_URL)))
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.SupportAgent, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Falar com o suporte", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFF4D4D4D)))
+        }
+    }
+}
+
+/** O backend manda ISO-8601 com fuso; a tela mostra só a data. */
+private fun formatLegalEffectiveDate(raw: String?): String? {
+    val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val datePart = value.take(10)
+    val parsed = runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(datePart)
+    }.getOrNull() ?: return null
+    return SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")).format(parsed)
 }
 
 @Composable
