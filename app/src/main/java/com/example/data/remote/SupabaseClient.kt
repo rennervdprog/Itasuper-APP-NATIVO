@@ -11,6 +11,7 @@ import com.example.data.model.DeliveryQuoteFailure
 import com.example.data.model.DeliveryQuotePricing
 import com.example.data.model.DeliveryQuoteResult
 import com.example.data.model.DeliveryQuoteSnapshot
+import com.example.data.model.LegalAcceptanceMode
 import com.example.data.model.LegalAcceptanceResult
 import com.example.data.model.LegalChange
 import com.example.data.model.MenuSection
@@ -100,6 +101,9 @@ data class PixPaymentResponse(
 object SupabaseClient {
 
     private const val TAG = "SupabaseClient"
+
+    /** Público-alvo do app cliente no RPC legal da v6.6. */
+    private const val LEGAL_AUDIENCE_CLIENT = "cliente"
 
     const val SUPABASE_URL = "https://qkjhguziuchqsbxzruea.supabase.co"
     const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramhndXppdWNocXNieHpydWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDg4NTUsImV4cCI6MjA5MDYyNDg1NX0.2sTeKchqAEN2gCqnH1_Zn9cJmUSmZgryt05A66tgm2Y"
@@ -508,10 +512,37 @@ object SupabaseClient {
         privacyAccepted: String?,
         accessToken: String? = null
     ): PendingLegalChanges? = withContext(Dispatchers.IO) {
+        // O público-alvo entrou na sobrecarga de três argumentos da v6.6. Sem ele o cliente
+        // recebe também mudanças de lojista e motoboy, e a que o afeta fica soterrada.
+        // Só um banco sem a sobrecarga (42883) justifica repetir na assinatura antiga:
+        // falha de rede ou RLS não deve virar uma segunda requisição.
+        when (val result = requestPendingLegalChanges(termsAccepted, privacyAccepted, accessToken, LEGAL_AUDIENCE_CLIENT)) {
+            is LegalChangesResponse.Unsupported ->
+                (requestPendingLegalChanges(termsAccepted, privacyAccepted, accessToken, audience = null)
+                    as? LegalChangesResponse.Success)?.value
+            is LegalChangesResponse.Success -> result.value
+            is LegalChangesResponse.Failed -> null
+        }
+    }
+
+    /** Distingue "o banco não tem a sobrecarga" de "a consulta falhou". */
+    private sealed interface LegalChangesResponse {
+        data class Success(val value: PendingLegalChanges) : LegalChangesResponse
+        data object Unsupported : LegalChangesResponse
+        data object Failed : LegalChangesResponse
+    }
+
+    private suspend fun requestPendingLegalChanges(
+        termsAccepted: String?,
+        privacyAccepted: String?,
+        accessToken: String?,
+        audience: String?
+    ): LegalChangesResponse = withContext(Dispatchers.IO) {
         try {
             val requestBody = JSONObject().apply {
                 put("_terms_accepted", termsAccepted?.ifBlank { "0" } ?: "0")
                 put("_privacy_accepted", privacyAccepted?.ifBlank { "0" } ?: "0")
+                if (audience != null) put("_audience", audience)
             }
             val bearer = accessToken?.takeIf { it.isNotBlank() } ?: SUPABASE_ANON_KEY
             val request = Request.Builder()
@@ -524,22 +555,32 @@ object SupabaseClient {
             httpClient.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful || body.isBlank()) {
+                    if (audience != null && isMissingFunctionError(response.code, body)) {
+                        Log.i(TAG, "RPC legal sem _audience no banco; repetindo sem público-alvo")
+                        return@withContext LegalChangesResponse.Unsupported
+                    }
                     Log.w(TAG, "Não foi possível consultar documentos legais: code=${response.code}")
-                    return@withContext null
+                    return@withContext LegalChangesResponse.Failed
                 }
                 val result = JSONObject(body)
-                PendingLegalChanges(
+                val pending = PendingLegalChanges(
                     needsTerms = result.optBoolean("needs_terms", false),
                     needsPrivacy = result.optBoolean("needs_privacy", false),
                     currentTermsVersion = result.optNullableString("current_terms_version").orEmpty(),
                     currentPrivacyVersion = result.optNullableString("current_privacy_version").orEmpty(),
                     termsChanges = parseLegalChanges(result.optJSONArray("terms_changes")),
-                    privacyChanges = parseLegalChanges(result.optJSONArray("privacy_changes"))
+                    privacyChanges = parseLegalChanges(result.optJSONArray("privacy_changes")),
+                    // Campo ausente (banco anterior à v6.6) significa binding, nunca notice.
+                    mode = LegalAcceptanceMode.fromRemote(result.optNullableString("mode")),
+                    termsEffectiveDate = result.optNullableString("terms_effective_date"),
+                    privacyEffectiveDate = result.optNullableString("privacy_effective_date"),
+                    daysUntilEffective = result.optNullableInt("days_until_effective")
                 )
+                LegalChangesResponse.Success(pending)
             }
         } catch (error: Exception) {
             Log.e(TAG, "Erro ao consultar documentos legais", error)
-            null
+            LegalChangesResponse.Failed
         }
     }
 
@@ -548,7 +589,8 @@ object SupabaseClient {
         userId: String,
         accessToken: String,
         termsVersion: String,
-        privacyVersion: String
+        privacyVersion: String,
+        acceptanceMode: LegalAcceptanceMode = LegalAcceptanceMode.BINDING
     ): LegalAcceptanceResult = withContext(Dispatchers.IO) {
         if (userId.isBlank() || accessToken.isBlank() || termsVersion.isBlank() || privacyVersion.isBlank()) {
             return@withContext LegalAcceptanceResult(false, "Não foi possível identificar os documentos para aceite.")
@@ -557,27 +599,45 @@ object SupabaseClient {
             val acceptedAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone("UTC")
             }.format(java.util.Date())
-            val acceptanceBody = JSONObject().apply {
+            fun acceptanceBody(includeMode: Boolean) = JSONObject().apply {
                 put("user_id", userId)
                 put("terms_version", termsVersion)
                 put("privacy_version", privacyVersion)
                 put("user_agent", "ItaSuper Android")
                 put("accepted_at", acceptedAt)
+                if (includeMode) put("acceptance_mode", acceptanceMode.remoteValue)
             }
-            val acceptanceRequest = Request.Builder()
+            fun acceptanceRequest(includeMode: Boolean) = Request.Builder()
                 .url("$SUPABASE_URL/rest/v1/terms_acceptance")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Prefer", "return=minimal")
-                .post(acceptanceBody.toString().toRequestBody(jsonMediaType))
+                .post(acceptanceBody(includeMode).toString().toRequestBody(jsonMediaType))
                 .build()
-            httpClient.newCall(acceptanceRequest).execute().use { response ->
-                if (!response.isSuccessful) {
+
+            // A prova do consentimento não pode falhar por causa de uma coluna acessória:
+            // se acceptance_mode ainda não existe (42703 / PGRST204), grava sem ela.
+            val needsRetryWithoutMode = httpClient.newCall(acceptanceRequest(includeMode = true)).execute().use { response ->
+                if (response.isSuccessful) return@use false
+                val body = response.body?.string().orEmpty()
+                if (!isMissingColumnError(body)) {
                     return@withContext LegalAcceptanceResult(
                         false,
-                        parseErrorMessage(response.body?.string().orEmpty(), "Não foi possível registrar seu aceite.")
+                        parseErrorMessage(body, "Não foi possível registrar seu aceite.")
                     )
+                }
+                Log.i(TAG, "Coluna acceptance_mode ausente; registrando aceite sem ela")
+                true
+            }
+            if (needsRetryWithoutMode) {
+                httpClient.newCall(acceptanceRequest(includeMode = false)).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@withContext LegalAcceptanceResult(
+                            false,
+                            parseErrorMessage(response.body?.string().orEmpty(), "Não foi possível registrar seu aceite.")
+                        )
+                    }
                 }
             }
 
@@ -3056,6 +3116,20 @@ object SupabaseClient {
         emptyList()
     }
 
+    /** PostgREST devolve 404 com code 42883 quando a sobrecarga do RPC não existe. */
+    private fun isMissingFunctionError(code: Int, body: String): Boolean {
+        if (code != 404 && code != 400) return false
+        return body.contains("42883") ||
+            body.contains("PGRST202") ||
+            body.contains("Could not find the function", ignoreCase = true)
+    }
+
+    /** Coluna inexistente: 42703 no Postgres, PGRST204 no cache de schema do PostgREST. */
+    private fun isMissingColumnError(body: String): Boolean =
+        body.contains("42703") ||
+            body.contains("PGRST204") ||
+            body.contains("Could not find the", ignoreCase = true) && body.contains("column", ignoreCase = true)
+
     private fun parseErrorMessage(jsonText: String, defaultMsg: String): String {
         return try {
             val json = JSONObject(jsonText)
@@ -3108,7 +3182,14 @@ object SupabaseClient {
         return value.takeIf { it.isFinite() }
     }
 
-    private fun JSONObject.optNullableString(key: String): String? {
+    private fun JSONObject.optNullableInt(key: String): Int? {
+    if (!has(key) || isNull(key)) return null
+    val direct = optInt(key, Int.MIN_VALUE)
+    if (direct != Int.MIN_VALUE) return direct
+    return optString(key).trim().toIntOrNull()
+}
+
+private fun JSONObject.optNullableString(key: String): String? {
         if (this.has(key) && !this.isNull(key)) {
             val str = this.optString(key, "")
             if (str.isNotBlank() && str != "null") return str
