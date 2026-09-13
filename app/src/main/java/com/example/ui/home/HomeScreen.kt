@@ -333,11 +333,13 @@ fun HomeScreen(
                 onStoreSortSelect = viewModel::onStoreSortSelect,
                 onRetry = viewModel::loadStores,
                 onInformAddress = viewModel::openLocationOrAddressDialog,
-                onStoreClick = onNavigateToStore
+                onStoreClick = onNavigateToStore,
+                // Sem categoria: a Busca abre o catálogo completo da cidade.
+                onViewAllStores = { onNavigateToRoute("busca") }
             )
 
-            // A primeira dobra termina na lista, como no layout aprovado. O catálogo completo
-            // continua acessível pela Busca, sem introduzir uma vitrine adicional nesta Home.
+            // A primeira dobra termina na lista, como no layout aprovado. A lista é
+            // cortada e o catálogo completo continua acessível pela Busca.
             Spacer(modifier = Modifier.height(18.dp))
         }
     }
@@ -2219,7 +2221,8 @@ private fun HomeStoreListSection(
     onStoreSortSelect: (HomeStoreSort) -> Unit,
     onRetry: () -> Unit,
     onInformAddress: () -> Unit,
-    onStoreClick: (String) -> Unit
+    onStoreClick: (String) -> Unit,
+    onViewAllStores: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -2417,12 +2420,39 @@ private fun HomeStoreListSection(
                 )
             }
         } else {
+            // Em cidade grande a lista inteira vira parede de loja sem sentido.
+            // A Home mostra o começo e o catálogo completo fica na Busca.
+            val visibleStores = stores.take(HOME_STORE_LIST_LIMIT)
             Column(modifier = Modifier.fillMaxWidth()) {
-                stores.forEachIndexed { index, store ->
+                visibleStores.forEachIndexed { index, store ->
                     StoreCardItem(
                         store = store,
-                        showDivider = index < stores.lastIndex,
+                        showDivider = index < visibleStores.lastIndex,
                         onClick = { onStoreClick(store.id) }
+                    )
+                }
+            }
+            // O botão só aparece quando sobra loja de fato: cortar 13 para mostrar
+            // 12 não justifica mandar o cliente para outra tela.
+            if (stores.size > HOME_STORE_LIST_OVERFLOW_THRESHOLD) {
+                Spacer(modifier = Modifier.height(14.dp))
+                OutlinedButton(
+                    onClick = onViewAllStores,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("home_view_all_stores"),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ItaSuperPrimary)
+                ) {
+                    Text(
+                        text = "Ver todas as ${stores.size} lojas",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = ItaSuperPrimary
+                        )
                     )
                 }
             }
