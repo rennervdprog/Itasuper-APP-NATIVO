@@ -271,6 +271,18 @@ fun HomeScreen(
                 onCategorySelect = viewModel::onCategorySelect
             )
 
+            // Destaque da faixa de horário. Só aparece quando há loja aberta
+            // suficiente na faixa; a lista regional completa continua abaixo.
+            if (uiState.spotlightStores.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+                HomeDaypartSection(
+                    daypart = uiState.daypart,
+                    stores = uiState.spotlightStores,
+                    onStoreClick = onNavigateToStore,
+                    onViewAll = { onNavigateToRoute("busca?categoria=${uiState.daypart.categoriaPrimaria}") }
+                )
+            }
+
             // Atalhos exclusivamente para lojas em que o cliente já comprou.
             if (uiState.recentStores.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(32.dp))
@@ -1786,6 +1798,147 @@ private fun HomeFavoriteStoresSection(
             }
         }
     }
+}
+
+@Composable
+private fun HomeDaypartSection(
+    daypart: Daypart,
+    stores: List<Store>,
+    onStoreClick: (String) -> Unit,
+    onViewAll: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_ita_store),
+                        contentDescription = null,
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(19.dp)
+                    )
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        text = daypart.titulo,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            lineHeight = 18.sp,
+                            color = Color(0xFF1F1F1F)
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = daypart.subtitulo,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = Color(0xFF6D6D6D)
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = "Ver todas",
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = ItaSuperPrimary
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onViewAll)
+                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                    .testTag("home_daypart_view_all")
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            itemsIndexed(stores, key = { _, store -> "daypart_${store.id}" }) { _, store ->
+                Card(
+                    modifier = Modifier
+                        .width(126.dp)
+                        .clickable { onStoreClick(store.id) }
+                        .testTag("daypart_store_${store.id}"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE8E8E8)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        StoreLogoThumbnail(
+                            store = store,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .border(1.dp, Color(0xFFE8E8E8), CircleShape),
+                            circular = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = store.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                                color = Color(0xFF242424)
+                            ),
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            minLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = daypartStoreDetail(store),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 10.sp,
+                                color = Color(0xFF737373)
+                            ),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Mesma leitura do card da lista: tempo quando existe, senão distância.
+ * O card do destaque é estreito e não comporta a linha completa.
+ */
+private fun daypartStoreDetail(store: Store): String {
+    val deliveryTime = store.deliveryTime.takeUnless { it.isBlank() || it.equals("null", true) }
+    if (deliveryTime != null) return deliveryTime
+    val distance = store.distanceKm?.takeIf { it.isFinite() && it >= 0.0 } ?: return "Aberta agora"
+    return if (distance < 1.0) "${(distance * 1000).toInt()} m"
+    else String.format(java.util.Locale("pt", "BR"), "%.1f km", distance)
 }
 
 @Composable

@@ -32,6 +32,18 @@ data class AddressDraft(
     val whatsapp: String = ""
 )
 
+/** Abaixo disso o destaque da faixa vira ruído em vez de atalho. */
+private const val MIN_SPOTLIGHT_STORES = 3
+
+/** Um carrossel horizontal só precisa de opção suficiente para dar rolagem. */
+private const val MAX_SPOTLIGHT_STORES = 8
+
+/** A lista regional é cortada aqui; o resto fica no catálogo completo da Busca. */
+const val HOME_STORE_LIST_LIMIT = 12
+
+/** Só faz sentido oferecer "ver todas" quando sobra loja de fato. */
+const val HOME_STORE_LIST_OVERFLOW_THRESHOLD = 15
+
 enum class HomeStoreSort(val label: String) {
     RELEVANCE("Mais relevantes"),
     DISTANCE("Mais perto"),
@@ -50,6 +62,8 @@ data class HomeUiState(
     val categories: List<CategoryItem> = StoreRepository.categories,
     val stores: List<Store> = emptyList(),
     val regionalStoreCount: Int = 0,
+    val daypart: Daypart = DaypartRule.current(),
+    val spotlightStores: List<Store> = emptyList(),
     val favoriteStores: List<Store> = emptyList(),
     val recentStores: List<Store> = emptyList(),
     val banners: List<Banner> = emptyList(),
@@ -212,9 +226,12 @@ class HomeViewModel : ViewModel() {
                     .thenBy { it.name.lowercase() }
             )
         }
+        val daypart = DaypartRule.current()
         _uiState.value = _uiState.value.copy(
             stores = sortedStores,
             regionalStoreCount = regionalStores.size,
+            daypart = daypart,
+            spotlightStores = spotlightStoresFor(daypart, regionalStores),
             favoriteStores = regionalStores.sortedWith(
                 compareBy<Store> { !it.isOpen }
                     .thenBy { it.distanceKm ?: Double.MAX_VALUE }
@@ -226,6 +243,29 @@ class HomeViewModel : ViewModel() {
             loadDiscoverProducts(regionalStores, generation)
             loadAffordableProducts(regionalStores, generation)
         }
+    }
+
+    /**
+     * Monta o destaque da faixa de horário atual.
+     *
+     * Só entra loja aberta agora: um destaque com loja fechada convida o cliente
+     * a um pedido que não pode ser feito. A ordem segue a proximidade porque é
+     * o critério que a Home já usa como padrão.
+     *
+     * Menos de MIN_SPOTLIGHT_STORES lojas devolve lista vazia e a seção desaparece
+     * inteira — vitrine com uma opção só parece catálogo vazio, não curadoria.
+     */
+    private fun spotlightStoresFor(daypart: Daypart, regionalStores: List<Store>): List<Store> {
+        val candidates = regionalStores.filter { store ->
+            store.isOpen && daypart.categorias.any { StoreRepository.matchesCategory(store, it) }
+        }
+        if (candidates.size < MIN_SPOTLIGHT_STORES) return emptyList()
+        return candidates
+            .sortedWith(
+                compareBy<Store> { it.distanceKm ?: Double.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+            .take(MAX_SPOTLIGHT_STORES)
     }
 
     /**
