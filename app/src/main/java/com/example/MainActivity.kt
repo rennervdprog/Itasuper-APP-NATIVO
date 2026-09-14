@@ -5,8 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,9 +17,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -32,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -68,6 +72,7 @@ import com.example.ui.search.SearchViewModel
 import com.example.ui.store.StoreDetailScreen
 import com.example.ui.store.StoreInfoScreen
 import com.example.ui.store.StoreDetailViewModel
+import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.delay
@@ -75,7 +80,13 @@ import kotlinx.coroutines.isActive
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Precisa vir antes de super.onCreate para o sistema usar o splash da marca
+        // em vez do gerado automaticamente. A tela sai no primeiro frame: quem segura
+        // a sessao e a tela de restauracao, que repete o mesmo fundo e a mesma marca.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Le a sessao local antes de compor, para a tela de restauracao durar o minimo.
+        UserSessionRepository.initialize(applicationContext)
         PushNotificationManager.createOrderNotificationChannel(applicationContext)
         PushNotificationManager.captureLaunchIntent(applicationContext, intent)
         try {
@@ -107,6 +118,34 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Mesma medida usada em drawable/splash_brand_mark.xml. As duas telas precisam
+ * desenhar a marca do mesmo tamanho para a troca nao piscar.
+ */
+private val SPLASH_MARK_SIZE = 208.dp
+
+/**
+ * Tela exibida enquanto a sessao local e lida.
+ * Repete o fundo e a marca do splash do sistema, no mesmo tamanho e na mesma
+ * posicao, para que a troca entre os dois seja imperceptivel: da abertura ate a
+ * Home o usuario ve um visual so.
+ */
+@Composable
+fun SessionRestoreScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ItaSuperPrimary),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
+            contentDescription = null,
+            modifier = Modifier.size(SPLASH_MARK_SIZE)
+        )
+    }
+}
+
 @Composable
 fun ItaSuperApp() {
     val context = LocalContext.current
@@ -132,16 +171,7 @@ fun ItaSuperApp() {
     }
 
     if (!userSession.isSessionRestored) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Restaurando sua sessão...")
-            }
-        }
+        SessionRestoreScreen()
         return
     }
 

@@ -6,4 +6,15 @@
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>
+
+    <!--
+      Tema de abertura. E o tema declarado na MainActivity: o sistema o usa para
+      pintar o primeiro frame e installSplashScreen() troca para postSplashScreenTheme
+      assim que a Activity comeca a desenhar.
+    -->
+    <style name="Theme.ItaSuper.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ita_primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_brand_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
+    </style>
 </resources>
