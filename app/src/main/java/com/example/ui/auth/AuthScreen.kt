@@ -29,20 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Pin
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -93,11 +79,16 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.ui.theme.ItaSuperBackground
+import com.example.ui.theme.ItaSuperBorder
 import com.example.ui.theme.ItaSuperError
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperHighlightText
 import com.example.ui.theme.ItaSuperPrimary
+import com.example.ui.theme.ItaSuperSecondary
 import com.example.ui.theme.ItaSuperSuccess
+import com.example.ui.theme.ItaSuperTextPrimary
+import com.example.ui.theme.ItaSuperTextSecondary
 import com.example.ui.theme.ItaSuperWarning
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,14 +99,18 @@ fun AuthScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
 
+    // O erro aparece so no ErrorBanner, dentro do cartao. Antes ele saia tambem em
+    // snackbar, e como showSnackbar suspende os dois ficavam na tela ao mesmo tempo.
+    // Quem limpa a mensagem e a propria digitacao: todo onChange do AuthViewModel
+    // zera errorMessage, assim como a troca de aba.
+    // O banner fica no topo do cartao e o botao de enviar no fim do formulario, entao
+    // sem rolar o usuario submeteria de novo sem ver o motivo da recusa.
     LaunchedEffect(uiState.errorMessage) {
-        uiState.errorMessage?.let { error ->
-            snackbarHostState.showSnackbar(error)
-            viewModel.clearMessages()
-        }
+        if (uiState.errorMessage != null) scrollState.animateScrollTo(0)
     }
 
     LaunchedEffect(uiState.successMessage) {
@@ -133,15 +128,15 @@ fun AuthScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color(0xFFFFFBF8)
+        containerColor = ItaSuperBackground
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFFFAF7))
+                .background(ItaSuperBackground)
                 .padding(paddingValues)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
         ) {
             AuthHeader()
 
@@ -150,7 +145,7 @@ fun AuthScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .padding(top = 2.dp, bottom = 28.dp)
-                    .border(1.dp, Color(0xFFF3E5DD), RoundedCornerShape(30.dp)),
+                    .border(1.dp, ItaSuperBorder, RoundedCornerShape(30.dp)),
                 shape = RoundedCornerShape(30.dp),
                 color = Color.White,
                 shadowElevation = 10.dp
@@ -221,7 +216,7 @@ private fun AuthHeader() {
             .height(222.dp)
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFFFF0E7), Color(0xFFFFFAF7))
+                    colors = listOf(ItaSuperHighlightBg, ItaSuperBackground)
                 )
             ),
         contentAlignment = Alignment.Center
@@ -247,7 +242,7 @@ private fun AuthHeader() {
             Text(
                 text = "Mercado e delivery, do seu jeito.",
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    color = Color(0xFF766159),
+                    color = ItaSuperTextSecondary,
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -263,7 +258,7 @@ private fun AuthModeIntro(mode: AuthMode) {
         style = MaterialTheme.typography.titleLarge.copy(
             fontWeight = FontWeight.ExtraBold,
             fontSize = 26.sp,
-            color = Color(0xFF251A15)
+            color = ItaSuperTextPrimary
         ),
         textAlign = TextAlign.Center
     )
@@ -271,7 +266,7 @@ private fun AuthModeIntro(mode: AuthMode) {
     Text(
         text = if (isLogin) "Entre para encontrar suas lojas favoritas e acompanhar seus pedidos." else "Crie sua conta para pedir com rapidez, segurança e praticidade.",
         style = MaterialTheme.typography.bodyMedium.copy(
-            color = Color(0xFF796860),
+            color = ItaSuperTextSecondary,
             lineHeight = 22.sp
         ),
         textAlign = TextAlign.Center
@@ -288,7 +283,7 @@ private fun AuthTabRow(
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(28.dp))
-            .background(Color(0xFFFFF0E8))
+            .background(ItaSuperSecondary)
             .padding(4.dp)
     ) {
         val isLogin = selectedMode is AuthMode.Login
@@ -308,7 +303,7 @@ private fun AuthTabRow(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
-                    color = if (isLogin) Color.White else Color(0xFF6C5B53)
+                    color = if (isLogin) Color.White else ItaSuperTextSecondary
                 )
             )
         }
@@ -328,7 +323,7 @@ private fun AuthTabRow(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
-                    color = if (!isLogin) Color.White else Color(0xFF6C5B53)
+                    color = if (!isLogin) Color.White else ItaSuperTextSecondary
                 )
             )
         }
@@ -352,7 +347,7 @@ private fun LoginForm(
             label = { Text("E-mail") },
             placeholder = { Text("seu.email@exemplo.com") },
             leadingIcon = {
-                Icon(Icons.Default.Email, contentDescription = null, tint = ItaSuperPrimary)
+                Icon(painterResource(id = R.drawable.ic_ita_mail), contentDescription = null, tint = ItaSuperPrimary)
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
@@ -366,7 +361,7 @@ private fun LoginForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -378,12 +373,12 @@ private fun LoginForm(
             label = { Text("Senha") },
             placeholder = { Text("Mínimo 6 caracteres") },
             leadingIcon = {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = ItaSuperPrimary)
+                Icon(painterResource(id = R.drawable.ic_ita_lock), contentDescription = null, tint = ItaSuperPrimary)
             },
             trailingIcon = {
                 IconButton(onClick = viewModel::toggleLoginPasswordVisibility) {
                     Icon(
-                        imageVector = if (uiState.isLoginPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        painter = painterResource(id = if (uiState.isLoginPasswordVisible) R.drawable.ic_ita_eye else R.drawable.ic_ita_eye_off),
                         contentDescription = "Alternar visibilidade da senha"
                     )
                 }
@@ -402,7 +397,7 @@ private fun LoginForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -468,7 +463,7 @@ private fun LoginForm(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.CheckCircle,
+                painter = painterResource(id = R.drawable.ic_ita_check_circle),
                 contentDescription = null,
                 tint = ItaSuperPrimary,
                 modifier = Modifier.size(17.dp)
@@ -477,7 +472,7 @@ private fun LoginForm(
             Text(
                 text = "Acesso seguro e dados protegidos",
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color(0xFF806D64),
+                    color = ItaSuperTextSecondary,
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -503,7 +498,7 @@ private fun RegisterForm(
             onValueChange = viewModel::onRegNameChange,
             label = { Text("Nome completo *") },
             placeholder = { Text("Ex: Maria Silva") },
-            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = ItaSuperPrimary) },
+            leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_profile), contentDescription = null, tint = ItaSuperPrimary) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
             modifier = Modifier
@@ -513,7 +508,7 @@ private fun RegisterForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -524,7 +519,7 @@ private fun RegisterForm(
             onValueChange = viewModel::onRegCpfCnpjChange,
             label = { Text("CPF ou CNPJ *") },
             placeholder = { Text("000.000.000-00") },
-            leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = ItaSuperPrimary) },
+            leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_id_card), contentDescription = null, tint = ItaSuperPrimary) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             modifier = Modifier
@@ -534,7 +529,7 @@ private fun RegisterForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -545,7 +540,7 @@ private fun RegisterForm(
             onValueChange = viewModel::onRegWhatsappChange,
             label = { Text("WhatsApp com DDD *") },
             placeholder = { Text("(21) 99999-9999") },
-            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = ItaSuperPrimary) },
+            leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_phone), contentDescription = null, tint = ItaSuperPrimary) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
             modifier = Modifier
@@ -555,7 +550,7 @@ private fun RegisterForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -566,11 +561,11 @@ private fun RegisterForm(
             onValueChange = viewModel::onRegPasswordChange,
             label = { Text("Senha *") },
             placeholder = { Text("Mínimo 6 caracteres") },
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ItaSuperPrimary) },
+            leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_lock), contentDescription = null, tint = ItaSuperPrimary) },
             trailingIcon = {
                 IconButton(onClick = viewModel::toggleRegPasswordVisibility) {
                     Icon(
-                        imageVector = if (uiState.isRegPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        painter = painterResource(id = if (uiState.isRegPasswordVisible) R.drawable.ic_ita_eye else R.drawable.ic_ita_eye_off),
                         contentDescription = "Alternar visibilidade"
                     )
                 }
@@ -585,7 +580,7 @@ private fun RegisterForm(
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE5DED9),
+                unfocusedBorderColor = ItaSuperBorder,
                 focusedLabelColor = ItaSuperPrimary
             )
         )
@@ -594,14 +589,14 @@ private fun RegisterForm(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF6F1))
+            colors = CardDefaults.cardColors(containerColor = ItaSuperHighlightBg)
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Pin, contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
+                    Icon(painterResource(id = R.drawable.ic_ita_keypad), contentDescription = null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "PIN de Entrega (4 dígitos)",
@@ -619,12 +614,12 @@ private fun RegisterForm(
                     onValueChange = viewModel::onRegPinChange,
                     label = { Text("PIN de entrega (4 dígitos) *") },
                     placeholder = { Text("Ex: 1234") },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, tint = ItaSuperPrimary) },
+                    leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_key), contentDescription = null, tint = ItaSuperPrimary) },
                     visualTransformation = if (uiState.isRegPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = viewModel::toggleRegPinVisibility) {
                             Icon(
-                                imageVector = if (uiState.isRegPinVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                painter = painterResource(id = if (uiState.isRegPinVisible) R.drawable.ic_ita_eye else R.drawable.ic_ita_eye_off),
                                 contentDescription = "Alternar visibilidade PIN"
                             )
                         }
@@ -638,7 +633,7 @@ private fun RegisterForm(
                     shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = ItaSuperPrimary,
-                        unfocusedBorderColor = Color(0xFFE5DED9),
+                        unfocusedBorderColor = ItaSuperBorder,
                         focusedLabelColor = ItaSuperPrimary
                     )
                 )
@@ -649,7 +644,7 @@ private fun RegisterForm(
                     onValueChange = viewModel::onRegPinConfirmChange,
                     label = { Text("Confirme o PIN de entrega *") },
                     placeholder = { Text("Repita o PIN de 4 dígitos") },
-                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = ItaSuperPrimary) },
+                    leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_check), contentDescription = null, tint = ItaSuperPrimary) },
                     visualTransformation = if (uiState.isRegPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
@@ -660,7 +655,7 @@ private fun RegisterForm(
                     shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = ItaSuperPrimary,
-                        unfocusedBorderColor = Color(0xFFE5DED9),
+                        unfocusedBorderColor = ItaSuperBorder,
                         focusedLabelColor = ItaSuperPrimary
                     )
                 )
@@ -670,7 +665,7 @@ private fun RegisterForm(
                     val isMatch = uiState.regPin == uiState.regPinConfirm
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (isMatch) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                            painter = painterResource(id = if (isMatch) R.drawable.ic_ita_check_circle else R.drawable.ic_ita_alert),
                             contentDescription = null,
                             tint = if (isMatch) ItaSuperSuccess else ItaSuperError,
                             modifier = Modifier.size(16.dp)
@@ -792,7 +787,7 @@ private fun LegalRegisterCheckbox(
             Column(modifier = Modifier.padding(top = 10.dp).weight(1f)) {
                 Text(
                     text = "$prefix$title versão $version.",
-                    style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF5D5D5D))
+                    style = MaterialTheme.typography.bodySmall.copy(color = ItaSuperTextSecondary)
                 )
                 Text(
                     text = "Ler $title",
@@ -822,7 +817,7 @@ private fun ErrorBanner(message: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.ErrorOutline,
+                painter = painterResource(id = R.drawable.ic_ita_alert),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error
             )
@@ -864,7 +859,7 @@ private fun ForgotPasswordDialog(
                     value = email,
                     onValueChange = onEmailChange,
                     label = { Text("E-mail para recuperação") },
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = ItaSuperPrimary) },
+                    leadingIcon = { Icon(painterResource(id = R.drawable.ic_ita_mail), contentDescription = null, tint = ItaSuperPrimary) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier
