@@ -72,6 +72,7 @@ import com.example.R
 import com.example.data.model.Order
 import com.example.data.model.preorderReleaseAtMillis
 import com.example.data.repository.StoreRepository
+import com.example.ui.theme.ItaSuperBorder
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
@@ -242,7 +243,7 @@ fun CheckoutScreen(
                                             modifier = Modifier
                                                 .size(22.dp)
                                                 .clip(CircleShape)
-                                                .border(1.dp, Color(0xFFBDAEA5), CircleShape)
+                                                .border(1.dp, ItaSuperBorder, CircleShape)
                                         )
                                     }
                                     Spacer(Modifier.width(10.dp))
@@ -436,7 +437,7 @@ fun CheckoutScreen(
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -454,7 +455,7 @@ fun CheckoutScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -477,7 +478,7 @@ fun CheckoutScreen(
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -495,7 +496,7 @@ fun CheckoutScreen(
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -517,7 +518,7 @@ fun CheckoutScreen(
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = ItaSuperPrimary,
-                                    unfocusedBorderColor = Color(0xFFE5DAD3),
+                                    unfocusedBorderColor = ItaSuperBorder,
                                     focusedContainerColor = Color.White,
                                     unfocusedContainerColor = Color.White
                                 ),
@@ -537,7 +538,7 @@ fun CheckoutScreen(
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -707,7 +708,7 @@ fun CheckoutScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
-                                        unfocusedBorderColor = Color(0xFFE5DAD3),
+                                        unfocusedBorderColor = ItaSuperBorder,
                                         focusedContainerColor = Color.White,
                                         unfocusedContainerColor = Color.White
                                     ),
@@ -991,7 +992,7 @@ fun CheckoutScreen(
                             }
                         }
 
-                        HorizontalDivider(color = Color(0xFFE8DCD4), modifier = Modifier.padding(vertical = 14.dp))
+                        HorizontalDivider(color = ItaSuperBorder, modifier = Modifier.padding(vertical = 14.dp))
 
                         Row(
                             modifier = Modifier

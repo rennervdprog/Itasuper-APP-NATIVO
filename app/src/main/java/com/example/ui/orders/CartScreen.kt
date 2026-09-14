@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.CartItem
 import com.example.data.repository.StoreRepository
+import com.example.ui.theme.ItaSuperBorder
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
@@ -544,7 +545,7 @@ fun CartScreen(
                                 }
                             }
 
-                            HorizontalDivider(color = Color(0xFFE8DCD4), modifier = Modifier.padding(vertical = 14.dp))
+                            HorizontalDivider(color = ItaSuperBorder, modifier = Modifier.padding(vertical = 14.dp))
 
                             Row(
                                 modifier = Modifier
