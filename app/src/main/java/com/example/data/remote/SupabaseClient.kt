@@ -34,6 +34,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 data class SupabaseAuthResponse(
@@ -164,7 +167,7 @@ object SupabaseClient {
             Log.e(TAG, "Error during signIn", e)
             SupabaseAuthResponse(
                 isSuccess = false,
-                errorMessage = "Falha na conexão com o servidor: ${e.localizedMessage}"
+                errorMessage = networkErrorMessage(e)
             )
         }
     }
@@ -217,7 +220,7 @@ object SupabaseClient {
             Log.e(TAG, "Error during signUp", e)
             SupabaseAuthResponse(
                 isSuccess = false,
-                errorMessage = "Falha de conexão: ${e.localizedMessage}"
+                errorMessage = networkErrorMessage(e)
             )
         }
     }
@@ -3129,6 +3132,28 @@ object SupabaseClient {
         body.contains("42703") ||
             body.contains("PGRST204") ||
             body.contains("Could not find the", ignoreCase = true) && body.contains("column", ignoreCase = true)
+
+    /**
+     * Traduz falha de rede para uma frase que o cliente entende.
+     *
+     * Nunca devolve o texto da excecao: ele vem com o host do Supabase, o nome da
+     * classe Java e o motivo tecnico ("Unable to resolve host ...: No address
+     * associated with hostname"), que nao ajudam quem so queria entrar na conta e
+     * ainda expoem a infraestrutura na tela de login.
+     *
+     * Host que nao resolve acontece nos dois casos, aparelho sem internet e servidor
+     * fora, e daqui nao da para saber qual e — por isso a frase serve aos dois. Quem
+     * separa os casos e o OfflineConnectivityBanner, que ja aparece sozinho quando o
+     * Android informa que nao ha rede validada.
+     */
+    private fun networkErrorMessage(e: Exception): String = when (e) {
+        is UnknownHostException, is ConnectException ->
+            "Não foi possível falar com o servidor. Verifique sua conexão e tente novamente em alguns minutos."
+        is SocketTimeoutException ->
+            "O servidor demorou para responder. Tente novamente."
+        else ->
+            "Não foi possível concluir agora. Tente novamente."
+    }
 
     private fun parseErrorMessage(jsonText: String, defaultMsg: String): String {
         return try {
