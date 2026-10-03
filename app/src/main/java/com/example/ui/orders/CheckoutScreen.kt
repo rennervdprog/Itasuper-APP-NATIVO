@@ -377,7 +377,6 @@ fun CheckoutScreen(
                                     onValueChange = { viewModel.updateCep(it) },
                                     label = { Text("CEP") },
                                     placeholder = { Text("00000-000") },
-                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -393,7 +392,7 @@ fun CheckoutScreen(
 
                                 Button(
                                     onClick = { viewModel.searchAddressByCep() },
-                                    enabled = !isGpsAddress && !uiState.isSearchingCep && uiState.cep.isNotBlank(),
+                                    enabled = !uiState.isSearchingCep && uiState.cep.isNotBlank(),
                                     colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
@@ -433,7 +432,6 @@ fun CheckoutScreen(
                                     value = uiState.street,
                                     onValueChange = { viewModel.updateStreet(it) },
                                     label = { Text("Rua / Logradouro") },
-                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -474,7 +472,6 @@ fun CheckoutScreen(
                                     value = uiState.neighborhood,
                                     onValueChange = { viewModel.updateNeighborhood(it) },
                                     label = { Text("Bairro") },
-                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -492,7 +489,6 @@ fun CheckoutScreen(
                                     value = uiState.city,
                                     onValueChange = { viewModel.updateCity(it) },
                                     label = { Text("Cidade") },
-                                    readOnly = isGpsAddress,
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,
@@ -514,7 +510,6 @@ fun CheckoutScreen(
                                 onValueChange = { viewModel.updateState(it) },
                                 label = { Text("UF (opcional)") },
                                 placeholder = { Text("Ex: RJ") },
-                                readOnly = isGpsAddress,
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = ItaSuperPrimary,
@@ -534,7 +529,6 @@ fun CheckoutScreen(
                                 value = uiState.complement,
                                 onValueChange = { viewModel.updateComplement(it) },
                                 label = { Text("Complemento / Ponto de Referência (opcional)") },
-                                readOnly = isGpsAddress,
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ItaSuperPrimary,

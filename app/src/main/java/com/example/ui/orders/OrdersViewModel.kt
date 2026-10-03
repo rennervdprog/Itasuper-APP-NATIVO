@@ -409,11 +409,17 @@ class OrdersViewModel : ViewModel() {
                 )
                 CartRepository.setOfficialDeliveryQuote(result.quote, requestKey)
             } else {
+                // Uma falha de geocodificação não pode deixar o cliente preso com
+                // os campos fechados. O GPS é apenas um ponto de partida; o
+                // endereço digitado pelo cliente ainda precisa ser corrigível.
+                addressEditedByCustomer = true
                 _uiState.value = _uiState.value.copy(
                     deliveryQuote = null,
                     deliveryQuoteFailure = result.failure ?: DeliveryQuoteFailure(),
                     isQuotingDelivery = false,
-                    deliveryQuoteRequestKey = requestKey
+                    deliveryQuoteRequestKey = requestKey,
+                    showAddressEditor = true,
+                    errorMessage = null
                 )
                 CartRepository.clearOfficialDeliveryQuote()
             }
@@ -1217,8 +1223,14 @@ class OrdersViewModel : ViewModel() {
                     )
                     val confirmedQuote = confirmation.quote
                     if (!confirmation.isSuccess || confirmedQuote == null) {
+                        // A confirmação final usa a mesma resolução oficial do
+                        // checkout. Se ela falhar, reabrimos o formulário para
+                        // que rua, CEP, bairro ou cidade possam ser corrigidos.
+                        addressEditedByCustomer = true
                         _uiState.value = _uiState.value.copy(
                             isPlacingOrder = false,
+                            deliveryQuoteFailure = confirmation.failure ?: DeliveryQuoteFailure(),
+                            showAddressEditor = true,
                             errorMessage = confirmation.failure?.userMessage()
                                 ?: "Não foi possível confirmar o endereço de entrega. Revise os dados e tente novamente."
                         )
