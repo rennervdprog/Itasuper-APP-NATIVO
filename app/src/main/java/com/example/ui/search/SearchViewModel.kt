@@ -47,6 +47,9 @@ fun calculateHaversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2:
 fun supportsPickup(deliveryMode: String): Boolean =
     deliveryMode.equals("pickup", ignoreCase = true) || deliveryMode.equals("both", ignoreCase = true)
 
+fun supportsDelivery(deliveryMode: String): Boolean =
+    deliveryMode.trim().lowercase() in setOf("platform", "own", "direto", "both")
+
 /**
  * Converte a categoria recebida pela rota no id canônico do catálogo.
  * Um id desconhecido vira null para que a Busca abra completa em vez de vazia,
@@ -65,6 +68,16 @@ enum class DiscoverQuickFilter(val label: String) {
     DELIVERY_AVAILABLE("Entrega disponível"),
     FREE_FEE("Taxa grátis"),
     PICKUP("Retirada")
+}
+
+/** Política única dos chips da Descoberta; não permite resultados por suposição. */
+fun matchesDiscoverQuickFilter(store: Store, filter: DiscoverQuickFilter?): Boolean = when (filter) {
+    null -> true
+    DiscoverQuickFilter.OPEN_NOW -> store.isOpen
+    DiscoverQuickFilter.DELIVERY_AVAILABLE -> supportsDelivery(store.deliveryMode) &&
+        store.hasAvailableDriver == true
+    DiscoverQuickFilter.FREE_FEE -> supportsDelivery(store.deliveryMode) && store.isFreeDelivery
+    DiscoverQuickFilter.PICKUP -> supportsPickup(store.deliveryMode)
 }
 
 data class SearchUiState(
@@ -175,10 +188,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val featuredProducts: StateFlow<List<DiscoverProduct>> = _featuredProducts.asStateFlow()
 
     /** Catálogo mais amplo para resultados por nome de produto, loja ou categoria. */
-    val searchableProducts: StateFlow<List<DiscoverProduct>> = combine(_searchableProducts, _uiState) { products, state ->
+    val searchableProducts: StateFlow<List<DiscoverProduct>> = combine(
+        _searchableProducts,
+        regionalStores,
+        _uiState
+    ) { products, stores, state ->
         val query = state.debouncedQuery.normalizeText()
         val selectedCategory = searchCategories.find { it.id == state.selectedCategoryId }
+        val storesById = stores.associateBy { it.id }
         products.filter { product ->
+            val store = storesById[product.storeId]
             val matchesQuery = query.length < 2 ||
                 product.name.normalizeText().contains(query) ||
                 product.storeName.normalizeText().contains(query) ||
@@ -187,7 +206,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 selectedCategory.matchingTerms.any { term ->
                     product.storeCategory.normalizeText().contains(term.normalizeText())
                 } || product.storeCategory.normalizeText() == selectedCategory.name.normalizeText()
-            matchesQuery && matchesCategory
+            val matchesQuickFilter = store != null && matchesDiscoverQuickFilter(store, state.activeQuickFilter)
+            matchesQuery && matchesCategory && matchesQuickFilter
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -204,13 +224,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 normStoreName.contains(normQuery) ||
                 normCategories.any { it.contains(normQuery) } ||
                 store.addressNeighborhood.normalizeText().contains(normQuery)
-            val matchesQuickFilter = when (state.activeQuickFilter) {
-                DiscoverQuickFilter.OPEN_NOW -> store.isOpen
-                DiscoverQuickFilter.DELIVERY_AVAILABLE -> !store.deliveryMode.equals("own", true) || store.hasAvailableDriver == true
-                DiscoverQuickFilter.FREE_FEE -> store.isFreeDelivery
-                DiscoverQuickFilter.PICKUP -> supportsPickup(store.deliveryMode)
-                null -> true
-            }
+            val matchesQuickFilter = matchesDiscoverQuickFilter(store, state.activeQuickFilter)
             matchesCategory && matchesQuery && matchesQuickFilter
         }
         matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
