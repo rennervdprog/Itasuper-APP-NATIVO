@@ -144,6 +144,7 @@ import com.example.ui.theme.ItaSuperWarning
 @Composable
 fun StoreDetailScreen(
     storeId: String,
+    initialProductId: String? = null,
     viewModel: StoreDetailViewModel,
     onBackClick: () -> Unit,
     onNavigateToCart: () -> Unit,
@@ -176,6 +177,10 @@ fun StoreDetailScreen(
             retryAfterReconnect = false
             viewModel.loadStore(storeId)
         }
+    }
+    LaunchedEffect(storeId, initialProductId, allStoreProducts) {
+        val productId = initialProductId ?: return@LaunchedEffect
+        allStoreProducts.firstOrNull { it.id == productId }?.let(viewModel::openProductModal)
     }
     val menuListState = rememberLazyListState()
     val menuScrollScope = rememberCoroutineScope()

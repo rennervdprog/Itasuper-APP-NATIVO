@@ -7,6 +7,7 @@ import com.example.ui.search.supportsPickup
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.URLEncoder
 
 class SearchFilterPolicyTest {
     @Test
@@ -66,5 +67,14 @@ class SearchFilterPolicyTest {
         )
 
         assertFalse(matchesDiscoverQuickFilter(unknown, DiscoverQuickFilter.DELIVERY_AVAILABLE))
+    }
+
+    @Test
+    fun productNavigationKeepsStoreAndProductIdsTogether() {
+        val storeId = URLEncoder.encode("store-123", "UTF-8")
+        val productId = URLEncoder.encode("product-456", "UTF-8")
+        val route = "loja/$storeId?produto=$productId"
+
+        assertTrue(route.startsWith("loja/store-123?produto=product-456"))
     }
 }

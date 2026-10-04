@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -246,6 +247,9 @@ fun ItaSuperApp() {
                 onNavigateToStore = { storeId ->
                     navController.navigate("loja/$storeId")
                 },
+                onNavigateToProduct = { product ->
+                    navController.navigate("loja/${Uri.encode(product.storeId)}?produto=${Uri.encode(product.id)}")
+                },
                 onNavigateToOrders = {
                     navController.navigate("pedidos")
                 },
@@ -385,13 +389,22 @@ fun ItaSuperApp() {
         }
 
         composable(
-            route = "loja/{storeId}",
-            arguments = listOf(navArgument("storeId") { type = NavType.StringType })
+            route = "loja/{storeId}?produto={produto}",
+            arguments = listOf(
+                navArgument("storeId") { type = NavType.StringType },
+                navArgument("produto") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) { backStackEntry ->
             val storeId = backStackEntry.arguments?.getString("storeId") ?: ""
+            val productId = backStackEntry.arguments?.getString("produto")
             val storeViewModel: StoreDetailViewModel = viewModel()
             StoreDetailScreen(
                 storeId = storeId,
+                initialProductId = productId,
                 viewModel = storeViewModel,
                 onBackClick = {
                     navController.popBackStack()

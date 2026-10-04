@@ -141,7 +141,8 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToStore: (String) -> Unit,
     onNavigateToOrders: () -> Unit,
-    onNavigateToRoute: (String) -> Unit
+    onNavigateToRoute: (String) -> Unit,
+    onNavigateToProduct: (DiscoverProduct) -> Unit = { product -> onNavigateToStore(product.storeId) }
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -296,7 +297,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 HomeAffordableProductsSection(
                     products = uiState.affordableProducts,
-                    onProductClick = { product -> onNavigateToStore(product.storeId) },
+                    onProductClick = onNavigateToProduct,
                     onViewMore = { onNavigateToRoute("busca") }
                 )
             }
@@ -305,7 +306,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 HomeRepeatProductsSection(
                     products = uiState.repeatProducts,
-                    onProductClick = { product -> onNavigateToStore(product.storeId) },
+                    onProductClick = onNavigateToProduct,
                     onViewMore = onNavigateToOrders
                 )
             }
