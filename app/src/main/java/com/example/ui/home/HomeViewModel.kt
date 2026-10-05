@@ -473,7 +473,9 @@ class HomeViewModel : ViewModel() {
         return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
             .lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
+            .replace(Regex("\\s+"), " ")
     }
 
     fun toggleEditNumber() {

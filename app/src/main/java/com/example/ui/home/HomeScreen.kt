@@ -82,6 +82,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -148,6 +150,7 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val userSession by UserSessionRepository.userSession.collectAsState()
+    val pullToRefreshState = rememberPullToRefreshState()
     var showPermissionsDialog by remember { mutableStateOf(false) }
     var showLocationOnboarding by rememberSaveable(userSession.userId) {
         mutableStateOf(
@@ -242,12 +245,19 @@ fun HomeScreen(
         },
         containerColor = Color(0xFFFAFAFA)
     ) { paddingValues ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = uiState.isLoadingStores,
+            onRefresh = viewModel::loadStores,
+            state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
             HomeHeaderSection(
                 uiState = uiState,
                 userSession = userSession,
@@ -341,7 +351,8 @@ fun HomeScreen(
 
             // A primeira dobra termina na lista, como no layout aprovado. A lista é
             // cortada e o catálogo completo continua acessível pela Busca.
-            Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(18.dp))
+            }
         }
     }
 
