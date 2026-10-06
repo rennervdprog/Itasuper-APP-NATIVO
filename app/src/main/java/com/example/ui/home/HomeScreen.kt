@@ -138,6 +138,7 @@ import com.example.ui.permissions.PermissionUtils
 import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.SoraFontFamily
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
