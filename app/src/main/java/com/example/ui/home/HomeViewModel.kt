@@ -155,11 +155,12 @@ class HomeViewModel : ViewModel() {
     }
 
     fun loadStores() {
+        if (_uiState.value.isLoadingStores) return
+        _uiState.value = _uiState.value.copy(
+            isLoadingStores = true,
+            errorMessage = null
+        )
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoadingStores = true,
-                errorMessage = null
-            )
             val refreshResult = StoreRepository.refreshStoresFromSupabase()
             val currentStores = storesWithCalculatedDistance(refreshResult.stores)
 

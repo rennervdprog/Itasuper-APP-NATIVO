@@ -17,13 +17,13 @@ val appVersionCode = (
   providers.gradleProperty("APP_VERSION_CODE")
     .orElse(providers.environmentVariable("APP_VERSION_CODE"))
     .orNull
-    ?: "29"
+    ?: "30"
 ).toIntOrNull() ?: error("APP_VERSION_CODE precisa ser um número inteiro positivo")
 val appVersionName =
   providers.gradleProperty("APP_VERSION_NAME")
     .orElse(providers.environmentVariable("APP_VERSION_NAME"))
     .orNull
-  ?: "1.0.28"
+  ?: "1.0.29"
 
 require(appVersionCode > 0) { "APP_VERSION_CODE precisa ser maior que zero" }
 

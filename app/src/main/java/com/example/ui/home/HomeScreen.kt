@@ -152,6 +152,7 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val userSession by UserSessionRepository.userSession.collectAsState()
     val pullToRefreshState = rememberPullToRefreshState()
+    val homeScrollState = rememberScrollState()
     var showPermissionsDialog by remember { mutableStateOf(false) }
     var showLocationOnboarding by rememberSaveable(userSession.userId) {
         mutableStateOf(
@@ -248,16 +249,20 @@ fun HomeScreen(
     ) { paddingValues ->
         PullToRefreshBox(
             isRefreshing = uiState.isLoadingStores,
-            onRefresh = viewModel::loadStores,
+            onRefresh = {
+                viewModel.loadStores()
+                viewModel.loadBanners()
+            },
             state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .testTag("home_pull_to_refresh")
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(homeScrollState)
             ) {
             HomeHeaderSection(
                 uiState = uiState,
