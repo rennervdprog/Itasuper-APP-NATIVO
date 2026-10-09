@@ -98,6 +98,8 @@ fun SearchScreen(
     val city by viewModel.activeCity.collectAsStateWithLifecycle()
     val recentSearches by viewModel.recentSearches.collectAsStateWithLifecycle()
     val featuredProducts by viewModel.featuredProducts.collectAsStateWithLifecycle()
+    val collections by viewModel.collections.collectAsStateWithLifecycle()
+    val newStores by viewModel.newStores.collectAsStateWithLifecycle()
     val searchableProducts by viewModel.searchableProducts.collectAsStateWithLifecycle()
     val trendingStores by viewModel.trendingStores.collectAsStateWithLifecycle()
     val filteredStores by viewModel.filteredStores.collectAsStateWithLifecycle()
@@ -166,8 +168,10 @@ fun SearchScreen(
                     isLoadingDiscovery = uiState.isLoadingDiscovery,
                     quickFilter = uiState.activeQuickFilter,
                     categories = viewModel.searchCategories,
+                    collections = collections,
                     featuredProducts = featuredProducts,
                     trendingStores = trendingStores,
+                    newStores = newStores,
                     recentSearches = recentSearches,
                     onQuickFilter = viewModel::toggleQuickFilter,
                     onCategory = viewModel::onCategorySelect,
@@ -274,14 +278,24 @@ private fun DiscoverHeader(
     }
 }
 
+/** Atalho curatorial da Descobrir: aponta para uma categoria existente, sem nada novo no banco. */
+data class DiscoverCollection(
+    val title: String,
+    val categoryId: String,
+    val iconRes: Int,
+    val storeCount: Int
+)
+
 @Composable
 private fun DiscoverLanding(
     city: String,
     isLoadingDiscovery: Boolean,
     quickFilter: DiscoverQuickFilter?,
     categories: List<SearchCategory>,
+    collections: List<DiscoverCollection>,
     featuredProducts: List<DiscoverProduct>,
     trendingStores: List<Store>,
+    newStores: List<Store>,
     recentSearches: List<String>,
     onQuickFilter: (DiscoverQuickFilter) -> Unit,
     onCategory: (String) -> Unit,
@@ -305,6 +319,14 @@ private fun DiscoverLanding(
                 onSelect = onCategory
             )
         }
+        if (collections.isNotEmpty()) {
+            item {
+                DiscoverCollections(
+                    collections = collections,
+                    onSelect = onCategory
+                )
+            }
+        }
         if (isLoadingDiscovery && featuredProducts.isEmpty() && trendingStores.isEmpty()) {
             item { DiscoverLoadingSkeleton() }
         }
@@ -322,6 +344,17 @@ private fun DiscoverLanding(
             item { DiscoverSectionHeader(title = "Em alta em ${city.ifBlank { "sua cidade" }}") }
             itemsIndexed(trendingStores.take(4), key = { index, store -> "discover_store_${index}_${store.id}" }) { _, store ->
                 DiscoverStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
+            }
+        }
+        if (!isLoadingDiscovery && newStores.isNotEmpty()) {
+            item {
+                DiscoverSectionHeader(
+                    title = "Chegaram agora",
+                    action = "Ver tudo"
+                )
+            }
+            itemsIndexed(newStores.take(3), key = { index, store -> "discover_new_${index}_${store.id}" }) { _, store ->
+                DiscoverNewStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
             }
         }
         if (recentSearches.isNotEmpty()) {
@@ -504,6 +537,151 @@ private fun DiscoverCuratedCategories(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DiscoverCollections(
+    collections: List<DiscoverCollection>,
+    onSelect: (String) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        DiscoverSectionHeader(title = "Coleções", action = null)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "para cada momento do dia",
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = ManropeFontFamily,
+                color = ItaSuperTextSecondary,
+                fontSize = 12.sp
+            ),
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(collections, key = { it.categoryId }) { collection ->
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFFE8E8E8)),
+                    modifier = Modifier
+                        .width(168.dp)
+                        .clickable { onSelect(collection.categoryId) }
+                ) {
+                    Column(modifier = Modifier.padding(14.dp, 12.dp)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = ItaSuperHighlightBg,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(collection.iconRes),
+                                    contentDescription = collection.title,
+                                    tint = Color.Unspecified,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = collection.title,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ItaSuperTextPrimary,
+                                fontSize = 14.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${collection.storeCount} ${if (collection.storeCount == 1) "loja" else "lojas"}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                color = ItaSuperTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverNewStoreCard(store: Store, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF5F5F5)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (store.logoUrl.isNotBlank() || store.bannerUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = store.logoUrl.ifBlank { store.bannerUrl },
+                        contentDescription = store.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(painter = painterResource(R.drawable.ic_ita_store), contentDescription = null, tint = Color.Unspecified)
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = store.name,
+                        style = MaterialTheme.typography.titleSmall.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = ItaSuperHighlightBg
+                    ) {
+                        Text(
+                            text = "NOVO",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ItaSuperHighlightText,
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = listOf(store.category, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = "Abrir loja", tint = Color.Unspecified, modifier = Modifier.size(23.dp))
+        }
+        Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)))
     }
 }
 
