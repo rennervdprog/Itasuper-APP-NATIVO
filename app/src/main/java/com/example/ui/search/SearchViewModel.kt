@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.data.model.DiscoverProduct
 import com.example.data.model.Store
 import com.example.data.remote.SupabaseClient
@@ -183,6 +184,29 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         stores.filter { store ->
             store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank() && store.createdAt >= thirtyDaysAgo
         }.sortedByDescending { it.createdAt }.take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Coleções da aba Descobrir: atalhos curatoriais para categorias existentes.
+     * 100% client-side, sem mudança no banco (contrato compartilhado com os outros apps):
+     * cada coleção só conta lojas abertas da cidade e, ao tocar, aplica o filtro
+     * de categoria já existente via onCategorySelect.
+     */
+    val collections: StateFlow<List<DiscoverCollection>> = regionalStores.map { stores ->
+        listOf(
+            Triple("Fim de semana", "pizzaria", R.drawable.ic_preview_pizza),
+            Triple("Hora do açaí", "acai", R.drawable.ic_preview_acai),
+            Triple("Bebidas geladas", "bebidas", R.drawable.ic_preview_drink)
+        ).mapNotNull { (title, categoryId, iconRes) ->
+            val count = stores.count { StoreRepository.matchesCategory(it, categoryId) && it.isOpen }
+            if (count == 0) null
+            else DiscoverCollection(
+                title = title,
+                categoryId = categoryId,
+                iconRes = iconRes,
+                storeCount = count
+            )
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val featuredProducts: StateFlow<List<DiscoverProduct>> = _featuredProducts.asStateFlow()
