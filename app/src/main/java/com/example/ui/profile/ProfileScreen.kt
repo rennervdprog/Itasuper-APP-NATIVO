@@ -634,6 +634,7 @@ fun ProfileScreen(
                             iconRes = R.drawable.ic_ita_share,
                             title = "Compartilhar o app",
                             subtitle = "Convide amigos para usar o ItaSuper",
+                            badgeText = "GANHE R$5",
                             onClick = {
                                 val share = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
@@ -641,16 +642,6 @@ fun ProfileScreen(
                                 }
                                 runCatching { context.startActivity(Intent.createChooser(share, "Compartilhar ItaSuper")) }
                                     .onFailure { feedback = "Não foi possível abrir o compartilhamento." }
-                            }
-                        )
-                        ProfileDivider()
-                        ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_info,
-                            title = "Ver tutorial novamente",
-                            subtitle = "Reveja o guia de localização ao voltar para a Home",
-                            onClick = {
-                                LocationOnboardingPreferences.reset(context, session.userId)
-                                feedback = "Tutorial preparado. Volte para a Home para visualizá-lo."
                             }
                         )
                     }
@@ -928,7 +919,8 @@ private fun ProfileMenuRow(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    destructive: Boolean = false
+    destructive: Boolean = false,
+    badgeText: String? = null
 ) {
     val tint = if (destructive) Color(0xFFCE3730) else Color(0xFF2F2F2F)
     Row(
@@ -941,7 +933,19 @@ private fun ProfileMenuRow(
         Icon(painter = painterResource(iconRes), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (destructive) Color(0xFFB83B36) else Color(0xFF242424), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = if (destructive) Color(0xFFB83B36) else Color(0xFF242424), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
+                if (badgeText != null) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFDCFCE7), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(badgeText, color = Color(0xFF166534), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             Text(subtitle, color = ItaSuperTextSecondary, style = MaterialTheme.typography.bodySmall)
         }
         Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = null, tint = if (destructive) Color(0xFFB83B36) else Color(0xFF747474), modifier = Modifier.size(20.dp))
