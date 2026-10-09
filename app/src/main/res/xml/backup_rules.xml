@@ -6,11 +6,3 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="itasuper_secure_session.xml"/>
 </full-backup-content>
-<data-extraction-rules>
-    <cloud-backup>
-        <exclude domain="sharedpref" path="itasuper_secure_session"/>
-    </cloud-backup>
-    <device-transfer>
-        <exclude domain="sharedpref" path="itasuper_secure_session"/>
-    </device-transfer>
-</data-extraction-rules>
