@@ -71,6 +71,10 @@ jobs:
           EOF
           chmod 600 "$KEYSTORE_PATH" keystore.properties
 
+      - name: Run Unit Tests
+        shell: bash
+        run: ./gradlew --no-daemon testDebugUnitTest
+
       - name: Build signed release artifacts
         shell: bash
         run: ./gradlew --no-daemon --max-workers=1 :app:bundleRelease :app:assembleRelease
