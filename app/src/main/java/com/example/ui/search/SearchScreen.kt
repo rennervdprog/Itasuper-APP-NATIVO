@@ -76,6 +76,8 @@ import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
 import com.example.ui.navigation.ItaSuperBottomNavBar
 import com.example.ui.theme.ItaSuperBackground
+import com.example.ui.theme.ItaSuperHighlightBg
+import com.example.ui.theme.ItaSuperHighlightText
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
