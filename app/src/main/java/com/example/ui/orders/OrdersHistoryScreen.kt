@@ -180,7 +180,8 @@ fun OrdersHistoryScreen(
     initialOrderId: String? = null,
     onNavigateToRoute: (String) -> Unit,
     onNavigateToCart: () -> Unit,
-    onExploreClick: () -> Unit
+    onExploreClick: () -> Unit,
+    onTrackDelivery: (String) -> Unit = {}
 ) {
     val orders by viewModel.ordersList.collectAsState()
     val cart by viewModel.cartState.collectAsState()
@@ -403,6 +404,7 @@ fun OrdersHistoryScreen(
                             onPixDirect = { viewModel.openPixDirectPayment(order) },
                             onConfirmDelivery = { viewModel.confirmDelivery(order) },
                             onCancelOrder = { orderPendingCancellation.value = order },
+                            onTrackDelivery = { onTrackDelivery(order.id) },
                             isConfirmingDelivery = uiState.confirmingDeliveryOrderId == order.id,
                             isCancelling = uiState.cancellingOrderId == order.id,
                             isHighlighted = order.id == initialOrderId
@@ -513,6 +515,7 @@ private fun ActiveOrderCard(
     onPixDirect: () -> Unit,
     onConfirmDelivery: () -> Unit,
     onCancelOrder: () -> Unit,
+    onTrackDelivery: () -> Unit = {},
     isConfirmingDelivery: Boolean,
     isCancelling: Boolean,
     isHighlighted: Boolean = false
@@ -598,6 +601,20 @@ private fun ActiveOrderCard(
                         Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (isConfirmingDelivery) "Confirmando..." else "Sim, recebi meu pedido!", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                val canTrackDelivery = order.status.lowercase() in setOf("saiu_entrega", "em_transito", "pronto_para_entrega") && order.driverId.isNotBlank()
+                if (canTrackDelivery) {
+                    Button(
+                        onClick = onTrackDelivery,
+                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Acompanhar entrega", fontWeight = FontWeight.Bold)
                     }
                 }
 

@@ -76,6 +76,7 @@ import com.example.ui.notifications.NotificationsViewModel
 import com.example.ui.profile.ProfileScreen
 import com.example.ui.orders.CartScreen
 import com.example.ui.orders.CheckoutScreen
+import com.example.ui.orders.DeliveryTrackingScreen
 import com.example.ui.orders.OrdersHistoryScreen
 import com.example.ui.orders.OrdersScreen
 import com.example.ui.orders.OrdersViewModel
@@ -378,7 +379,24 @@ fun ItaSuperApp() {
                         launchSingleTop = true
                         restoreState = true
                     }
+                },
+                onTrackDelivery = { orderId ->
+                    navController.navigate("acompanhar_entrega/$orderId")
                 }
+            )
+        }
+
+        composable(
+            route = "acompanhar_entrega/{orderId}",
+            arguments = listOf(
+                navArgument("orderId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+            DeliveryTrackingScreen(
+                orderId = orderId,
+                ordersViewModel = ordersViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
 

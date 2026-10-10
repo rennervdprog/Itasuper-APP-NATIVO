@@ -61,6 +61,13 @@ data class StoreDeliveryAvailability(
     val reasonMessage: String
 )
 
+/** Localização atual do entregador para acompanhamento de entrega. */
+data class DriverLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val updatedAt: String = ""
+)
+
 /** Resultado do catálogo: uma lista vazia pode ser uma resposta operacional válida. */
 data class StoreCatalogResult(
     val isSuccess: Boolean,
@@ -2934,6 +2941,54 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.w(TAG, "Store names unavailable for order history", e)
             emptyMap()
+        }
+    }
+
+    /** Busca a localização atual do entregador (para acompanhamento de entrega). */
+    suspend fun fetchDriverLocation(driverUserId: String, accessToken: String): DriverLocation? = withContext(Dispatchers.IO) {
+        if (driverUserId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/driver_locations?select=latitude,longitude,updated_at&driver_user_id=eq.$driverUserId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return@withContext null
+            val item = JSONArray(text).optJSONObject(0) ?: return@withContext null
+            val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else Double.NaN
+            val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else Double.NaN
+            if (lat.isNaN() || lng.isNaN()) return@withContext null
+            DriverLocation(latitude = lat, longitude = lng, updatedAt = item.optString("updated_at", ""))
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível buscar localização do entregador", e)
+            null
+        }
+    }
+
+    /** Busca as coordenadas da loja (para o mapa de acompanhamento). */
+    suspend fun fetchStoreCoordinates(storeId: String): Pair<Double, Double>? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/stores?select=latitude,longitude&id=eq.$storeId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return@withContext null
+            val item = JSONArray(text).optJSONObject(0) ?: return@withContext null
+            val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else Double.NaN
+            val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else Double.NaN
+            if (lat.isNaN() || lng.isNaN()) return@withContext null
+            Pair(lat, lng)
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível buscar coordenadas da loja", e)
+            null
         }
     }
 
