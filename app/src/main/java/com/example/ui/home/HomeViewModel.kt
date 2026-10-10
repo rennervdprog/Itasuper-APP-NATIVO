@@ -66,6 +66,7 @@ data class HomeUiState(
     val spotlightStores: List<Store> = emptyList(),
     val favoriteStores: List<Store> = emptyList(),
     val recentStores: List<Store> = emptyList(),
+    val storesWithCoupons: List<com.example.data.model.StoreWithCoupon> = emptyList(),
     val banners: List<Banner> = emptyList(),
     val discoverProducts: List<DiscoverProduct> = emptyList(),
     val affordableProducts: List<DiscoverProduct> = emptyList(),
@@ -152,6 +153,7 @@ class HomeViewModel : ViewModel() {
         // Fetch stores and banners from Supabase
         loadStores()
         loadBanners()
+        loadStoresWithCoupons()
     }
 
     fun loadStores() {
@@ -184,6 +186,13 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             val remoteBanners = SupabaseClient.fetchBanners()
             _uiState.value = _uiState.value.copy(banners = remoteBanners)
+        }
+    }
+
+    fun loadStoresWithCoupons() {
+        viewModelScope.launch {
+            val stores = SupabaseClient.fetchStoresWithCoupons()
+            _uiState.value = _uiState.value.copy(storesWithCoupons = stores)
         }
     }
 

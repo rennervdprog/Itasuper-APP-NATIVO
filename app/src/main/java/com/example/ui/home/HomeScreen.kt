@@ -309,6 +309,19 @@ fun HomeScreen(
                 )
             }
 
+            // Lojas com cupons ativos.
+            if (uiState.storesWithCoupons.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                HomeStoresWithCouponsSection(
+                    storesWithCoupons = uiState.storesWithCoupons,
+                    onStoreClick = { storeId, couponCode ->
+                        com.example.data.repository.CartRepository.pendingCouponCode = couponCode
+                        com.example.data.repository.CartRepository.pendingCouponStoreId = storeId
+                        onNavigateToStore(storeId)
+                    }
+                )
+            }
+
             if (uiState.affordableProducts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
                 HomeAffordableProductsSection(
@@ -1814,6 +1827,96 @@ private fun HomeFavoriteStoresSection(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeStoresWithCouponsSection(
+    storesWithCoupons: List<com.example.data.model.StoreWithCoupon>,
+    onStoreClick: (String, String) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Text(
+                text = "Lojas com Cupom",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    lineHeight = 18.sp,
+                    color = Color(0xFF1F1F1F)
+                ),
+                maxLines = 1
+            )
+            Text(
+                text = "Descontos exclusivos pra você",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = Color(0xFF6D6D6D)
+                ),
+                maxLines = 1
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(storesWithCoupons, key = { it.storeId }) { item ->
+                Card(
+                    modifier = Modifier
+                        .width(160.dp)
+                        .clickable { onStoreClick(item.storeId, item.couponCode) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = item.storeName,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = ManropeFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF242424)
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(end = 48.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .background(Color(0xFFEA580C), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = item.badgeText,
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Cupom: ${item.couponCode}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontSize = 11.sp,
+                                color = Color(0xFF6D6D6D)
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
