@@ -1358,6 +1358,18 @@ private fun ProductShowcaseTile(
             )
         }
         Spacer(modifier = Modifier.height(3.dp))
+        if (product.originalPrice != null && product.originalPrice > product.price) {
+            Text(
+                text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
+                    color = Color(0xFF9E9E9E),
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                ),
+                maxLines = 1
+            )
+        }
         Text(
             text = String.format("R$ %.2f", product.price).replace(".", ","),
             style = MaterialTheme.typography.labelMedium.copy(
