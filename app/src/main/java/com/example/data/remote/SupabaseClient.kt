@@ -3277,11 +3277,15 @@ private fun JSONObject.promoEffectivePrice(): Pair<Double, Double?> {
     val promo = if (has("promo_price") && !isNull("promo_price")) optDouble("promo_price", Double.NaN) else Double.NaN
     if (!promo.isFinite() || promo <= 0 || promo >= regular) return regular to null
     val now = System.currentTimeMillis()
-    optNullableString("promo_starts_at")?.let {
-        try { if (java.time.Instant.parse(it).toEpochMilli() > now) return regular to null } catch (_: Exception) {}
+    // Janela de validade: compara os timestamps ISO-8601 como string (formato ordenável)
+    val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }.format(java.util.Date(now))
+    optNullableString("promo_starts_at")?.let { start ->
+        if (start.length >= 19 && start.substring(0, 19) > nowIso) return regular to null
     }
-    optNullableString("promo_ends_at")?.let {
-        try { if (java.time.Instant.parse(it).toEpochMilli() < now) return regular to null } catch (_: Exception) {}
+    optNullableString("promo_ends_at")?.let { end ->
+        if (end.length >= 19 && end.substring(0, 19) < nowIso) return regular to null
     }
     return promo to regular
 }
