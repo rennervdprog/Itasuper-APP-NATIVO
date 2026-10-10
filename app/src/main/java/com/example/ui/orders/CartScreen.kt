@@ -93,6 +93,20 @@ fun CartScreen(
     } == true
     val deliveryBlockedForCurrentSelection = isDeliveryUnavailable && cart.deliveryType == "DELIVERY"
 
+    // Auto-aplica cupom vindo da seção "Lojas com Cupom" (somente se o carrinho for da mesma loja)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val pending = com.example.data.repository.CartRepository.pendingCouponCode
+        val pendingStore = com.example.data.repository.CartRepository.pendingCouponStoreId
+        com.example.data.repository.CartRepository.pendingCouponCode = null
+        com.example.data.repository.CartRepository.pendingCouponStoreId = null
+        if (!pending.isNullOrBlank() && uiState.couponCode.isBlank() &&
+            !pendingStore.isNullOrBlank() && pendingStore == cart.storeId
+        ) {
+            viewModel.onCouponCodeChange(pending)
+            viewModel.applyCoupon()
+        }
+    }
+
     Scaffold(
         containerColor = Color(0xFFFAFAFA),
         topBar = {

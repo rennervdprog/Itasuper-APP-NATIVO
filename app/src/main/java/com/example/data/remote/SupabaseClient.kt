@@ -1353,6 +1353,47 @@ object SupabaseClient {
         }
     }
 
+    /** Busca lojas com cupons ativos para a seção "Lojas com Cupom". */
+    suspend fun fetchStoresWithCoupons(limit: Int = 20): List<com.example.data.model.StoreWithCoupon> = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().put("p_limit", limit).toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/get_stores_with_coupons")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(payload)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) {
+                Log.w(TAG, "RPC get_stores_with_coupons indisponível: HTTP ${response.code}")
+                return@withContext emptyList()
+            }
+            val array = JSONArray(text)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val o = array.optJSONObject(i) ?: continue
+                    add(
+                        com.example.data.model.StoreWithCoupon(
+                            storeId = o.optString("store_id"),
+                            storeName = o.optString("store_name"),
+                            storeLogoUrl = o.optString("store_logo_url").takeIf { it.isNotBlank() },
+                            couponCode = o.optString("coupon_code"),
+                            discountType = o.optString("discount_type"),
+                            discountValue = o.optDouble("discount_value", 0.0),
+                            couponDescription = o.optString("coupon_description").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Erro ao buscar lojas com cupom", e)
+            emptyList()
+        }
+    }
+
     /** Consulta canônica usada no detalhe: vínculo aceito + motorista ativo, online e presença recente. */
     suspend fun fetchStoreDeliveryAvailability(storeId: String): StoreDeliveryAvailability? = withContext(Dispatchers.IO) {
         if (storeId.isBlank()) return@withContext null

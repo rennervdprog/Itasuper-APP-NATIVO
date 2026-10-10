@@ -634,7 +634,6 @@ fun ProfileScreen(
                             iconRes = R.drawable.ic_ita_share,
                             title = "Compartilhar o app",
                             subtitle = "Convide amigos para usar o ItaSuper",
-                            badgeText = "GANHE R$5",
                             onClick = {
                                 val share = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"

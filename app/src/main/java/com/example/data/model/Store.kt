@@ -106,3 +106,21 @@ data class LastOrder(
     val itemsSummary: String,
     val totalPrice: Double
 )
+
+/** Loja com cupom ativo para a seção "Lojas com Cupom". */
+data class StoreWithCoupon(
+    val storeId: String,
+    val storeName: String,
+    val storeLogoUrl: String?,
+    val couponCode: String,
+    val discountType: String,
+    val discountValue: Double,
+    val couponDescription: String?
+) {
+    /** Texto do badge, ex: "-10%" ou "-R$10". */
+    val badgeText: String
+        get() = when (discountType) {
+            "percent" -> "-${discountValue.toInt()}%"
+            else -> "-R$${discountValue.toInt()}"
+        }
+}
