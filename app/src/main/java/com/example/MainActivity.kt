@@ -32,6 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -127,12 +131,25 @@ private val SPLASH_MARK_SIZE = 208.dp
 
 /**
  * Tela exibida enquanto a sessao local e lida.
- * Repete o fundo e a marca do splash do sistema, no mesmo tamanho e na mesma
- * posicao, para que a troca entre os dois seja imperceptivel: da abertura ate a
- * Home o usuario ve um visual so.
+ * Repete o fundo e a marca do splash do sistema, com animação de entrada:
+ * a logo cresce suavemente com fade-in.
  */
 @Composable
 fun SessionRestoreScreen() {
+    var visible by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0.6f,
+        animationSpec = tween(durationMillis = 600),
+        label = "splash_scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 600),
+        label = "splash_alpha"
+    )
+    LaunchedEffect(Unit) {
+        visible = true
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -142,7 +159,10 @@ fun SessionRestoreScreen() {
         Image(
             painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
             contentDescription = null,
-            modifier = Modifier.size(SPLASH_MARK_SIZE)
+            modifier = Modifier
+                .size(SPLASH_MARK_SIZE)
+                .scale(scale)
+                .alpha(alpha)
         )
     }
 }
