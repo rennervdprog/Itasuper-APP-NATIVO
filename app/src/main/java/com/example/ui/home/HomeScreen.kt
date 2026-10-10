@@ -1893,112 +1893,75 @@ private fun CouponTicketCard(
 ) {
     Card(
         modifier = Modifier
-            .width(272.dp)
-            .height(96.dp)
+            .width(200.dp)
             .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Lado esquerdo: logo + infos
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)
-            ) {
-                // Logo da loja
-                val logoUrl = item.storeLogoUrl?.trim().orEmpty()
-                var logoFailed by androidx.compose.runtime.remember(item.storeId, logoUrl) {
-                    androidx.compose.runtime.mutableStateOf(
-                        logoUrl.isBlank() || logoUrl.equals("null", ignoreCase = true)
-                    )
-                }
-                val initial = item.storeName.trim().take(1).uppercase().ifBlank { "I" }
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(if (logoFailed) Color(0xFFFFE8A8) else Color(0xFFF5F5F5))
-                        .border(1.dp, Color(0xFFE8E8E8), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (!logoFailed) {
-                        AsyncImage(
-                            model = logoUrl,
-                            contentDescription = item.storeName,
-                            contentScale = ContentScale.Crop,
-                            onError = { logoFailed = true },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    if (logoFailed) {
-                        Text(
-                            text = initial,
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 20.sp,
-                            color = ItaSuperPrimary
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.storeName,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp,
-                            color = Color(0xFF242424)
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    // Código do cupom
-                    Text(
-                        text = item.couponCode,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            letterSpacing = 1.sp,
-                            color = Color(0xFF6D6D6D)
-                        ),
-                        maxLines = 1
-                    )
-                }
-            }
-            // Divisória picotada
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .fillMaxHeight()
-                    .padding(vertical = 10.dp)
-                    .background(Color(0xFFE0E0E0))
-            )
-            // Lado direito: valor do desconto em destaque
-            Box(
-                modifier = Modifier
-                    .width(84.dp)
-                    .fillMaxHeight()
-                    .background(ItaSuperPrimary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = item.badgeText,
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
-                    lineHeight = 20.sp,
-                    color = Color.White,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val logoUrl = item.storeLogoUrl?.trim().orEmpty()
+            var logoFailed by androidx.compose.runtime.remember(item.storeId, logoUrl) {
+                androidx.compose.runtime.mutableStateOf(
+                    logoUrl.isBlank() || logoUrl.equals("null", ignoreCase = true)
                 )
             }
+            val initial = item.storeName.trim().take(1).uppercase().ifBlank { "I" }
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (logoFailed) Color(0xFFFFE8A8) else Color(0xFFF5F5F5)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!logoFailed) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = item.storeName,
+                        contentScale = ContentScale.Crop,
+                        onError = { logoFailed = true },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                if (logoFailed) {
+                    Text(
+                        text = initial,
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        color = ItaSuperPrimary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = item.storeName,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color(0xFF1F1F1F)
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = item.badgeText + " com " + item.couponCode,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp,
+                    color = ItaSuperPrimary
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
