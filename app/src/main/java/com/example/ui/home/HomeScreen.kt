@@ -1959,29 +1959,18 @@ private fun CouponTicketCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    // Código do cupom em "ticket" tracejado
-                    Box(
-                        modifier = Modifier
-                            .border(
-                                width = 1.dp,
-                                color = Color(0xFFEA580C),
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                            .background(Color(0xFFFFF3E8), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = item.couponCode,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 11.sp,
-                                letterSpacing = 1.sp,
-                                color = Color(0xFFEA580C)
-                            ),
-                            maxLines = 1
-                        )
-                    }
+                    // Código do cupom
+                    Text(
+                        text = item.couponCode,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            letterSpacing = 1.sp,
+                            color = Color(0xFF6D6D6D)
+                        ),
+                        maxLines = 1
+                    )
                 }
             }
             // Divisória picotada
@@ -1997,32 +1986,18 @@ private fun CouponTicketCard(
                 modifier = Modifier
                     .width(84.dp)
                     .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0xFFF97316), Color(0xFFEA580C))
-                        )
-                    ),
+                    .background(ItaSuperPrimary),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = item.badgeText,
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
-                        lineHeight = 20.sp,
-                        color = Color.White,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Text(
-                        text = "OFF",
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        letterSpacing = 2.sp,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-                }
+                Text(
+                    text = item.badgeText,
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    lineHeight = 20.sp,
+                    color = Color.White,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
     }
