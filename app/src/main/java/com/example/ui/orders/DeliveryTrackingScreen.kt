@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Motorcycle
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -139,7 +143,7 @@ fun DeliveryTrackingScreen(
                 title = { Text("Acompanhar entrega", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar")
+                        Icon(ArrowBack, contentDescription = "Voltar")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -170,7 +174,7 @@ fun DeliveryTrackingScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Store, null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
+                        Icon(Store, null, tint = ItaSuperPrimary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             order.storeName.ifBlank { "Loja" },
@@ -180,7 +184,7 @@ fun DeliveryTrackingScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.LocationOn, null, tint = Color(0xFF737373), modifier = Modifier.size(16.dp))
+                        Icon(LocationOn, null, tint = Color(0xFF737373), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             order.deliveryAddress.ifBlank { "Endereço de entrega" },
@@ -190,7 +194,7 @@ fun DeliveryTrackingScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Motorcycle, null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
+                        Icon(Motorcycle, null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             if (driverLocation != null) "Entregador a caminho" else "Buscando localização do entregador...",
