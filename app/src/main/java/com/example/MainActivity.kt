@@ -138,84 +138,38 @@ private val SPLASH_MARK_SIZE = 208.dp
 
 /**
  * Tela exibida enquanto a sessao local e lida.
- * Animacao Premium Material (Opcao C): logo flutuando com brilho
- * e ondas de energia se expandindo.
+ * Logo com animacao suave de entrada (scale + fade).
  */
 @Composable
 fun SessionRestoreScreen() {
-    val infiniteTransition = rememberInfiniteTransition(label = "splash")
-
-    // Flutuacao vertical da logo
-    val floatOffset by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = -16f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "float"
+    var visible by remember { mutableStateOf(false) }
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (visible) 1f else 0.8f,
+        animationSpec = tween(durationMillis = 500),
+        label = "splash_scale"
     )
-
-    // Anel 1: expande e some
-    val ring1Scale by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
-        ),
-        label = "ring1_scale"
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 500),
+        label = "splash_alpha"
     )
-    val ring1Alpha by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
-        ),
-        label = "ring1_alpha"
-    )
-
+    LaunchedEffect(Unit) {
+        visible = true
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ItaSuperPrimary),
         contentAlignment = Alignment.Center
     ) {
-        // Anel de energia
-        Box(
+        Image(
+            painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
+            contentDescription = null,
             modifier = Modifier
-                .size(280.dp)
-                .scale(ring1Scale)
-                .alpha(ring1Alpha)
-                .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                .size(SPLASH_MARK_SIZE)
+                .scale(scale)
+                .alpha(alpha)
         )
-        // Logo com flutuacao
-        Box(
-            modifier = Modifier.offset(y = floatOffset.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
-                contentDescription = null,
-                modifier = Modifier.size(SPLASH_MARK_SIZE)
-            )
-            // Brilho premium sobre a logo
-            Box(
-                modifier = Modifier
-                    .size(SPLASH_MARK_SIZE)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.25f),
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        )
-                    )
-            )
-        }
     }
 }
 
