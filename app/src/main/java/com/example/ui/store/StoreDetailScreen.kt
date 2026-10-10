@@ -1358,6 +1358,36 @@ private fun ProductShowcaseTile(
             )
         }
         Spacer(modifier = Modifier.height(3.dp))
+        val hasPromo = product.originalPrice != null && product.originalPrice > product.price
+        if (hasPromo) {
+            val discountPct = ((1 - product.price / product.originalPrice!!) * 100).toInt()
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFFFF6B00)
+            ) {
+                Text(
+                    text = "Promoção! -$discountPct%",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Black,
+                        fontSize = 9.sp,
+                        color = Color.White
+                    ),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    maxLines = 1
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
+                    color = Color(0xFF9E9E9E),
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                ),
+                maxLines = 1
+            )
+        }
         Text(
             text = String.format("R$ %.2f", product.price).replace(".", ","),
             style = MaterialTheme.typography.labelMedium.copy(
@@ -1414,6 +1444,36 @@ private fun ProductMenuRow(
                     )
                 }
                 Spacer(modifier = Modifier.height(9.dp))
+                val hasPromoRow = product.originalPrice != null && product.originalPrice > product.price
+                if (hasPromoRow) {
+                    val discountPctRow = ((1 - product.price / product.originalPrice!!) * 100).toInt()
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFFF6B00)
+                    ) {
+                        Text(
+                            text = "Promoção! -$discountPctRow%",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                                color = Color.White
+                            ),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = Color(0xFF9E9E9E),
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                        ),
+                        maxLines = 1
+                    )
+                }
                 Text(
                     text = String.format("R$ %.2f", product.price).replace(".", ","),
                     style = MaterialTheme.typography.labelLarge.copy(
