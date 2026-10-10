@@ -252,6 +252,7 @@ fun HomeScreen(
             onRefresh = {
                 viewModel.loadStores()
                 viewModel.loadBanners()
+                viewModel.loadStoresWithCoupons()
             },
             state = pullToRefreshState,
             modifier = Modifier
