@@ -140,20 +140,13 @@ fun AuthScreen(
         ) {
             AuthHeader()
 
-            Surface(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 2.dp, bottom = 28.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White,
-                shadowElevation = 0.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 8.dp, bottom = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
                     AuthTabRow(
                         selectedMode = uiState.authMode,
                         onModeSelected = { viewModel.setAuthMode(it) }
@@ -190,7 +183,6 @@ fun AuthScreen(
                             }
                         )
                     }
-                }
             }
         }
     }
