@@ -604,7 +604,7 @@ private fun ActiveOrderCard(
                     }
                 }
 
-                val canTrackDelivery = order.status.lowercase() in setOf("saiu_entrega", "em_transito", "pronto_para_entrega") && order.driverId.isNotBlank()
+                val canTrackDelivery = order.status.lowercase() in setOf("saiu_entrega", "em_transito") && order.driverId.isNotBlank()
                 if (canTrackDelivery) {
                     Button(
                         onClick = onTrackDelivery,
