@@ -144,11 +144,11 @@ fun AuthScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(top = 2.dp, bottom = 28.dp)
-                    .border(1.dp, ItaSuperBorder, RoundedCornerShape(30.dp)),
-                shape = RoundedCornerShape(30.dp),
+                    .padding(top = 2.dp, bottom = 28.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color.White,
-                shadowElevation = 10.dp
+                shadowElevation = 0.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, ItaSuperBorder)
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
@@ -210,43 +210,17 @@ fun AuthScreen(
 
 @Composable
 private fun AuthHeader() {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(222.dp)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(ItaSuperHighlightBg, ItaSuperBackground)
-                )
-            ),
-        contentAlignment = Alignment.Center
+            .padding(top = 48.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.itasuper_brand_icon),
-                contentDescription = "Ícone oficial ItaSuper",
-                modifier = Modifier.size(66.dp)
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Image(
-                painter = painterResource(id = R.drawable.itasuper_brand_wordmark_cropped),
-                contentDescription = "ItaSuper",
-                modifier = Modifier
-                    .width(196.dp)
-                    .height(44.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Mercado e delivery, do seu jeito.",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    color = ItaSuperTextSecondary,
-                    fontWeight = FontWeight.Medium
-                )
-            )
-        }
+        Image(
+            painter = painterResource(id = R.drawable.itasuper_brand_icon),
+            contentDescription = "Ícone oficial ItaSuper",
+            modifier = Modifier.size(72.dp)
+        )
     }
 }
 
