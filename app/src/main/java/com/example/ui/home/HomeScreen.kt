@@ -1839,7 +1839,12 @@ private fun HomeStoresWithCouponsSection(
     onStoreClick: (String, String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .height(25.dp)
+        ) {
             Text(
                 text = "Lojas com Cupom",
                 style = MaterialTheme.typography.titleMedium.copy(
@@ -1851,72 +1856,171 @@ private fun HomeStoresWithCouponsSection(
                 ),
                 maxLines = 1
             )
-            Text(
-                text = "Descontos exclusivos pra você",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    color = Color(0xFF6D6D6D)
-                ),
-                maxLines = 1
-            )
         }
+        Text(
+            text = "Descontos exclusivos pra você",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = ManropeFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = Color(0xFF6D6D6D)
+            ),
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(storesWithCoupons, key = { it.storeId }) { item ->
-                Card(
+                CouponTicketCard(
+                    item = item,
+                    onClick = { onStoreClick(item.storeId, item.couponCode) }
+                )
+            }
+        }
+    }
+}
+
+/** Card estilo "ticket" de cupom: logo + loja + código à esquerda, desconto em destaque à direita. */
+@Composable
+private fun CouponTicketCard(
+    item: com.example.data.model.StoreWithCoupon,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .width(272.dp)
+            .height(96.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Lado esquerdo: logo + infos
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)
+            ) {
+                // Logo da loja
+                val logoUrl = item.storeLogoUrl?.trim().orEmpty()
+                var logoFailed by androidx.compose.runtime.remember(item.storeId, logoUrl) {
+                    androidx.compose.runtime.mutableStateOf(
+                        logoUrl.isBlank() || logoUrl.equals("null", ignoreCase = true)
+                    )
+                }
+                val initial = item.storeName.trim().take(1).uppercase().ifBlank { "I" }
+                Box(
                     modifier = Modifier
-                        .width(160.dp)
-                        .clickable { onStoreClick(item.storeId, item.couponCode) },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(if (logoFailed) Color(0xFFFFE8A8) else Color(0xFFF5F5F5))
+                        .border(1.dp, Color(0xFFE8E8E8), CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = item.storeName,
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontFamily = ManropeFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF242424)
-                                ),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(end = 48.dp)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .background(Color(0xFFEA580C), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = item.badgeText,
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Cupom: ${item.couponCode}",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontSize = 11.sp,
-                                color = Color(0xFF6D6D6D)
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    if (!logoFailed) {
+                        AsyncImage(
+                            model = logoUrl,
+                            contentDescription = item.storeName,
+                            contentScale = ContentScale.Crop,
+                            onError = { logoFailed = true },
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
+                    if (logoFailed) {
+                        Text(
+                            text = initial,
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 20.sp,
+                            color = ItaSuperPrimary
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.storeName,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                            color = Color(0xFF242424)
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // Código do cupom em "ticket" tracejado
+                    Box(
+                        modifier = Modifier
+                            .border(
+                                width = 1.dp,
+                                color = Color(0xFFEA580C),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .background(Color(0xFFFFF3E8), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = item.couponCode,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.sp,
+                                color = Color(0xFFEA580C)
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            // Divisória picotada
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .padding(vertical = 10.dp)
+                    .background(Color(0xFFE0E0E0))
+            )
+            // Lado direito: valor do desconto em destaque
+            Box(
+                modifier = Modifier
+                    .width(84.dp)
+                    .fillMaxHeight()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFFF97316), Color(0xFFEA580C))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = item.badgeText,
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        lineHeight = 20.sp,
+                        color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Text(
+                        text = "OFF",
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
                 }
             }
         }
