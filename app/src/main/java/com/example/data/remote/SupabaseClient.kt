@@ -1800,7 +1800,17 @@ object SupabaseClient {
 
                     val rawDesc = item.optString("description", "")
                     val description = if (rawDesc.trim() == "null") "" else rawDesc
-                    val price = item.optDouble("price", 0.0)
+                    val regularPrice = item.optDouble("price", 0.0)
+                    // Preço promocional do lojista (mesma regra da web)
+                    var price = regularPrice
+                    var originalPrice: Double? = null
+                    if (item.optBoolean("promo_active", false)) {
+                        val promoPrice = item.optDouble("promo_price", 0.0)
+                        if (promoPrice > 0 && promoPrice < regularPrice) {
+                            price = promoPrice
+                            originalPrice = regularPrice
+                        }
+                    }
                     val category = item.optString("category", "Geral")
                     val sectionId = item.optNullableString("section_id")
                     val imageUrl = item.optString("image_url", "")
@@ -1813,6 +1823,7 @@ object SupabaseClient {
                             name = name,
                             description = description,
                             price = price,
+                            originalPrice = originalPrice,
                             category = category,
                             sectionId = sectionId,
                             imageUrl = imageUrl,
