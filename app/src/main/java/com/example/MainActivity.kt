@@ -32,10 +32,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -131,39 +137,86 @@ private val SPLASH_MARK_SIZE = 208.dp
 
 /**
  * Tela exibida enquanto a sessao local e lida.
- * Repete o fundo e a marca do splash do sistema, com animação de entrada:
- * a logo cresce suavemente com fade-in.
+ * Animacao Premium Material (Opcao C): logo flutuando com brilho
+ * e ondas de energia se expandindo.
  */
 @Composable
 fun SessionRestoreScreen() {
-    var visible by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (visible) 1f else 0.6f,
-        animationSpec = tween(durationMillis = 600),
-        label = "splash_scale"
+    val infiniteTransition = rememberInfiniteTransition(label = "splash")
+
+    // Flutuacao vertical da logo
+    val floatOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -16f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "float"
     )
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(durationMillis = 600),
-        label = "splash_alpha"
+
+    // Anel 1: expande e some
+    val ring1Scale by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "ring1_scale"
     )
-    LaunchedEffect(Unit) {
-        visible = true
-    }
+    val ring1Alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "ring1_alpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ItaSuperPrimary),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
-            contentDescription = null,
+        // Anel de energia
+        Box(
             modifier = Modifier
-                .size(SPLASH_MARK_SIZE)
-                .scale(scale)
-                .alpha(alpha)
+                .size(280.dp)
+                .scale(ring1Scale)
+                .alpha(ring1Alpha)
+                .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
         )
+        // Logo com flutuacao
+        Box(
+            modifier = Modifier.graphicsLayer {
+                translationY = floatOffset.dp.toPx()
+            },
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
+                contentDescription = null,
+                modifier = Modifier.size(SPLASH_MARK_SIZE)
+            )
+            // Brilho premium sobre a logo
+            Box(
+                modifier = Modifier
+                    .size(SPLASH_MARK_SIZE)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.25f),
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        )
+                    )
+            )
+        }
     }
 }
 
