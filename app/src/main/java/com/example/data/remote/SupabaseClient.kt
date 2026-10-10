@@ -1800,8 +1800,7 @@ object SupabaseClient {
 
                     val rawDesc = item.optString("description", "")
                     val description = if (rawDesc.trim() == "null") "" else rawDesc
-                    val (effectivePrice, originalPrice) = item.promoEffectivePrice()
-                    val price = effectivePrice
+                    val price = item.optDouble("price", 0.0)
                     val category = item.optString("category", "Geral")
                     val sectionId = item.optNullableString("section_id")
                     val imageUrl = item.optString("image_url", "")
@@ -1814,7 +1813,6 @@ object SupabaseClient {
                             name = name,
                             description = description,
                             price = price,
-                            originalPrice = originalPrice,
                             category = category,
                             sectionId = sectionId,
                             imageUrl = imageUrl,
@@ -3143,8 +3141,7 @@ object SupabaseClient {
                         val id = item.optString("id", "")
                         val sId = item.optString("store_id", "")
                         val name = item.optString("name", "")
-                        val (effectivePrice, _) = item.promoEffectivePrice()
-                        val price = effectivePrice
+                        val price = item.optDouble("price", 0.0)
                         val img = item.optString("image_url", "")
                         val storeName = storeMap[sId]?.name ?: "Loja ItaSuper"
                         val storeCategory = storeMap[sId]?.category ?: ""
@@ -3265,27 +3262,4 @@ private fun JSONObject.optNullableString(key: String): String? {
         }
         return null
     }
-
-/**
- * Retorna (preço efetivo, preço original ou null).
- * Segue a mesma regra da web (lib/promoPrice.ts): promo vale se promo_active=true,
- * promo_price válido e dentro da janela promo_starts_at/promo_ends_at.
- */
-private fun JSONObject.promoEffectivePrice(): Pair<Double, Double?> {
-    val regular = optDouble("price", 0.0)
-    if (!optBoolean("promo_active", false)) return regular to null
-    val promo = if (has("promo_price") && !isNull("promo_price")) optDouble("promo_price", Double.NaN) else Double.NaN
-    if (!promo.isFinite() || promo <= 0 || promo >= regular) return regular to null
-    val now = System.currentTimeMillis()
-    // Janela de validade: compara os timestamps ISO-8601 como string (formato ordenável)
-    val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
-        timeZone = java.util.TimeZone.getTimeZone("UTC")
-    }.format(java.util.Date(now))
-    optNullableString("promo_starts_at")?.let { start ->
-        if (start.length >= 19 && start.substring(0, 19) > nowIso) return regular to null
-    }
-    optNullableString("promo_ends_at")?.let { end ->
-        if (end.length >= 19 && end.substring(0, 19) < nowIso) return regular to null
-    }
-    return promo to regular
 }
