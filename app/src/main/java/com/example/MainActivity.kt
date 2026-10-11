@@ -47,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.VideoView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,37 +141,29 @@ private val SPLASH_MARK_SIZE = 208.dp
 
 /**
  * Tela exibida enquanto a sessao local e lida.
- * Logo com animacao suave de entrada (scale + fade).
+ * Reproduz o video animado da marca em loop ate a sessao estar pronta.
  */
 @Composable
 fun SessionRestoreScreen() {
-    var visible by remember { mutableStateOf(false) }
-    val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (visible) 1f else 0.8f,
-        animationSpec = tween(durationMillis = 500),
-        label = "splash_scale"
-    )
-    val alpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(durationMillis = 500),
-        label = "splash_alpha"
-    )
-    LaunchedEffect(Unit) {
-        visible = true
-    }
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ItaSuperPrimary),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.itasuper_brand_mark_white),
-            contentDescription = null,
-            modifier = Modifier
-                .size(SPLASH_MARK_SIZE)
-                .scale(scale)
-                .alpha(alpha)
+        AndroidView(
+            factory = { ctx ->
+                VideoView(ctx).apply {
+                    val uri = Uri.parse("android.resource://${ctx.packageName}/${R.raw.splash_animation}")
+                    setVideoURI(uri)
+                    setOnPreparedListener { mp ->
+                        mp.isLooping = true
+                        start()
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
         )
     }
 }
