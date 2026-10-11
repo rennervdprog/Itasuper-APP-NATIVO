@@ -257,18 +257,23 @@ fun DeliveryTrackingScreen(
     }
 }
 
-/** Formata timestamp ISO em tempo relativo (ex: "há 2 min"). */
+/** Formata timestamp ISO em tempo relativo (ex: "há 2 min"). Compatível com API 24+. */
 private fun formatRelativeTime(isoTimestamp: String): String {
     return try {
-        val instant = java.time.Instant.parse(isoTimestamp)
-        val now = java.time.Instant.now()
-        val minutes = java.time.Duration.between(instant, now).toMinutes()
+        // Usa SimpleDateFormat (disponível em todas as APIs) em vez de java.time (API 26+)
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        // Remove frações de segundo e timezone para o parse
+        val cleaned = isoTimestamp.substringBefore(".").substringBefore("+").substringBefore("Z")
+        val date = format.parse(cleaned) ?: return ""
+        val minutes = (System.currentTimeMillis() - date.time) / 60000
         when {
             minutes < 1 -> "agora mesmo"
             minutes < 60 -> "há $minutes min"
             else -> "há ${minutes / 60}h"
         }
-    } catch (e: Exception) {
+    } catch (t: Throwable) {
         ""
     }
 }
