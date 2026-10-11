@@ -61,6 +61,13 @@ data class StoreDeliveryAvailability(
     val reasonMessage: String
 )
 
+/** Localização atual do entregador para acompanhamento de entrega. */
+data class DriverLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val updatedAt: String = ""
+)
+
 /** Resultado do catálogo: uma lista vazia pode ser uma resposta operacional válida. */
 data class StoreCatalogResult(
     val isSuccess: Boolean,
@@ -1353,6 +1360,47 @@ object SupabaseClient {
         }
     }
 
+    /** Busca lojas com cupons ativos para a seção "Lojas com Cupom". */
+    suspend fun fetchStoresWithCoupons(limit: Int = 20): List<com.example.data.model.StoreWithCoupon> = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().put("p_limit", limit).toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/get_stores_with_coupons")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(payload)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) {
+                Log.w(TAG, "RPC get_stores_with_coupons indisponível: HTTP ${response.code}")
+                return@withContext emptyList()
+            }
+            val array = JSONArray(text)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val o = array.optJSONObject(i) ?: continue
+                    add(
+                        com.example.data.model.StoreWithCoupon(
+                            storeId = o.optString("store_id"),
+                            storeName = o.optString("store_name"),
+                            storeLogoUrl = o.optString("store_logo_url").takeIf { it.isNotBlank() },
+                            couponCode = o.optString("coupon_code"),
+                            discountType = o.optString("discount_type"),
+                            discountValue = o.optDouble("discount_value", 0.0),
+                            couponDescription = o.optString("coupon_description").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Erro ao buscar lojas com cupom", e)
+            emptyList()
+        }
+    }
+
     /** Consulta canônica usada no detalhe: vínculo aceito + motorista ativo, online e presença recente. */
     suspend fun fetchStoreDeliveryAvailability(storeId: String): StoreDeliveryAvailability? = withContext(Dispatchers.IO) {
         if (storeId.isBlank()) return@withContext null
@@ -1759,7 +1807,17 @@ object SupabaseClient {
 
                     val rawDesc = item.optString("description", "")
                     val description = if (rawDesc.trim() == "null") "" else rawDesc
-                    val price = item.optDouble("price", 0.0)
+                    val regularPrice = item.optDouble("price", 0.0)
+                    // Preço promocional do lojista (mesma regra da web)
+                    var price = regularPrice
+                    var originalPrice: Double? = null
+                    if (item.optBoolean("promo_active", false)) {
+                        val promoPrice = item.optDouble("promo_price", 0.0)
+                        if (promoPrice > 0 && promoPrice < regularPrice) {
+                            price = promoPrice
+                            originalPrice = regularPrice
+                        }
+                    }
                     val category = item.optString("category", "Geral")
                     val sectionId = item.optNullableString("section_id")
                     val imageUrl = item.optString("image_url", "")
@@ -1774,6 +1832,7 @@ object SupabaseClient {
                             name = name,
                             description = description,
                             price = price,
+                            originalPrice = originalPrice,
                             category = category,
                             sectionId = sectionId,
                             imageUrl = imageUrl,
@@ -1939,6 +1998,8 @@ object SupabaseClient {
                     val price = item.optDouble("price", 0.0)
                     val sortOrder = item.optInt("sort_order", 0)
                     val isAvailable = item.optBoolean("is_available", true)
+                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
+                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
 
                     if (id.isNotBlank() && groupId.isNotBlank() && name.isNotBlank()) {
                         itemsList.add(
@@ -2088,6 +2149,8 @@ object SupabaseClient {
                     val name = item.optString("name", "")
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
+                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
+                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
@@ -2099,6 +2162,7 @@ object SupabaseClient {
                                 name = name,
                                 price = price,
                                 isAvailable = isAvailable,
+                            isOutOfStock = isOutOfStock,
                                 sortOrder = sortOrder
                             )
                         )
@@ -2138,6 +2202,8 @@ object SupabaseClient {
                     val name = item.optString("name", "")
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
+                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
+                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
@@ -2149,6 +2215,7 @@ object SupabaseClient {
                                 name = name,
                                 price = price,
                                 isAvailable = isAvailable,
+                            isOutOfStock = isOutOfStock,
                                 sortOrder = sortOrder
                             )
                         )
@@ -2885,6 +2952,54 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.w(TAG, "Store names unavailable for order history", e)
             emptyMap()
+        }
+    }
+
+    /** Busca a localização atual do entregador (para acompanhamento de entrega). */
+    suspend fun fetchDriverLocation(driverUserId: String, accessToken: String): DriverLocation? = withContext(Dispatchers.IO) {
+        if (driverUserId.isBlank() || accessToken.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/driver_locations?select=latitude,longitude,updated_at&driver_user_id=eq.$driverUserId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return@withContext null
+            val item = JSONArray(text).optJSONObject(0) ?: return@withContext null
+            val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else Double.NaN
+            val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else Double.NaN
+            if (lat.isNaN() || lng.isNaN()) return@withContext null
+            DriverLocation(latitude = lat, longitude = lng, updatedAt = item.optString("updated_at", ""))
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível buscar localização do entregador", e)
+            null
+        }
+    }
+
+    /** Busca as coordenadas da loja (para o mapa de acompanhamento). */
+    suspend fun fetchStoreCoordinates(storeId: String): Pair<Double, Double>? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/stores?select=latitude,longitude&id=eq.$storeId&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) return@withContext null
+            val item = JSONArray(text).optJSONObject(0) ?: return@withContext null
+            val lat = if (item.has("latitude") && !item.isNull("latitude")) item.optDouble("latitude") else Double.NaN
+            val lng = if (item.has("longitude") && !item.isNull("longitude")) item.optDouble("longitude") else Double.NaN
+            if (lat.isNaN() || lng.isNaN()) return@withContext null
+            Pair(lat, lng)
+        } catch (e: Exception) {
+            Log.w(TAG, "Não foi possível buscar coordenadas da loja", e)
+            null
         }
     }
 
