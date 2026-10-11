@@ -81,6 +81,7 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -1088,7 +1089,7 @@ private fun StoreShowcaseHeader(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StoreHeroActionButton(
-                        icon = if (isFavorite) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
+                        icon = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         description = if (isFavorite) "Remover dos favoritos" else "Favoritar loja",
                         onClick = { favoriteStorage.toggleFavorite(storeId) },
                         iconTint = if (isFavorite) Color(0xFFFF5252) else Color.White
