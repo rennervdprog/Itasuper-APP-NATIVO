@@ -1282,7 +1282,6 @@ private fun ProductShowcaseTile(
     Column(
         modifier = modifier
             .clickable { onCardClick() }
-            .alpha(if (product.isOutOfStock) 0.6f else 1f)
             .testTag("product_item_${product.id}")
     ) {
         Box(
@@ -1308,26 +1307,6 @@ private fun ProductShowcaseTile(
                         .align(Alignment.Center)
                         .size(25.dp)
                 )
-            }
-            if (product.isOutOfStock) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp),
-                    shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFFDC2626)
-                ) {
-                    Text(
-                        text = "Esgotado",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Black,
-                            fontSize = 9.sp,
-                            color = Color.White
-                        ),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        maxLines = 1
-                    )
-                }
             }
             Surface(
                 modifier = Modifier
@@ -1380,6 +1359,36 @@ private fun ProductShowcaseTile(
             )
         }
         Spacer(modifier = Modifier.height(3.dp))
+        val hasPromo = product.originalPrice != null && product.originalPrice > product.price
+        if (hasPromo) {
+            val discountPct = ((1 - product.price / product.originalPrice!!) * 100).toInt()
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFFFF6B00)
+            ) {
+                Text(
+                    text = "Promoção! -$discountPct%",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Black,
+                        fontSize = 9.sp,
+                        color = Color.White
+                    ),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    maxLines = 1
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
+                    color = Color(0xFF9E9E9E),
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                ),
+                maxLines = 1
+            )
+        }
         Text(
             text = String.format("R$ %.2f", product.price).replace(".", ","),
             style = MaterialTheme.typography.labelMedium.copy(
@@ -1402,7 +1411,6 @@ private fun ProductMenuRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCardClick() }
-            .alpha(if (product.isOutOfStock) 0.6f else 1f)
             .testTag("product_item_${product.id}")
     ) {
         Row(
@@ -1437,6 +1445,36 @@ private fun ProductMenuRow(
                     )
                 }
                 Spacer(modifier = Modifier.height(9.dp))
+                val hasPromoRow = product.originalPrice != null && product.originalPrice > product.price
+                if (hasPromoRow) {
+                    val discountPctRow = ((1 - product.price / product.originalPrice!!) * 100).toInt()
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFFF6B00)
+                    ) {
+                        Text(
+                            text = "Promoção! -$discountPctRow%",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                                color = Color.White
+                            ),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = String.format("R$ %.2f", product.originalPrice).replace(".", ","),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = Color(0xFF9E9E9E),
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                        ),
+                        maxLines = 1
+                    )
+                }
                 Text(
                     text = String.format("R$ %.2f", product.price).replace(".", ","),
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1445,24 +1483,6 @@ private fun ProductMenuRow(
                         color = ItaSuperPrimary
                     )
                 )
-                if (product.isOutOfStock) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFFDC2626)
-                    ) {
-                        Text(
-                            text = "Esgotado",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Black,
-                                fontSize = 10.sp,
-                                color = Color.White
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            maxLines = 1
-                        )
-                    }
-                }
             }
             Spacer(modifier = Modifier.width(14.dp))
             Box(
