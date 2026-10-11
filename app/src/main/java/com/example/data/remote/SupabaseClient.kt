@@ -1998,8 +1998,6 @@ object SupabaseClient {
                     val price = item.optDouble("price", 0.0)
                     val sortOrder = item.optInt("sort_order", 0)
                     val isAvailable = item.optBoolean("is_available", true)
-                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
 
                     if (id.isNotBlank() && groupId.isNotBlank() && name.isNotBlank()) {
                         itemsList.add(
@@ -2149,8 +2147,6 @@ object SupabaseClient {
                     val name = item.optString("name", "")
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
-                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
@@ -2162,7 +2158,6 @@ object SupabaseClient {
                                 name = name,
                                 price = price,
                                 isAvailable = isAvailable,
-                            isOutOfStock = isOutOfStock,
                                 sortOrder = sortOrder
                             )
                         )
@@ -2202,8 +2197,6 @@ object SupabaseClient {
                     val name = item.optString("name", "")
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
-                    // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
@@ -2215,7 +2208,6 @@ object SupabaseClient {
                                 name = name,
                                 price = price,
                                 isAvailable = isAvailable,
-                            isOutOfStock = isOutOfStock,
                                 sortOrder = sortOrder
                             )
                         )
