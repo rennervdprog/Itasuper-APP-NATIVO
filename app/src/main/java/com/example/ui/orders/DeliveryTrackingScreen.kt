@@ -231,7 +231,7 @@ fun DeliveryTrackingScreen(
                     var webView by remember { mutableStateOf<WebView?>(null) }
                     // Recarrega o mapa quando a localização muda
                     LaunchedEffect(html) {
-                        webView?.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                        webView?.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
                     }
                     DisposableEffect(Unit) {
                         onDispose { webView?.destroy() }
@@ -242,8 +242,14 @@ fun DeliveryTrackingScreen(
                             WebView(context).apply {
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                // Permite carregar recursos externos (Leaflet CSS/JS e tiles do OSM)
+                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                 webViewClient = WebViewClient()
-                                loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                                // Base URL https permite o WebView carregar recursos externos
+                                loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
                                 webView = this
                             }
                         }
