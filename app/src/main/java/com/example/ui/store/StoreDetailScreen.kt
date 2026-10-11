@@ -1196,7 +1196,9 @@ private fun StoreShowcaseHeader(
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         ),
-                        color = Color(0xFF666666)
+                        color = Color(0xFF666666),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
