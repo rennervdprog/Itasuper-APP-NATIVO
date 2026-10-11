@@ -2952,7 +2952,7 @@ object SupabaseClient {
         if (driverUserId.isBlank() || accessToken.isBlank()) return@withContext null
         try {
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/driver_locations?select=latitude,longitude,updated_at&driver_user_id=eq.$driverUserId&limit=1")
+                .url("$SUPABASE_URL/rest/v1/driver_locations?select=latitude,longitude,updated_at&driver_user_id=eq.$driverUserId&order=updated_at.desc&limit=1")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .get()
