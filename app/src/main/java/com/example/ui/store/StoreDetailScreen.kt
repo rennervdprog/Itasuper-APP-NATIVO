@@ -3,6 +3,7 @@ package com.example.ui.store
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
+import com.example.data.repository.FavoriteStoresStorage
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.outlined.LocationOn
@@ -170,6 +171,10 @@ fun StoreDetailScreen(
     val connectivityMonitor = remember(context) { ConnectivityMonitor(context) }
     val isOnline by connectivityMonitor.isOnline.collectAsState()
     var retryAfterReconnect by remember { mutableStateOf(false) }
+    // Favoritos: armazenamento local de lojas favoritadas
+    val favoriteStorage = remember(context) { FavoriteStoresStorage(context) }
+    val favoriteIds by favoriteStorage.favorites.collectAsState()
+    val isFavorite = favoriteIds.contains(storeId)
     LaunchedEffect(storeId, isOnline) {
         if (!isOnline) {
             retryAfterReconnect = true
@@ -1083,9 +1088,10 @@ private fun StoreShowcaseHeader(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StoreHeroActionButton(
-                        icon = Icons.Default.FavoriteBorder,
-                        description = "Favoritar loja",
-                        onClick = { }
+                        icon = if (isFavorite) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
+                        description = if (isFavorite) "Remover dos favoritos" else "Favoritar loja",
+                        onClick = { favoriteStorage.toggleFavorite(storeId) },
+                        iconTint = if (isFavorite) Color(0xFFFF5252) else Color.White
                     )
                     StoreHeroActionButton(
                         icon = Icons.Default.Share,
@@ -1219,7 +1225,8 @@ private fun StoreHeroActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    iconTint: Color = Color.White
 ) {
     Surface(
         modifier = Modifier
@@ -1232,7 +1239,7 @@ private fun StoreHeroActionButton(
             Icon(
                 imageVector = icon,
                 contentDescription = description,
-                tint = Color.White,
+                tint = iconTint,
                 modifier = Modifier.size(23.dp)
             )
         }
