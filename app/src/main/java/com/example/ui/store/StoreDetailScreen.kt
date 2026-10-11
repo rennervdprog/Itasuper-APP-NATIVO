@@ -430,7 +430,9 @@ fun StoreDetailScreen(
                                 }
                             }
                         },
-                        onInfoClick = onNavigateToInfo
+                        onInfoClick = onNavigateToInfo,
+                        isFavorite = isFavorite,
+                        onFavoriteClick = { favoriteStorage.toggleFavorite(storeId) }
                     )
                 }
 
@@ -1046,7 +1048,9 @@ private fun StoreShowcaseHeader(
     onBackClick: () -> Unit,
     onContactClick: () -> Unit,
     onOpenMaps: () -> Unit,
-    onInfoClick: () -> Unit
+    onInfoClick: () -> Unit,
+    isFavorite: Boolean = false,
+    onFavoriteClick: () -> Unit = {}
 ) {
     val isOpen = store?.isOpen == true
     val feeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
@@ -1091,7 +1095,7 @@ private fun StoreShowcaseHeader(
                     StoreHeroActionButton(
                         icon = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         description = if (isFavorite) "Remover dos favoritos" else "Favoritar loja",
-                        onClick = { favoriteStorage.toggleFavorite(storeId) },
+                        onClick = onFavoriteClick,
                         iconTint = if (isFavorite) Color(0xFFFF5252) else Color.White
                     )
                     StoreHeroActionButton(
