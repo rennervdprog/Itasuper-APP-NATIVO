@@ -1136,7 +1136,7 @@ private fun StoreShowcaseHeader(
                 Spacer(modifier = Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = store?.category?.takeIf { it.isNotBlank() } ?: "Alimentação",
+                        text = store?.category?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Alimentação",
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
                         color = Color(0xFF686868)
                     )

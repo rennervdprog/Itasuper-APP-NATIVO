@@ -675,7 +675,7 @@ private fun DiscoverNewStoreCard(store: Store, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = listOf(store.category, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
+                    text = listOf(store.category.replaceFirstChar { it.uppercase() }, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -831,7 +831,7 @@ private fun DiscoverStoreCard(store: Store, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = listOf(store.category, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
+                    text = listOf(store.category.replaceFirstChar { it.uppercase() }, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
