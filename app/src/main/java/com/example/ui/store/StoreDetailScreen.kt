@@ -321,7 +321,7 @@ fun StoreDetailScreen(
                 else -> null
             }
             val isDeliveryUnavailable = store?.let {
-                it.deliveryMode.equals("own", ignoreCase = true) && it.hasAvailableDriver == false
+                it.deliveryMode.equals("own", ignoreCase = true) && it.hasAvailableDriver == false && it.isOpen
             } == true
 
             // Group products by menu_section / category
@@ -1141,8 +1141,30 @@ private fun StoreShowcaseHeader(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val infoParts = mutableListOf<String>()
+                    // Avaliação
+                    val rating = store?.rating ?: 0.0
+                    if (rating > 0) {
+                        infoParts.add("★ ${String.format("%.1f", rating).replace(".", ",")}")
+                    }
+                    // Tempo de entrega
+                    infoParts.add(timeText)
+                    // Distância
+                    store?.distanceKm?.let { dist ->
+                        if (dist > 0) {
+                            val distText = if (dist < 1) "${(dist * 1000).toInt()} m" else "${String.format("%.1f", dist).replace(".", ",")} km"
+                            infoParts.add(distText)
+                        }
+                    }
+                    // Taxa de entrega
+                    infoParts.add("Taxa $feeText")
+                    // Pedido mínimo
+                    val minOrder = store?.minOrder ?: 0.0
+                    if (minOrder > 0) {
+                        infoParts.add("Mín. R$ ${String.format("%.2f", minOrder).replace(".", ",")}")
+                    }
                     Text(
-                        text = "$timeText  •  Taxa $feeText",
+                        text = infoParts.joinToString("  •  "),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
