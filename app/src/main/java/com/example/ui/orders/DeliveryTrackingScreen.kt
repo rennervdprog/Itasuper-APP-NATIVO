@@ -196,12 +196,21 @@ fun DeliveryTrackingScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Motorcycle, null, tint = ItaSuperPrimary, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (driverLocation != null) "Entregador a caminho" else "Buscando localização do entregador...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ItaSuperPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                if (driverLocation != null) "Entregador a caminho" else "Buscando localização do entregador...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ItaSuperPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            driverLocation?.updatedAt?.takeIf { it.isNotBlank() }?.let { updatedAt ->
+                                Text(
+                                    text = "Atualizado ${formatRelativeTime(updatedAt)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -258,5 +267,21 @@ fun DeliveryTrackingScreen(
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+/** Formata timestamp ISO em tempo relativo (ex: "há 2 min"). */
+private fun formatRelativeTime(isoTimestamp: String): String {
+    return try {
+        val instant = java.time.Instant.parse(isoTimestamp)
+        val now = java.time.Instant.now()
+        val minutes = java.time.Duration.between(instant, now).toMinutes()
+        when {
+            minutes < 1 -> "agora mesmo"
+            minutes < 60 -> "há $minutes min"
+            else -> "há ${minutes / 60}h"
+        }
+    } catch (e: Exception) {
+        ""
     }
 }
