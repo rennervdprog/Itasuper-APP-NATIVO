@@ -1823,7 +1823,7 @@ object SupabaseClient {
                     val imageUrl = item.optString("image_url", "")
                     val isAvailable = item.optBoolean("is_available", true)
                     // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
+                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
 
                     productsList.add(
                         Product(
@@ -1999,7 +1999,7 @@ object SupabaseClient {
                     val sortOrder = item.optInt("sort_order", 0)
                     val isAvailable = item.optBoolean("is_available", true)
                     // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
+                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
 
                     if (id.isNotBlank() && groupId.isNotBlank() && name.isNotBlank()) {
                         itemsList.add(
@@ -2150,7 +2150,7 @@ object SupabaseClient {
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
                     // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
+                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
@@ -2203,7 +2203,7 @@ object SupabaseClient {
                     val price = item.optDouble("price", 0.0)
                     val isAvailable = item.optBoolean("is_available", true)
                     // Estoque do lojista (web): metadata.out_of_stock sincronizado pelos RPCs de estoque
-                    val isOutOfStock = metadataObj?.optBoolean("out_of_stock", false) ?: false
+                    val isOutOfStock = item.optJSONObject("metadata")?.optBoolean("out_of_stock", false) ?: false
                     val sortOrder = item.optInt("sort_order", 0)
                     val sId = item.optString("store_id", storeId)
 
