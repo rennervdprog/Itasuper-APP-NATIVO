@@ -96,6 +96,9 @@ object UserSessionRepository {
     /**
      * Renova a sessão sem interromper o cliente quando ele está temporariamente sem rede.
      * Sempre que há token válido, sincroniza também o perfil real da conta.
+     *
+     * Distingue falha DEFINITIVA (400/401/403 = refresh token inválido/revogado → logout,
+     * evita "sessão zumbi") de falha TRANSITÓRIA (sem rede, 5xx → mantém a sessão atual).
      */
     fun refreshSession() {
         val current = _userSession.value
@@ -119,11 +122,28 @@ object UserSessionRepository {
                 _userSession.value = updated
                 persistCurrentSession()
                 synchronizeProfile(updated)
+            } else if (SupabaseClient.isDefinitiveAuthFailure(result.httpStatus)) {
+                // Refresh token inválido, expirado ou revogado: não há como recuperar.
+                // Desloga para não deixar o app num estado "logado" que nunca funciona.
+                Log.w(TAG, "Refresh definitivo falhou (HTTP ${result.httpStatus}). Deslogando.")
+                logout()
             } else if (current.accessToken.isNotBlank()) {
                 // Falha transitória de refresh não desloga o cliente; ainda tenta ler o perfil com o token atual.
                 synchronizeProfile(current)
             }
         }
+    }
+
+    /**
+     * true se o access token atual já expirou (com margem de 60s).
+     * Chamadores podem usar para renovar proativamente antes de uma chamada crítica.
+     */
+    fun isAccessTokenExpired(): Boolean {
+        val current = _userSession.value
+        if (!current.isLoggedIn || current.accessToken.isBlank()) return true
+        val expiresAt = current.accessTokenExpiresAt
+        if (expiresAt <= 0L) return false // sem dado de expiração: não força refresh
+        return System.currentTimeMillis() >= expiresAt - EXPIRY_SKEW_MS
     }
 
     /** Atualiza a sessão com os dados reais de `profiles`, sem remover informações locais válidas em caso de campo nulo. */

@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -46,7 +47,9 @@ data class SupabaseAuthResponse(
     val refreshToken: String? = null,
     val expiresAt: Long? = null,
     val email: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Código HTTP bruto da chamada de auth. 400/401 no refresh = token inválido/revogado (falha definitiva). */
+    val httpStatus: Int? = null
 )
 
 data class SupabaseOperationResult(
@@ -118,6 +121,40 @@ object SupabaseClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * Executa [block] com retry e backoff exponencial para falhas TRANSITÓRIAS
+     * (exceção de rede/timeout ou HTTP 5xx). Falhas definitivas (4xx) NÃO são
+     * repetidas — o bloco deve retornar um resultado que carregue o status.
+     *
+     * Retorna null apenas se todas as tentativas falharem por exceção.
+     */
+    private suspend fun <T> withAuthRetry(
+        times: Int = 3,
+        initialDelayMs: Long = 500L,
+        block: suspend () -> T
+    ): T? {
+        var delayMs = initialDelayMs
+        repeat(times) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                val isLast = attempt == times - 1
+                Log.w(TAG, "Tentativa ${attempt + 1}/$times falhou (transitória)", e)
+                if (isLast) {
+                    Log.e(TAG, "Esgotadas as $times tentativas", e)
+                    return null
+                }
+                delay(delayMs)
+                delayMs *= 2
+            }
+        }
+        return null
+    }
+
+    /** true se o status HTTP indica falha definitiva de credencial (não adianta repetir). */
+    fun isDefinitiveAuthFailure(httpStatus: Int?): Boolean =
+        httpStatus == 400 || httpStatus == 401 || httpStatus == 403
 
     // 1. SIGN IN
     suspend fun signIn(email: String, password: String): SupabaseAuthResponse = withContext(Dispatchers.IO) {
@@ -259,8 +296,9 @@ object SupabaseClient {
     }
 
     // 2b. REFRESH SESSION
+    // Usa retry com backoff: refresh é a chamada mais crítica da sessão.
     suspend fun refreshSession(refreshToken: String): SupabaseAuthResponse = withContext(Dispatchers.IO) {
-        try {
+        withAuthRetry(times = 3) {
             val url = "$SUPABASE_URL/auth/v1/token?grant_type=refresh_token"
             val bodyJson = JSONObject().apply { put("refresh_token", refreshToken) }
             val request = Request.Builder()
@@ -272,6 +310,7 @@ object SupabaseClient {
                 .build()
             val response = httpClient.newCall(request).execute()
             val responseText = response.body?.string() ?: ""
+            val status = response.code
             if (response.isSuccessful && responseText.isNotBlank()) {
                 val json = JSONObject(responseText)
                 val accessToken = json.optNullableString("access_token")
@@ -284,18 +323,17 @@ object SupabaseClient {
                     accessToken = accessToken,
                     refreshToken = nextRefreshToken,
                     expiresAt = expiresAt,
-                    email = userObj?.optString("email")
+                    email = userObj?.optString("email"),
+                    httpStatus = status
                 )
             } else {
                 SupabaseAuthResponse(
                     isSuccess = false,
-                    errorMessage = parseErrorMessage(responseText, "Sua sessão expirou. Entre novamente.")
+                    errorMessage = parseErrorMessage(responseText, "Sua sessão expirou. Entre novamente."),
+                    httpStatus = status
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error refreshing Supabase session", e)
-            SupabaseAuthResponse(isSuccess = false, errorMessage = "Falha ao renovar sessão")
-        }
+        } ?: SupabaseAuthResponse(isSuccess = false, errorMessage = "Falha ao renovar sessão")
     }
 
     /** Lê o perfil do cliente autenticado — mesma fonte usada pelas telas do Capacitor. */
@@ -2316,9 +2354,16 @@ object SupabaseClient {
     }
 
     /** Registra o consumo do cupom sem bloquear a confirmação do pedido. */
-    suspend fun registerCouponUse(couponId: String, userId: String, orderId: String, accessToken: String) = withContext(Dispatchers.IO) {
-        if (couponId.isBlank() || userId.isBlank() || orderId.isBlank() || accessToken.isBlank()) return@withContext
-        try {
+    /**
+     * Registra o uso de um cupom. Retorna o resultado em vez de engolir falhas:
+     * o chamador decide o que fazer (retry, alerta). Usa retry com backoff pois
+     * é executado logo após a criação do pedido, momento crítico.
+     */
+    suspend fun registerCouponUse(couponId: String, userId: String, orderId: String, accessToken: String): SupabaseOperationResult = withContext(Dispatchers.IO) {
+        if (couponId.isBlank() || userId.isBlank() || orderId.isBlank() || accessToken.isBlank()) {
+            return@withContext SupabaseOperationResult(isSuccess = false, errorMessage = "Dados do cupom incompletos.")
+        }
+        withAuthRetry(times = 3) {
             val body = JSONObject().apply {
                 put("coupon_id", couponId)
                 put("user_id", userId)
@@ -2332,10 +2377,18 @@ object SupabaseClient {
                 .addHeader("Prefer", "return=minimal")
                 .post(body.toString().toRequestBody(jsonMediaType))
                 .build()
-            httpClient.newCall(request).execute().close()
-        } catch (error: Exception) {
-            Log.w(TAG, "Não foi possível registrar o uso do cupom", error)
-        }
+            val response = httpClient.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+            response.close()
+            if (response.isSuccessful) {
+                SupabaseOperationResult(isSuccess = true)
+            } else {
+                SupabaseOperationResult(
+                    isSuccess = false,
+                    errorMessage = parseErrorMessage(responseText, "Não foi possível registrar o uso do cupom.")
+                )
+            }
+        } ?: SupabaseOperationResult(isSuccess = false, errorMessage = "Falha de conexão ao registrar o uso do cupom.")
     }
 
     /** Lê o saldo disponível da carteira do cliente autenticado. */
