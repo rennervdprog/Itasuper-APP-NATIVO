@@ -1631,6 +1631,19 @@ fun ProductDetailSheetContent(
                 }
             }
         } else {
+            // Foto do produto
+            if (product.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = product.imageUrl,
+                    contentDescription = product.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             Text(
                 text = product.name,
                 style = MaterialTheme.typography.headlineSmall,
@@ -1881,7 +1894,9 @@ fun ProductDetailSheetContent(
                     },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
