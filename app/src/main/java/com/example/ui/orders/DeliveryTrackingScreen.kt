@@ -55,19 +55,14 @@ import kotlinx.coroutines.isActive
 private fun trackingMapHtml(
     driverLat: Double?,
     driverLng: Double?,
-    storeLat: Double?,
-    storeLng: Double?,
     clientLat: Double?,
     clientLng: Double?
 ): String {
-    val centerLat = driverLat ?: storeLat ?: clientLat ?: -22.5
-    val centerLng = driverLng ?: storeLng ?: clientLng ?: -48.5
+    val centerLat = driverLat ?: clientLat ?: -22.5
+    val centerLng = driverLng ?: clientLng ?: -48.5
     val markers = buildString {
         if (driverLat != null && driverLng != null) {
             append("L.marker([$driverLat, $driverLng], {icon: driverIcon}).addTo(map).bindPopup('Entregador');")
-        }
-        if (storeLat != null && storeLng != null) {
-            append("L.marker([$storeLat, $storeLng], {icon: storeIcon}).addTo(map).bindPopup('Loja');")
         }
         if (clientLat != null && clientLng != null) {
             append("L.marker([$clientLat, $clientLng], {icon: homeIcon}).addTo(map).bindPopup('Você');")
@@ -86,9 +81,6 @@ html, body { margin: 0; padding: 0; height: 100%; }
 .driver-pin { width: 40px; height: 40px; background: #2563eb; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 20px;
   border: 3px solid white; box-shadow: 0 4px 12px rgba(37,99,235,0.5); }
-.store-pin { width: 36px; height: 36px; background: #ea580c; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 18px;
-  border: 3px solid white; box-shadow: 0 3px 10px rgba(234,88,12,0.4); }
 .home-pin { width: 36px; height: 36px; background: #16a34a; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 18px;
   border: 3px solid white; box-shadow: 0 3px 10px rgba(22,163,74,0.4); }
@@ -100,7 +92,6 @@ html, body { margin: 0; padding: 0; height: 100%; }
 var map = L.map('map').setView([$centerLat, $centerLng], 14);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 var driverIcon = L.divIcon({ html: '<div class="driver-pin">🏍️</div>', className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
-var storeIcon = L.divIcon({ html: '<div class="store-pin">🏪</div>', className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
 var homeIcon = L.divIcon({ html: '<div class="home-pin">🏠</div>', className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
 $markers
 </script>
@@ -120,12 +111,10 @@ fun DeliveryTrackingScreen(
     val orders by ordersViewModel.ordersList.collectAsState()
     val order = remember(orderId, orders) { orders.find { it.id == orderId } }
     var driverLocation by remember { mutableStateOf<DriverLocation?>(null) }
-    var storeCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(order?.id) {
         val o = order ?: return@LaunchedEffect
-        storeCoords = SupabaseClient.fetchStoreCoordinates(o.storeId)
         val token = UserSessionRepository.userSession.value.accessToken.orEmpty()
         // Primeira busca imediata
         driverLocation = SupabaseClient.fetchDriverLocation(o.driverId, token)
@@ -227,12 +216,10 @@ fun DeliveryTrackingScreen(
                         CircularProgressIndicator(color = ItaSuperPrimary)
                     }
                 } else {
-                    val html = remember(driverLocation, storeCoords) {
+                    val html = remember(driverLocation) {
                         trackingMapHtml(
                             driverLat = driverLocation?.latitude,
                             driverLng = driverLocation?.longitude,
-                            storeLat = storeCoords?.first,
-                            storeLng = storeCoords?.second,
                             clientLat = order.clientLatitude,
                             clientLng = order.clientLongitude
                         )
