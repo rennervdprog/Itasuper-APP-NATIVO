@@ -111,6 +111,7 @@ class CartStorage(context: Context) {
         sectionId = optString("section_id", "").ifBlank { null },
         imageUrl = optString("image_url", ""),
         isAvailable = optBoolean("is_available", true),
+        isOutOfStock = optBoolean("is_out_of_stock", false),
         hasStuffedCrust = optBoolean("has_stuffed_crust", false),
         isCombo = optBoolean("is_combo", false),
         isPastelFlavor = optBoolean("is_pastel_flavor", false),
@@ -138,6 +139,7 @@ class CartStorage(context: Context) {
         sectionId?.let { put("section_id", it) }
         put("image_url", imageUrl)
         put("is_available", isAvailable)
+        put("is_out_of_stock", isOutOfStock)
         put("has_stuffed_crust", hasStuffedCrust)
         put("is_combo", isCombo)
         put("is_pastel_flavor", isPastelFlavor)

@@ -59,11 +59,6 @@ object CartRepository {
     private data class StoreDeliveryProfile(val feeType: String, val officialFee: Double?)
     private val deliveryProfiles = mutableMapOf<String, StoreDeliveryProfile>()
 
-    /** Cupom pré-selecionado ao entrar na loja pela seção "Lojas com Cupom". */
-    var pendingCouponCode: String? = null
-    /** Loja de origem do cupom pendente — só auto-aplica se o carrinho for dessa loja. */
-    var pendingCouponStoreId: String? = null
-
     private val _cartState = MutableStateFlow(CartState())
     val cartState: StateFlow<CartState> = _cartState.asStateFlow()
 
@@ -271,7 +266,7 @@ object CartRepository {
     fun validateAgainstCatalog(products: List<Product>) {
         val current = _cartState.value
         if (current.items.isEmpty()) return
-        val available = products.filter { it.isAvailable }.associateBy { it.id }
+        val available = products.filter { it.isAvailable && !it.isOutOfStock }.associateBy { it.id }
         val validatedItems = current.items.mapNotNull { item ->
             val currentProduct = available[item.product.id] ?: return@mapNotNull null
             item.copy(product = currentProduct)

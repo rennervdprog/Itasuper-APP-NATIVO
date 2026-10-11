@@ -392,6 +392,13 @@ class StoreDetailViewModel : ViewModel() {
     }
 
     fun openProductModal(product: Product) {
+        // Estoque do lojista (web): produto esgotado não abre o modal — igual à vitrine web.
+        if (product.isOutOfStock) {
+            _uiState.value = _uiState.value.copy(
+                snackbarMessage = "Produto esgotado"
+            )
+            return
+        }
         // Abre imediatamente e busca vínculos por produto, igual ao Capacitor.
         // A lista global da loja é mantida para os builders, mas não define mais este fluxo.
         _uiState.value = _uiState.value.copy(
@@ -798,7 +805,7 @@ class StoreDetailViewModel : ViewModel() {
 
     fun selectPizzaWizardFlavor(slotIndex: Int, product: Product) {
         val state = _uiState.value
-        if (!product.isAvailable || product.isBeverage || product.pizzaUnavailableSizeIds.contains(state.pizzaWizardSelectedSizeId)) return
+        if (!product.isAvailable || product.isOutOfStock || product.isBeverage || product.pizzaUnavailableSizeIds.contains(state.pizzaWizardSelectedSizeId)) return
         val current = state.pizzaWizardSelectedFlavors.toMutableList()
         if (slotIndex !in current.indices) return
         if (current.anyIndexed { index, flavor -> index != slotIndex && flavor?.id == product.id }) {

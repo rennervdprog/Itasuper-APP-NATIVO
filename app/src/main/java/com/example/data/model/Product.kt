@@ -71,6 +71,7 @@ data class Product(
     val sectionId: String? = null,
     val imageUrl: String = "",
     val isAvailable: Boolean = true,
+    val isOutOfStock: Boolean = false,
     val hasStuffedCrust: Boolean = false,
     val isCombo: Boolean = false,
     val isPastelFlavor: Boolean = false,
