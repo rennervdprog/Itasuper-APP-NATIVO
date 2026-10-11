@@ -1134,11 +1134,38 @@ private fun StoreShowcaseHeader(
                     )
                 }
                 Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = store?.category?.takeIf { it.isNotBlank() } ?: "Alimentação",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
-                    color = Color(0xFF686868)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = store?.category?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Alimentação",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                        color = Color(0xFF686868)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        color = if (isOpen) Color(0xFFF1FAF3) else Color(0xFFFFF3F3),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(if (isOpen) Color(0xFF16A34A) else Color(0xFFE5484D), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isOpen) "Aberta" else "Fechada",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = if (isOpen) Color(0xFF16803A) else Color(0xFFC9343C)
+                                )
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val infoParts = mutableListOf<String>()
@@ -1169,33 +1196,10 @@ private fun StoreShowcaseHeader(
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         ),
-                        color = Color(0xFF666666)
+                        color = Color(0xFF666666),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Surface(
-                        color = if (isOpen) Color(0xFFF1FAF3) else Color(0xFFFFF3F3),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(if (isOpen) Color(0xFF16A34A) else Color(0xFFE5484D), CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isOpen) "Aberta" else "Fechada",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    color = if (isOpen) Color(0xFF16803A) else Color(0xFFC9343C)
-                                )
-                            )
-                        }
-                    }
                 }
 
             }
@@ -1629,6 +1633,19 @@ fun ProductDetailSheetContent(
                 }
             }
         } else {
+            // Foto do produto
+            if (product.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = product.imageUrl,
+                    contentDescription = product.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             Text(
                 text = product.name,
                 style = MaterialTheme.typography.headlineSmall,
@@ -1879,7 +1896,9 @@ fun ProductDetailSheetContent(
                     },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

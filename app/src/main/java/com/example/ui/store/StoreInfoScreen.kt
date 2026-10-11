@@ -213,7 +213,7 @@ private fun StoreInfoIdentity(store: Store?) {
             )
             Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = store?.category?.takeIf { it.isNotBlank() } ?: "Categoria não informada",
+                text = store?.category?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Categoria não informada",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp,
