@@ -17,12 +17,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.stickyHeader
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -31,13 +35,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,12 +66,18 @@ import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 private enum class NotificationsFilter(val label: String) {
     ALL("Todos"),
     UNREAD("Não lidos"),
     ORDER("Pedidos"),
-    DELIVERY("Entrega")
+    DELIVERY("Entrega"),
+    PROMO("Promoções")
 }
 
 private fun ClientNotification.matchesFilter(filter: NotificationsFilter): Boolean = when (filter) {
@@ -70,6 +85,7 @@ private fun ClientNotification.matchesFilter(filter: NotificationsFilter): Boole
     NotificationsFilter.UNREAD -> !isRead
     NotificationsFilter.ORDER -> type.lowercase() in setOf("preparando", "pronto_para_entrega", "cancelado", "finalizado", "order_update")
     NotificationsFilter.DELIVERY -> type.lowercase() in setOf("saiu_entrega", "em_transito", "entregue")
+    NotificationsFilter.PROMO -> type.lowercase() in setOf("promocao", "promotion", "promo", "cupom", "coupon", "oferta", "offer")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -134,74 +150,111 @@ fun NotificationsScreen(
             )
         }
     ) { innerPadding ->
-        when {
-            uiState.isLoading && uiState.notifications.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator(color = ItaSuperPrimary) }
-            }
-            uiState.notifications.isEmpty() -> EmptyNotificationsContent(
-                modifier = Modifier.padding(innerPadding),
-                errorMessage = uiState.errorMessage
-            )
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding).testTag("notifications_list"),
-                    contentPadding = PaddingValues(bottom = 24.dp)
-                ) {
-                    item {
-                        NotificationsFilterBar(
-                            selected = selectedFilter.value,
-                            onSelect = { selectedFilter.value = it }
-                        )
-                    }
-                    if (uiState.isLoading) {
+        PullToRefreshBox(
+            isRefreshing = uiState.isLoading,
+            onRefresh = { viewModel.loadNotifications() },
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
+        ) {
+            when {
+                uiState.isLoading && uiState.notifications.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) { CircularProgressIndicator(color = ItaSuperPrimary) }
+                }
+                uiState.notifications.isEmpty() -> EmptyNotificationsContent(
+                    errorMessage = uiState.errorMessage,
+                    everHadNotifications = uiState.everHadNotifications,
+                    onExploreClick = { onNavigateToRoute("busca") }
+                )
+                else -> {
+                    val grouped = remember(filteredNotifications) { groupNotificationsByDate(filteredNotifications) }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().testTag("notifications_list"),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
                         item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
-                                Text("Sincronizando avisos", style = MaterialTheme.typography.labelMedium, color = ItaSuperTextSecondary)
-                            }
-                        }
-                    }
-                    if (!uiState.errorMessage.isNullOrBlank()) {
-                        item {
-                            Text(
-                                text = uiState.errorMessage.orEmpty(),
-                                color = ItaSuperTextSecondary,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                            NotificationsFilterBar(
+                                selected = selectedFilter.value,
+                                onSelect = { selectedFilter.value = it }
                             )
                         }
-                    }
-                    if (filteredNotifications.isEmpty()) {
-                        item {
-                            Text(
-                                text = "Nenhum aviso nesta categoria.",
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ItaSuperTextSecondary
-                            )
-                        }
-                    }
-                    items(filteredNotifications, key = { it.id }) { notification ->
-                        NotificationRow(
-                            notification = notification,
-                            onClick = {
-                                viewModel.openNotification(notification) {
-                                    val route = notification.orderId
-                                        ?.takeIf { it.isNotBlank() }
-                                        ?.let { "pedidos?orderId=$it" }
-                                        ?: "pedidos"
-                                    onNavigateToRoute(route)
+                        if (uiState.unreadCount > 0) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = viewModel::markAllAsRead,
+                                        modifier = Modifier.testTag("mark_all_read")
+                                    ) {
+                                        Text(
+                                            text = "Marcar todas como lidas",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = ItaSuperPrimary
+                                            )
+                                        )
+                                    }
                                 }
                             }
-                        )
+                        }
+                        if (uiState.isLoading) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ItaSuperPrimary)
+                                    Text("Sincronizando avisos", style = MaterialTheme.typography.labelMedium, color = ItaSuperTextSecondary)
+                                }
+                            }
+                        }
+                        if (!uiState.errorMessage.isNullOrBlank()) {
+                            item {
+                                Text(
+                                    text = uiState.errorMessage.orEmpty(),
+                                    color = ItaSuperTextSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                        if (filteredNotifications.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "Nenhum aviso nesta categoria.",
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = ItaSuperTextSecondary
+                                )
+                            }
+                        } else {
+                            grouped.forEach { (group, groupItems) ->
+                                stickyHeader {
+                                    DateGroupHeader(label = group.label)
+                                }
+                                items(groupItems, key = { it.id }) { notification ->
+                                    NotificationRow(
+                                        notification = notification,
+                                        onMarkRead = { viewModel.openNotification(notification) {} },
+                                        onDismiss = { viewModel.dismissNotification(notification.id) },
+                                        onClick = {
+                                            viewModel.openNotification(notification) {
+                                                val route = notification.orderId
+                                                    ?.takeIf { it.isNotBlank() }
+                                                    ?.let { "pedidos?orderId=$it" }
+                                                    ?: "pedidos"
+                                                onNavigateToRoute(route)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -234,8 +287,30 @@ private fun NotificationsFilterBar(selected: NotificationsFilter, onSelect: (Not
 @Composable
 private fun EmptyNotificationsContent(
     modifier: Modifier = Modifier,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    everHadNotifications: Boolean = false,
+    onExploreClick: () -> Unit = {}
 ) {
+    val title: String
+    val body: String
+    val showExploreCta: Boolean
+    when {
+        !errorMessage.isNullOrBlank() -> {
+            title = "Não foi possível carregar os avisos"
+            body = errorMessage
+            showExploreCta = false
+        }
+        everHadNotifications -> {
+            title = "Você está em dia! 🎉"
+            body = "Nenhum aviso novo por aqui."
+            showExploreCta = false
+        }
+        else -> {
+            title = "Nenhuma notificação ainda"
+            body = "As atualizações dos seus pedidos aparecerão aqui."
+            showExploreCta = true
+        }
+    }
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 32.dp),
         verticalArrangement = Arrangement.Center,
@@ -254,20 +329,95 @@ private fun EmptyNotificationsContent(
         }
         Spacer(modifier = Modifier.height(20.dp))
         Text(
-            text = if (errorMessage.isNullOrBlank()) "Nenhuma notificação ainda" else "Não foi possível carregar os avisos",
+            text = title,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ItaSuperTextPrimary)
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = errorMessage ?: "As atualizações dos seus pedidos aparecerão aqui.",
+            text = body,
             style = MaterialTheme.typography.bodyMedium.copy(color = ItaSuperTextSecondary),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
+        if (showExploreCta) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = onExploreClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ItaSuperPrimary,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("Explorar ofertas", fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NotificationRow(notification: ClientNotification, onClick: () -> Unit) {
+private fun NotificationRow(
+    notification: ClientNotification,
+    onMarkRead: () -> Unit,
+    onDismiss: () -> Unit,
+    onClick: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { target ->
+            when (target) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    onMarkRead()
+                    false // executa a ação e volta (não remove a linha)
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    onDismiss()
+                    false
+                }
+                SwipeToDismissBoxValue.Settled -> true
+            }
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = !notification.isRead,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            if (direction != SwipeToDismissBoxValue.Settled) {
+                val isMarkRead = direction == SwipeToDismissBoxValue.StartToEnd
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(if (isMarkRead) Color(0xFF43A047) else Color(0xFFE53935))
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = if (isMarkRead) Alignment.CenterStart else Alignment.CenterEnd
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isMarkRead) Icons.Filled.Check else Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = if (isMarkRead) "Marcar como lida" else "Excluir",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+        },
+        content = { NotificationRowContent(notification = notification, onClick = onClick) }
+    )
+    Divider(color = Color(0xFFECECEC), thickness = 1.dp)
+}
+
+@Composable
+private fun NotificationRowContent(notification: ClientNotification, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -325,10 +475,90 @@ private fun NotificationRow(notification: ClientNotification, onClick: () -> Uni
             )
         }
     }
-    Divider(color = Color(0xFFECECEC), thickness = 1.dp)
+}
+
+@Composable
+private fun DateGroupHeader(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge.copy(
+            fontWeight = FontWeight.ExtraBold,
+            color = ItaSuperTextSecondary
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ItaSuperBackground)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    )
+}
+
+private enum class NotificationDateGroup(val label: String) {
+    TODAY("Hoje"),
+    YESTERDAY("Ontem"),
+    THIS_WEEK("Esta semana"),
+    OLDER("Anteriores")
+}
+
+/** createdAt vem do banco em UTC (ex: "2026-10-12T17:06:00Z"). Retorna null se inválido. */
+private fun parseNotificationDateUtc(value: String): Date? {
+    return try {
+        val normalized = value
+            .replace(Regex("\\.\\d+"), "")
+            .replace("Z", "")
+            .replace(Regex("[+-]\\d{2}:?\\d{2}$"), "")
+            .take(19)
+        if (normalized.length < 16) return null
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+            isLenient = false
+        }.parse(normalized)
+    } catch (_: Throwable) {
+        null
+    }
+}
+
+private fun startOfDayMillis(millis: Long): Long {
+    return Calendar.getInstance().apply {
+        timeInMillis = millis
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun dateGroupOf(notification: ClientNotification, nowMillis: Long): NotificationDateGroup {
+    val date = parseNotificationDateUtc(notification.createdAt) ?: return NotificationDateGroup.OLDER
+    val dayMs = 24L * 60 * 60 * 1000
+    val diffDays = (startOfDayMillis(nowMillis) - startOfDayMillis(date.time)) / dayMs
+    return when {
+        diffDays <= 0 -> NotificationDateGroup.TODAY
+        diffDays == 1L -> NotificationDateGroup.YESTERDAY
+        diffDays < 7 -> NotificationDateGroup.THIS_WEEK
+        else -> NotificationDateGroup.OLDER
+    }
+}
+
+private fun groupNotificationsByDate(
+    notifications: List<ClientNotification>
+): List<Pair<NotificationDateGroup, List<ClientNotification>>> {
+    val now = System.currentTimeMillis()
+    return notifications
+        .groupBy { dateGroupOf(it, now) }
+        .toSortedMap(compareBy { it.ordinal })
+        .map { (group, items) -> group to items }
 }
 
 private fun formatNotificationDate(value: String): String {
     if (value.isBlank()) return "Agora"
-    return value.take(16).replace("T", " às ")
+    val fallback = value.take(16).replace("T", " às ")
+    val date = parseNotificationDateUtc(value) ?: return fallback
+    return try {
+        // Converte UTC -> fuso local do aparelho (mesmo padrão do fix em OrdersHistoryScreen).
+        SimpleDateFormat("yyyy-MM-dd 'às' HH:mm", Locale("pt", "BR")).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(date)
+    } catch (_: Throwable) {
+        fallback
+    }
 }
