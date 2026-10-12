@@ -373,9 +373,6 @@ fun ItaSuperApp() {
                         launchSingleTop = true
                         restoreState = true
                     }
-                },
-                onTrackDelivery = { orderId ->
-                    navController.navigate("acompanhar_entrega/$orderId")
                 }
             )
         }
