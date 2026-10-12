@@ -34,6 +34,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -233,23 +234,23 @@ fun DeliveryTrackingScreen(
                             clientLng = order.clientLongitude
                         )
                     }
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { context ->
-                            WebView(context).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                settings.mediaPlaybackRequiresUserGesture = false
-                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                webViewClient = WebViewClient()
+                    key(html) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.useWideViewPort = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    webViewClient = WebViewClient()
+                                    loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
+                                }
                             }
-                        },
-                        update = { webView ->
-                            webView.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
-                        }
-                    )
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(16.dp))
