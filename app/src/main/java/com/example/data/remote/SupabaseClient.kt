@@ -101,6 +101,14 @@ data class PixPaymentResponse(
     val errorMessage: String? = null
 )
 
+/** Localização mais recente do entregador (tabela driver_locations). */
+data class DriverLocation(
+    val driverUserId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val updatedAt: String? = null
+)
+
 object SupabaseClient {
 
     private const val TAG = "SupabaseClient"
@@ -1349,6 +1357,77 @@ object SupabaseClient {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Não foi possível filtrar lojas por entregador online", e)
+            null
+        }
+    }
+
+    /** Busca lojas com cupons ativos para a seção "Lojas com Cupom". */
+    suspend fun fetchStoresWithCoupons(limit: Int = 20): List<com.example.data.model.StoreWithCoupon> = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().put("p_limit", limit).toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/rpc/get_stores_with_coupons")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .addHeader("Content-Type", "application/json")
+                .post(payload)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) {
+                Log.w(TAG, "RPC get_stores_with_coupons indisponível: HTTP ${response.code}")
+                return@withContext emptyList()
+            }
+            val array = JSONArray(text)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val o = array.optJSONObject(i) ?: continue
+                    add(
+                        com.example.data.model.StoreWithCoupon(
+                            storeId = o.optString("store_id"),
+                            storeName = o.optString("store_name"),
+                            storeLogoUrl = o.optString("store_logo_url").takeIf { it.isNotBlank() },
+                            couponCode = o.optString("coupon_code"),
+                            discountType = o.optString("discount_type"),
+                            discountValue = o.optDouble("discount_value", 0.0),
+                            couponDescription = o.optString("coupon_description").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Erro ao buscar lojas com cupom", e)
+            emptyList()
+        }
+    }
+
+    /** Busca a localização mais recente do entregador na tabela driver_locations. */
+    suspend fun fetchDriverLocation(driverUserId: String, accessToken: String): DriverLocation? = withContext(Dispatchers.IO) {
+        if (driverUserId.isBlank()) return@withContext null
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/driver_locations?driver_user_id=eq.$driverUserId&order=updated_at.desc&limit=1")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful || text.isBlank()) {
+                Log.w(TAG, "driver_locations indisponível: HTTP ${response.code}")
+                return@withContext null
+            }
+            val array = JSONArray(text)
+            val o = array.optJSONObject(0) ?: return@withContext null
+            DriverLocation(
+                driverUserId = o.optString("driver_user_id"),
+                latitude = o.optDouble("latitude", Double.NaN).takeIf { it.isFinite() } ?: return@withContext null,
+                longitude = o.optDouble("longitude", Double.NaN).takeIf { it.isFinite() } ?: return@withContext null,
+                updatedAt = o.optString("updated_at").takeIf { it.isNotBlank() }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Erro ao buscar localização do entregador", e)
             null
         }
     }
