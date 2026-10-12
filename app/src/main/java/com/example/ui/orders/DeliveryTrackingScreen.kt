@@ -77,7 +77,7 @@ private fun trackingMapHtml(
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 html, body { margin: 0; padding: 0; height: 100%; }
-#map { height: 100%; width: 100%; }
+#map { height: 100vh; width: 100%; }
 .driver-pin { width: 40px; height: 40px; background: #2563eb; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 20px;
   border: 3px solid white; box-shadow: 0 4px 12px rgba(37,99,235,0.5); }
