@@ -15,8 +15,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.debug.MapDebugLog
-import com.example.network.SupabaseClient
-import com.example.session.UserSessionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -106,11 +104,8 @@ fun MapDebugScreen(
                 onClick = {
                     scope.launch(Dispatchers.IO) {
                         try {
-                            MapDebugLog.add("Buscando localização do entregador...")
-                            val session = UserSessionRepository.userSession.value
-                            val token = session.accessToken ?: ""
-                            // Busca o pedido ativo e a localização
-                            // Por simplicidade, usa coordenadas fixas de teste
+                            MapDebugLog.add("Preparando mapa de teste...")
+                            // Coordenadas de teste (Araruama/RJ)
                             val driverLat = -22.8606
                             val driverLng = -42.3324
                             MapDebugLog.add("Coordenadas de teste: $driverLat, $driverLng")
@@ -160,7 +155,8 @@ fun MapDebugScreen(
             }
 
             // WebView de teste
-            if (testHtml != null) {
+            val currentHtml = testHtml
+            if (currentHtml != null) {
                 Text(testTitle, style = MaterialTheme.typography.titleSmall)
                 Box(modifier = Modifier.height(450.dp).fillMaxWidth()) {
                     AndroidView(
@@ -177,11 +173,11 @@ fun MapDebugScreen(
                                         MapDebugLog.add("WebView ERRO: ${error?.description}")
                                     }
                                 }
-                                loadDataWithBaseURL("https://localhost/", testHtml, "text/html", "UTF-8", null)
+                                loadDataWithBaseURL("https://localhost/", currentHtml, "text/html", "UTF-8", null)
                             }
                         },
                         update = { webView ->
-                            webView.loadDataWithBaseURL("https://localhost/", testHtml, "text/html", "UTF-8", null)
+                            webView.loadDataWithBaseURL("https://localhost/", currentHtml, "text/html", "UTF-8", null)
                         }
                     )
                 }
