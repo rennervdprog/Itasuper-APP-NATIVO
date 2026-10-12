@@ -85,7 +85,10 @@ import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperSuccess
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 private data class OrderStatusPresentation(
     val label: String,
@@ -134,6 +137,28 @@ private fun money(value: Double): String = String.format(Locale("pt", "BR"), "R$
 private fun Order.shortCode(): String = "#${id.take(6).uppercase()}"
 
 private fun Order.createdLabel(): String {
+    // createdAt vem do banco em UTC (ex: "2026-10-12T17:06:00Z").
+    // Converte para o fuso horário local do aparelho antes de exibir.
+    try {
+        val utcParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        // Normaliza: remove fração de segundo e sufixo Z/+00:00
+        val normalized = createdAt
+            .replace(Regex("\\.\\d+"), "")
+            .replace("Z", "")
+            .replace(Regex("[+-]\\d{2}:?\\d{2}$"), "")
+            .take(19)
+        if (normalized.length >= 16) {
+            val date = utcParser.parse(normalized) ?: return createdAt
+            val localFormat = SimpleDateFormat("dd/MM, HH:mm", Locale("pt", "BR")).apply {
+                timeZone = TimeZone.getDefault()
+            }
+            return localFormat.format(date)
+        }
+    } catch (_: Throwable) {
+        // fallback para o formato antigo abaixo
+    }
     if (createdAt.length >= 16) {
         val date = createdAt.take(10).split("-")
         val time = createdAt.substring(11, 16)
@@ -180,8 +205,7 @@ fun OrdersHistoryScreen(
     initialOrderId: String? = null,
     onNavigateToRoute: (String) -> Unit,
     onNavigateToCart: () -> Unit,
-    onExploreClick: () -> Unit,
-    onTrackDelivery: (String) -> Unit = {}
+    onExploreClick: () -> Unit
 ) {
     val orders by viewModel.ordersList.collectAsState()
     val cart by viewModel.cartState.collectAsState()
@@ -404,7 +428,6 @@ fun OrdersHistoryScreen(
                             onPixDirect = { viewModel.openPixDirectPayment(order) },
                             onConfirmDelivery = { viewModel.confirmDelivery(order) },
                             onCancelOrder = { orderPendingCancellation.value = order },
-                            onTrackDelivery = { onTrackDelivery(order.id) },
                             isConfirmingDelivery = uiState.confirmingDeliveryOrderId == order.id,
                             isCancelling = uiState.cancellingOrderId == order.id,
                             isHighlighted = order.id == initialOrderId
@@ -515,7 +538,6 @@ private fun ActiveOrderCard(
     onPixDirect: () -> Unit,
     onConfirmDelivery: () -> Unit,
     onCancelOrder: () -> Unit,
-    onTrackDelivery: () -> Unit = {},
     isConfirmingDelivery: Boolean,
     isCancelling: Boolean,
     isHighlighted: Boolean = false
@@ -540,22 +562,9 @@ private fun ActiveOrderCard(
             ) {
                 StatusPill(presentation)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        order.estimatedWindow(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF5D5D5D),
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        order.shortCode(),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = Color(0xFF737373),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(order.estimatedWindow(), style = MaterialTheme.typography.labelMedium, color = Color(0xFF5D5D5D), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(9.dp))
+                    Text(order.shortCode(), style = MaterialTheme.typography.labelSmall, color = Color(0xFF737373))
                 }
             }
             HorizontalDivider(color = Color(0xFFEEEEEE))
@@ -614,20 +623,6 @@ private fun ActiveOrderCard(
                         Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (isConfirmingDelivery) "Confirmando..." else "Sim, recebi meu pedido!", fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                val canTrackDelivery = order.status.lowercase() in setOf("saiu_entrega", "em_transito") && order.driverId.isNotBlank()
-                if (canTrackDelivery) {
-                    Button(
-                        onClick = onTrackDelivery,
-                        colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Acompanhar entrega", fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -832,15 +827,6 @@ private fun OrderFinancialSummary(order: Order) {
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        // Data do pedido
-        if (order.createdAt.isNotBlank()) {
-            SummaryLine("Data do pedido", formatOrderDate(order.createdAt))
-        }
-        // Forma de pagamento
-        if (order.paymentMethod.isNotBlank()) {
-            SummaryLine("Pagamento", formatPaymentMethod(order.paymentMethod))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         order.items.forEach { item ->
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${item.quantity}x ${item.product.name}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -856,16 +842,6 @@ private fun OrderFinancialSummary(order: Order) {
                 if (confirmedDeliveryFee > 0) money(confirmedDeliveryFee) else "Grátis"
             )
         }
-        // Descontos
-        if (order.discount > 0) {
-            SummaryLine("Cupom", "- ${money(order.discount)}", valueColor = ItaSuperSuccess)
-        }
-        if (order.walletDiscount > 0) {
-            SummaryLine("Carteira", "- ${money(order.walletDiscount)}", valueColor = ItaSuperSuccess)
-        }
-        if (order.loyaltyDiscount > 0) {
-            SummaryLine("Pontos fidelidade", "- ${money(order.loyaltyDiscount)}", valueColor = ItaSuperSuccess)
-        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Total", fontWeight = FontWeight.ExtraBold)
             Text(money(order.total), fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
@@ -873,41 +849,11 @@ private fun OrderFinancialSummary(order: Order) {
     }
 }
 
-private fun formatPaymentMethod(method: String): String = when (method.lowercase()) {
-    "pix" -> "PIX"
-    "pix_direto" -> "PIX direto"
-    "dinheiro", "cash" -> "Dinheiro"
-    "cartao", "card", "cartão" -> "Cartão"
-    "cartao_credito" -> "Cartão de crédito"
-    "cartao_debito" -> "Cartão de débito"
-    else -> method.replaceFirstChar { it.uppercase() }
-}
-
-private fun formatOrderDate(iso: String): String {
-    return try {
-        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale("pt", "BR")).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }
-        val cleaned = iso.substringBefore(".").substringBefore("+").substringBefore("Z")
-        val date = format.parse(cleaned) ?: return iso
-        val out = java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", java.util.Locale("pt", "BR")).apply {
-            timeZone = java.util.TimeZone.getTimeZone("America/Sao_Paulo")
-        }
-        out.format(date)
-    } catch (t: Throwable) {
-        iso
-    }
-}
-
 @Composable
-private fun SummaryLine(label: String, value: String, valueColor: Color = Color.Unspecified) {
+private fun SummaryLine(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (valueColor != Color.Unspecified) valueColor else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
