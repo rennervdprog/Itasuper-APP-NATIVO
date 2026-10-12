@@ -146,8 +146,17 @@ fun DeliveryTrackingScreen(
                 .background(Color(0xFFF5F5F5))
         ) {
             if (order == null) {
+                // Pedido ainda não carregado na lista - mostra loading em vez de tela em branco
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Pedido não encontrado", color = Color(0xFF737373))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = ItaSuperPrimary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Carregando pedido...", color = Color(0xFF737373))
+                    }
+                }
+                // Tenta recarregar a lista de pedidos
+                LaunchedEffect(Unit) {
+                    ordersViewModel.refreshOrders()
                 }
                 return@Column
             }
