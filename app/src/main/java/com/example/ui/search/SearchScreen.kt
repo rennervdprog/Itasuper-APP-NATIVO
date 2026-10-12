@@ -1,6 +1,13 @@
 package com.example.ui.search
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,21 +28,28 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalPizza
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -49,13 +64,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.composed
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -74,10 +93,7 @@ import com.example.R
 import com.example.data.model.DiscoverProduct
 import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
-import com.example.ui.navigation.ItaSuperBottomNavBar
-import com.example.ui.theme.ItaSuperBackground
-import com.example.ui.theme.ItaSuperHighlightBg
-import com.example.ui.theme.ItaSuperHighlightText
+import com.example.ui.navigation.ItaSuperBottomNavBarimport com.example.ui.theme.ItaSuperBackground
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
@@ -100,11 +116,15 @@ fun SearchScreen(
     val city by viewModel.activeCity.collectAsStateWithLifecycle()
     val recentSearches by viewModel.recentSearches.collectAsStateWithLifecycle()
     val featuredProducts by viewModel.featuredProducts.collectAsStateWithLifecycle()
-    val collections by viewModel.collections.collectAsStateWithLifecycle()
-    val newStores by viewModel.newStores.collectAsStateWithLifecycle()
     val searchableProducts by viewModel.searchableProducts.collectAsStateWithLifecycle()
     val trendingStores by viewModel.trendingStores.collectAsStateWithLifecycle()
     val filteredStores by viewModel.filteredStores.collectAsStateWithLifecycle()
+    val promoBanners by viewModel.promoBanners.collectAsStateWithLifecycle()
+    val collections by viewModel.collections.collectAsStateWithLifecycle()
+    val orderAgainItems by viewModel.orderAgainItems.collectAsStateWithLifecycle()
+    val dailyDeals by viewModel.dailyDeals.collectAsStateWithLifecycle()
+    val utilityStores by viewModel.utilityStores.collectAsStateWithLifecycle()
+    val recommendedStores by viewModel.recommendedStores.collectAsStateWithLifecycle()
     var showPermissionsDialog by remember { mutableStateOf(false) }
 
     LocationAndPermissionsDialog(
@@ -170,15 +190,21 @@ fun SearchScreen(
                     isLoadingDiscovery = uiState.isLoadingDiscovery,
                     quickFilter = uiState.activeQuickFilter,
                     categories = viewModel.searchCategories,
-                    collections = collections,
                     featuredProducts = featuredProducts,
                     trendingStores = trendingStores,
-                    newStores = newStores,
                     recentSearches = recentSearches,
+                    promoBanners = promoBanners,
+                    collections = collections,
+                    orderAgainItems = orderAgainItems,
+                    dailyDeals = dailyDeals,
+                    utilityStores = utilityStores,
+                    recommendedStores = recommendedStores,
                     onQuickFilter = viewModel::toggleQuickFilter,
                     onCategory = viewModel::onCategorySelect,
                     onRecentSearch = viewModel::onRecentSearchSelect,
                     onClearRecentSearches = viewModel::clearRecentSearches,
+                    onToggleCollectionSaved = viewModel::toggleCollectionSaved,
+                    onReorder = viewModel::reorderItem,
                     onNavigateToStore = onNavigateToStore
                 )
             }
@@ -280,29 +306,27 @@ private fun DiscoverHeader(
     }
 }
 
-/** Atalho curatorial da Descobrir: aponta para uma categoria existente, sem nada novo no banco. */
-data class DiscoverCollection(
-    val title: String,
-    val categoryId: String,
-    val iconRes: Int,
-    val storeCount: Int
-)
-
 @Composable
 private fun DiscoverLanding(
     city: String,
     isLoadingDiscovery: Boolean,
     quickFilter: DiscoverQuickFilter?,
     categories: List<SearchCategory>,
-    collections: List<DiscoverCollection>,
     featuredProducts: List<DiscoverProduct>,
     trendingStores: List<Store>,
-    newStores: List<Store>,
     recentSearches: List<String>,
+    promoBanners: List<PromoBanner>,
+    collections: List<DiscoverCollection>,
+    orderAgainItems: List<OrderAgainItem>,
+    dailyDeals: List<DailyDeal>,
+    utilityStores: List<Store>,
+    recommendedStores: List<Store>,
     onQuickFilter: (DiscoverQuickFilter) -> Unit,
     onCategory: (String) -> Unit,
     onRecentSearch: (String) -> Unit,
     onClearRecentSearches: () -> Unit,
+    onToggleCollectionSaved: (String) -> Unit,
+    onReorder: (OrderAgainItem) -> Unit,
     onNavigateToStore: (String) -> Unit
 ) {
     LazyColumn(
@@ -321,42 +345,120 @@ private fun DiscoverLanding(
                 onSelect = onCategory
             )
         }
-        if (collections.isNotEmpty()) {
-            item {
-                DiscoverCollections(
-                    collections = collections,
-                    onSelect = onCategory
-                )
-            }
-        }
         if (isLoadingDiscovery && featuredProducts.isEmpty() && trendingStores.isEmpty()) {
-            item { DiscoverLoadingSkeleton() }
-        }
-        if (!isLoadingDiscovery && featuredProducts.isNotEmpty()) {
-            item {
-                DiscoverSectionHeader(
-                    title = "Em alta em ${city.ifBlank { "sua cidade" }}",
-                    action = "Ver tudo"
-                )
+            item { DiscoverShimmerLoading() }
+        } else {
+            // 1. Carrossel hero de promos (auto-scroll)
+            if (promoBanners.isNotEmpty()) {
+                item { PromoHeroCarousel(banners = promoBanners) }
             }
-            itemsIndexed(featuredProducts, key = { index, product -> "discover_product_${index}_${product.id}" }) { _, product ->
-                DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
+            // 2. Peça de novo (histórico)
+            if (orderAgainItems.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(title = "Peça de novo")
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(orderAgainItems, key = { it.productId }) { item ->
+                            OrderAgainCard(item = item, onReorder = { onReorder(item) })
+                        }
+                    }
+                }
             }
-        } else if (!isLoadingDiscovery && trendingStores.isNotEmpty()) {
-            item { DiscoverSectionHeader(title = "Em alta em ${city.ifBlank { "sua cidade" }}") }
-            itemsIndexed(trendingStores.take(4), key = { index, store -> "discover_store_${index}_${store.id}" }) { _, store ->
-                DiscoverStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
+            // 3. Coleções editoriais
+            if (collections.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(title = "Coleções")
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(collections, key = { it.id }) { collection ->
+                            CollectionCard(
+                                collection = collection,
+                                onToggleSave = { onToggleCollectionSaved(collection.id) },
+                                onClick = { }
+                            )
+                        }
+                    }
+                }
             }
-        }
-        if (!isLoadingDiscovery && newStores.isNotEmpty()) {
-            item {
-                DiscoverSectionHeader(
-                    title = "Chegaram agora",
-                    action = "Ver tudo"
-                )
+            // 4. Em alta — cards com foto
+            if (trendingStores.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(
+                        title = "Em alta em ${city.ifBlank { "sua cidade" }}",
+                        action = "Ver tudo"
+                    )
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(trendingStores, key = { it.id }) { store ->
+                            DiscoverPhotoStoreCard(
+                                store = store,
+                                onClick = { onNavigateToStore(store.id) }
+                            )
+                        }
+                    }
+                }
+            } else if (featuredProducts.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(
+                        title = "Em alta em ${city.ifBlank { "sua cidade" }}",
+                        action = "Ver tudo"
+                    )
+                }
+                itemsIndexed(featuredProducts, key = { index, product -> "discover_product_${index}_${product.id}" }) { _, product ->
+                    DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
+                }
             }
-            itemsIndexed(newStores.take(3), key = { index, store -> "discover_new_${index}_${store.id}" }) { _, store ->
-                DiscoverNewStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
+            // 5. Ofertas do dia (grade)
+            if (dailyDeals.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(title = "Ofertas do dia")
+                }
+                item {
+                    DailyDealsGrid(deals = dailyDeals)
+                }
+            }
+            // 6. Recomendado para você — cards com foto
+            if (recommendedStores.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(title = "Recomendado para você")
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(recommendedStores, key = { it.id }) { store ->
+                            DiscoverPhotoStoreCard(
+                                store = store,
+                                onClick = { onNavigateToStore(store.id) }
+                            )
+                        }
+                    }
+                }
+            }
+            // 7. Mercados e mais — linhas compactas
+            if (utilityStores.isNotEmpty()) {
+                item {
+                    DiscoverSectionHeader(title = "Mercados e mais")
+                }
+                items(utilityStores, key = { it.id }) { store ->
+                    UtilityStoreRow(
+                        store = store,
+                        onClick = { onNavigateToStore(store.id) }
+                    )
+                }
             }
         }
         if (recentSearches.isNotEmpty()) {
@@ -371,48 +473,82 @@ private fun DiscoverLanding(
     }
 }
 
+/** Shimmer animado reutilizável para skeletons (formato do conteúdo real). */
+fun Modifier.shimmer(): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "discover_shimmer")
+    val offset by transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_offset"
+    )
+    val brush = Brush.linearGradient(
+        colors = listOf(Color(0xFFEDEDED), Color(0xFFF8F8F8), Color(0xFFEDEDED)),
+        start = Offset(offset * 400f - 200f, 0f),
+        end = Offset(offset * 400f + 200f, 0f)
+    )
+    this.background(brush)
+}
+
 @Composable
-private fun DiscoverLoadingSkeleton() {
+private fun DiscoverShimmerLoading() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        repeat(3) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(58.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFFEDEDED))
-                )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
+        // Banner hero
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(148.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .shimmer()
+        )
+        // Categorias em círculo
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(5) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.7f)
-                            .height(13.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(Color(0xFFEDEDED))
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .shimmer()
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.45f)
+                            .width(44.dp)
                             .height(10.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFFF1F1F1))
+                            .clip(RoundedCornerShape(5.dp))
+                            .shimmer()
                     )
                 }
             }
         }
+        // Cards horizontais
+        repeat(2) {
+            Box(
+                modifier = Modifier
+                    .width(240.dp)
+                    .height(190.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .shimmer()
+            )
+        }
     }
+}
+
+@Composable
+private fun DiscoverLoadingSkeleton() {
+    DiscoverShimmerLoading()
 }
 
 @Composable
@@ -543,152 +679,7 @@ private fun DiscoverCuratedCategories(
 }
 
 @Composable
-private fun DiscoverCollections(
-    collections: List<DiscoverCollection>,
-    onSelect: (String) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        DiscoverSectionHeader(title = "Coleções", action = null)
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = "para cada momento do dia",
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = ManropeFontFamily,
-                color = ItaSuperTextSecondary,
-                fontSize = 12.sp
-            ),
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(collections, key = { it.categoryId }) { collection ->
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE8E8E8)),
-                    modifier = Modifier
-                        .width(168.dp)
-                        .clickable { onSelect(collection.categoryId) }
-                ) {
-                    Column(modifier = Modifier.padding(14.dp, 12.dp)) {
-                        Surface(
-                            shape = CircleShape,
-                            color = ItaSuperHighlightBg,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(collection.iconRes),
-                                    contentDescription = collection.title,
-                                    tint = Color.Unspecified,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = collection.title,
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ItaSuperTextPrimary,
-                                fontSize = 14.sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${collection.storeCount} ${if (collection.storeCount == 1) "loja" else "lojas"}",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                color = ItaSuperTextSecondary,
-                                fontSize = 12.sp
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DiscoverNewStoreCard(store: Store, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (store.logoUrl.isNotBlank() || store.bannerUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = store.logoUrl.ifBlank { store.bannerUrl },
-                        contentDescription = store.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(painter = painterResource(R.drawable.ic_ita_store), contentDescription = null, tint = Color.Unspecified)
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = store.name,
-                        style = MaterialTheme.typography.titleSmall.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = ItaSuperHighlightBg
-                    ) {
-                        Text(
-                            text = "NOVO",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ItaSuperHighlightText,
-                                fontSize = 10.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = listOf(store.category.replaceFirstChar { it.uppercase() }, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = "Abrir loja", tint = Color.Unspecified, modifier = Modifier.size(23.dp))
-        }
-        Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)))
-    }
-}
-
-@Composable
-private fun DiscoverSectionHeader(title: String, action: String? = null) {
+private fun DiscoverSectionHeader(title: String, action: String? = null, onActionClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -709,6 +700,7 @@ private fun DiscoverSectionHeader(title: String, action: String? = null) {
         if (action != null) {
             Text(
                 text = action,
+                modifier = Modifier.clickable(enabled = onActionClick != null, onClick = { onActionClick?.invoke() }),
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontFamily = ManropeFontFamily,
                     fontWeight = FontWeight.Bold,
@@ -718,6 +710,619 @@ private fun DiscoverSectionHeader(title: String, action: String? = null) {
             )
         }
     }
+}
+
+/** Carrossel hero de promos com auto-scroll. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PromoHeroCarousel(banners: List<PromoBanner>) {
+    if (banners.isEmpty()) return
+    val pagerState = rememberPagerState(pageCount = { banners.size })
+    LaunchedEffect(pagerState) {
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            val next = (pagerState.currentPage + 1) % banners.size
+            try {
+                pagerState.animateScrollToPage(next)
+            } catch (_: Exception) {
+                break
+            }
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .padding(horizontal = 16.dp)
+        ) { page ->
+            val banner = banners[page]
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(banner.backgroundColor))
+                    .padding(18.dp)
+            ) {
+                Text(
+                    text = banner.emoji,
+                    fontSize = 44.sp,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                )
+                Column(
+                    modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.68f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = banner.title,
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            fontSize = 22.sp
+                        )
+                    )
+                    Text(
+                        text = banner.subtitle,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = ManropeFontFamily,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontSize = 13.sp
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.material3.Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.White
+                    ) {
+                        Text(
+                            text = banner.ctaText,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(banner.backgroundColor),
+                                fontSize = 12.sp
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            repeat(banners.size) { index ->
+                val selected = index == pagerState.currentPage
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 3.dp)
+                        .size(width = if (selected) 20.dp else 7.dp, height = 7.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) ItaSuperPrimary else Color(0xFFD9D9D9))
+                )
+            }
+        }
+    }
+}
+
+/** Card de loja com foto 16:9, avaliação, ETA, taxa e badges. */
+@Composable
+private fun DiscoverPhotoStoreCard(store: Store, onClick: () -> Unit) {
+    androidx.compose.material3.Card(
+        modifier = Modifier
+            .width(240.dp)
+            .clickable(onClick = onClick)
+            .testTag("discover_photo_store_${store.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(Color(0xFFF5F5F5))
+            ) {
+                val imageUrl = store.bannerUrl.ifBlank { store.logoUrl }
+                if (imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = store.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_ita_store),
+                            contentDescription = null,
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
+                if (store.isFreeDelivery && store.isOpen) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2E7D32))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Entrega grátis",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
+                }
+                if (!store.isOpen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Fechado",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+            Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                Text(
+                    text = store.name,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ItaSuperTextPrimary,
+                        fontSize = 15.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = Color(0xFFFFA000),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = String.format(Locale("pt", "BR"), "%.1f", store.rating),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = ItaSuperTextPrimary,
+                            fontSize = 12.sp
+                        )
+                    )
+                    if (store.deliveryTime.isNotBlank()) {
+                        Text(
+                            text = " · ${store.deliveryTime}",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = ManropeFontFamily,
+                                color = ItaSuperTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                val feeText = when {
+                    store.isFreeDelivery -> "Entrega grátis"
+                    store.deliveryFee.isNotBlank() -> store.deliveryFee
+                    else -> store.category
+                }
+                Text(
+                    text = feeText,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = ManropeFontFamily,
+                        color = ItaSuperTextSecondary,
+                        fontSize = 12.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/** Card editorial de coleção com botão salvar. */
+@Composable
+private fun CollectionCard(
+    collection: DiscoverCollection,
+    onToggleSave: () -> Unit,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(190.dp)
+            .height(230.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(collection.backgroundColor))
+            .clickable(onClick = onClick)
+            .padding(14.dp)
+            .testTag("discover_collection_${collection.id}")
+    ) {
+        Text(
+            text = collection.emoji,
+            fontSize = 52.sp,
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 6.dp)
+        )
+        Icon(
+            imageVector = if (collection.saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+            contentDescription = if (collection.saved) "Salva" else "Salvar coleção",
+            tint = if (collection.saved) ItaSuperPrimary else ItaSuperTextSecondary,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(30.dp)
+                .clickable(onClick = onToggleSave)
+                .padding(4.dp)
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = collection.title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ItaSuperTextPrimary,
+                    fontSize = 16.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = collection.subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    color = ItaSuperTextSecondary,
+                    fontSize = 12.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "por ${collection.curatorName}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    color = ItaSuperTextSecondary,
+                    fontSize = 11.sp
+                )
+            )
+        }
+    }
+}
+
+/** Card "Peça de novo" com botão de recompra. */
+@Composable
+private fun OrderAgainCard(item: OrderAgainItem, onReorder: () -> Unit) {
+    androidx.compose.material3.Card(
+        modifier = Modifier.width(150.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF5F5F5)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = item.productName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_ita_bag),
+                        contentDescription = null,
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(34.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = item.productName,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = ItaSuperTextPrimary,
+                    fontSize = 13.sp
+                ),
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = item.storeName,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    color = ItaSuperTextSecondary,
+                    fontSize = 11.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = String.format(Locale("pt", "BR"), "R$ %.2f", item.price).replace('.', ','),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ItaSuperPrimary,
+                        fontSize = 13.sp
+                    )
+                )
+                androidx.compose.material3.IconButton(
+                    onClick = onReorder,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(ItaSuperPrimary)
+                        .testTag("reorder_${item.productId}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Pedir de novo",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Contagem regressiva da oferta (atualiza a cada segundo, sem java.time). */
+@Composable
+private fun CountdownPill(endsAtMillis: Long, modifier: Modifier = Modifier) {
+    var remaining by remember(endsAtMillis) { mutableStateOf(endsAtMillis - System.currentTimeMillis()) }
+    LaunchedEffect(endsAtMillis) {
+        while (remaining > 0) {
+            kotlinx.coroutines.delay(1000)
+            remaining = endsAtMillis - System.currentTimeMillis()
+        }
+    }
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFFD32F2F))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Timer,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(13.dp)
+        )
+        Text(
+            text = formatCountdown(remaining),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = ManropeFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                fontSize = 11.sp
+            )
+        )
+    }
+}
+
+/** Card de oferta do dia para a grade (alturas variadas). */
+@Composable
+private fun DailyDealCard(deal: DailyDeal, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (deal.tall) 190.dp else 160.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFFFFF4EC))
+            .clickable(onClick = onClick)
+            .padding(14.dp)
+            .testTag("daily_deal_${deal.id}")
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .clip(RoundedCornerShape(8.dp))
+                .background(ItaSuperPrimary)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = deal.discountBadge,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+            )
+        }
+        CountdownPill(endsAtMillis = deal.endsAtMillis, modifier = Modifier.align(Alignment.TopEnd))
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = deal.title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ItaSuperTextPrimary,
+                    fontSize = 16.sp
+                )
+            )
+            Text(
+                text = deal.description,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = ManropeFontFamily,
+                    color = ItaSuperTextSecondary,
+                    fontSize = 12.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/** Grade de ofertas (linhas de 2, alturas alternadas — sem lazy aninhado). */
+@Composable
+private fun DailyDealsGrid(deals: List<DailyDeal>) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        deals.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                row.forEach { deal ->
+                    Box(modifier = Modifier.weight(1f)) {
+                        DailyDealCard(deal = deal, onClick = { })
+                    }
+                }
+                if (row.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/** Linha compacta para lojas utilitárias (mercado/farmácia/pet). */
+@Composable
+private fun UtilityStoreRow(store: Store, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .testTag("utility_store_${store.id}"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFF5F5F5)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (store.logoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = store.logoUrl,
+                    contentDescription = store.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Storefront,
+                    contentDescription = null,
+                    tint = ItaSuperTextSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = store.name,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = ItaSuperTextPrimary,
+                    fontSize = 14.sp
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = Color(0xFFFFA000),
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = String.format(Locale("pt", "BR"), "%.1f", store.rating),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = ItaSuperTextPrimary,
+                        fontSize = 11.sp
+                    )
+                )
+                store.distanceKm?.let { km ->
+                    Text(
+                        text = " · ${String.format(Locale("pt", "BR"), "%.1f km", km).replace('.', ',')}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = ManropeFontFamily,
+                            color = ItaSuperTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+                if (!store.isOpen) {
+                    Text(
+                        text = " · Fechado",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = ManropeFontFamily,
+                            color = Color(0xFFD32F2F),
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+            }
+        }
+        Icon(
+            painter = painterResource(R.drawable.ic_ita_chevron_right),
+            contentDescription = "Abrir loja",
+            tint = Color.Unspecified,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+    Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)).padding(horizontal = 16.dp))
 }
 
 @Composable
@@ -831,7 +1436,7 @@ private fun DiscoverStoreCard(store: Store, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = listOf(store.category.replaceFirstChar { it.uppercase() }, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
+                    text = listOf(store.category, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
