@@ -77,7 +77,7 @@ private fun trackingMapHtml(
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 html, body { margin: 0; padding: 0; height: 100%; }
-#map { height: 100vh; width: 100%; }
+#map { height: 100%; width: 100%; }
 .driver-pin { width: 40px; height: 40px; background: #2563eb; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 20px;
   border: 3px solid white; box-shadow: 0 4px 12px rgba(37,99,235,0.5); }
@@ -146,8 +146,18 @@ fun DeliveryTrackingScreen(
                 .background(Color(0xFFF5F5F5))
         ) {
             if (order == null) {
+                // Pedido ainda não carregado na lista - mostra loading em vez de tela em branco
+                // (a lista pode não ter sido populada ainda na primeira abertura)
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Pedido não encontrado", color = Color(0xFF737373))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = ItaSuperPrimary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Carregando pedido...", color = Color(0xFF737373))
+                    }
+                }
+                // Tenta recarregar a lista de pedidos
+                LaunchedEffect(Unit) {
+                    ordersViewModel.refreshOrders()
                 }
                 return@Column
             }
@@ -208,7 +218,7 @@ fun DeliveryTrackingScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .height(420.dp)
                     .padding(horizontal = 16.dp)
             ) {
                 if (isLoading) {
