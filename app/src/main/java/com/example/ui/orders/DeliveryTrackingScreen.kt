@@ -34,7 +34,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,7 +77,7 @@ private fun trackingMapHtml(
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 html, body { margin: 0; padding: 0; height: 100%; }
-#map { height: 100%; width: 100%; }
+#map { height: 420px; width: 100%; }
 .driver-pin { width: 40px; height: 40px; background: #2563eb; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 20px;
   border: 3px solid white; box-shadow: 0 4px 12px rgba(37,99,235,0.5); }
@@ -95,6 +94,22 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).a
 var driverIcon = L.divIcon({ html: '<div class="driver-pin">🏍️</div>', className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
 var homeIcon = L.divIcon({ html: '<div class="home-pin">🏠</div>', className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
 $markers
+// Recalcula o tamanho do mapa apos o layout assentar (fix para WebView)
+var _tries = 0;
+var _timer = setInterval(function() {
+  map.invalidateSize();
+  if (++_tries >= 20) clearInterval(_timer);
+}, 150);
+// Atualiza a posicao do entregador sem recarregar o mapa
+var driverMarker = null;
+window.updateDriver = function(lat, lng) {
+  if (driverMarker == null) {
+    driverMarker = L.marker([lat, lng], {icon: driverIcon}).addTo(map).bindPopup('Entregador');
+  } else {
+    driverMarker.setLatLng([lat, lng]);
+  }
+  map.panTo([lat, lng]);
+};
 </script>
 </body>
 </html>
@@ -226,7 +241,8 @@ fun DeliveryTrackingScreen(
                         CircularProgressIndicator(color = ItaSuperPrimary)
                     }
                 } else {
-                    val html = remember(driverLocation) {
+                    // HTML gerado uma vez (posicao inicial); updates via JavaScript
+                    val html = remember {
                         trackingMapHtml(
                             driverLat = driverLocation?.latitude,
                             driverLng = driverLocation?.longitude,
@@ -234,23 +250,30 @@ fun DeliveryTrackingScreen(
                             clientLng = order.clientLongitude
                         )
                     }
-                    key(html) {
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { context ->
-                                WebView(context).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.useWideViewPort = true
-                                    settings.mediaPlaybackRequiresUserGesture = false
-                                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                    webViewClient = WebViewClient()
-                                    loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
-                                }
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { context ->
+                            WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                webViewClient = WebViewClient()
+                                loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
                             }
-                        )
-                    }
+                        },
+                        update = { webView ->
+                            // Atualiza a posicao do entregador sem recriar o WebView
+                            driverLocation?.let { loc ->
+                                webView.evaluateJavascript(
+                                    "window.updateDriver(${loc.latitude}, ${loc.longitude});",
+                                    null
+                                )
+                            }
+                        }
+                    )
                 }
             }
             Spacer(Modifier.height(16.dp))
