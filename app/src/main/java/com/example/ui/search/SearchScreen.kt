@@ -64,7 +64,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.composed
+import androidx.compose.ui.composed
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,7 +93,8 @@ import com.example.R
 import com.example.data.model.DiscoverProduct
 import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
-import com.example.ui.navigation.ItaSuperBottomNavBarimport com.example.ui.theme.ItaSuperBackground
+import com.example.ui.navigation.ItaSuperBottomNavBar
+import com.example.ui.theme.ItaSuperBackground.ItaSuperBackground
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
