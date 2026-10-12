@@ -107,7 +107,6 @@ data class LastOrder(
     val totalPrice: Double
 )
 
-/** Loja com cupom ativo para a seção "Lojas com Cupom". */
 data class StoreWithCoupon(
     val storeId: String,
     val storeName: String,

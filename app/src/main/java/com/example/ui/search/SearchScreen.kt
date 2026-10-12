@@ -64,7 +64,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.composed
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -349,9 +348,14 @@ private fun DiscoverLanding(
         if (isLoadingDiscovery && featuredProducts.isEmpty() && trendingStores.isEmpty()) {
             item { DiscoverShimmerLoading() }
         } else {
-            // 1. Carrossel hero de promos (auto-scroll)
+            // 1. Carrossel hero de promos reais (loja + cupom)
             if (promoBanners.isNotEmpty()) {
-                item { PromoHeroCarousel(banners = promoBanners) }
+                item {
+                    PromoHeroCarousel(
+                        banners = promoBanners,
+                        onBannerClick = { banner -> onNavigateToStore(banner.storeId) }
+                    )
+                }
             }
             // 2. Peça de novo (histórico)
             if (orderAgainItems.isNotEmpty()) {
@@ -369,7 +373,7 @@ private fun DiscoverLanding(
                     }
                 }
             }
-            // 3. Coleções editoriais
+            // 3. Coleções dinâmicas (dados reais)
             if (collections.isNotEmpty()) {
                 item {
                     DiscoverSectionHeader(title = "Coleções")
@@ -383,7 +387,11 @@ private fun DiscoverLanding(
                             CollectionCard(
                                 collection = collection,
                                 onToggleSave = { onToggleCollectionSaved(collection.id) },
-                                onClick = { }
+                                onClick = {
+                                    collection.stores.firstOrNull()?.let { store ->
+                                        onNavigateToStore(store.id)
+                                    }
+                                }
                             )
                         }
                     }
@@ -421,13 +429,18 @@ private fun DiscoverLanding(
                     DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
                 }
             }
-            // 5. Ofertas do dia (grade)
+            // 5. Ofertas do dia (cupons reais)
             if (dailyDeals.isNotEmpty()) {
                 item {
                     DiscoverSectionHeader(title = "Ofertas do dia")
                 }
                 item {
-                    DailyDealsGrid(deals = dailyDeals)
+                    DailyDealsGrid(
+                        deals = dailyDeals,
+                        onDealClick = { deal ->
+                            deal.storeId?.let { storeId -> onNavigateToStore(storeId) }
+                        }
+                    )
                 }
             }
             // 6. Recomendado para você — cards com foto
@@ -713,10 +726,13 @@ private fun DiscoverSectionHeader(title: String, action: String? = null, onActio
     }
 }
 
-/** Carrossel hero de promos com auto-scroll. */
+/** Carrossel hero de promos reais (loja + cupom) com auto-scroll. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PromoHeroCarousel(banners: List<PromoBanner>) {
+private fun PromoHeroCarousel(
+    banners: List<PromoBanner>,
+    onBannerClick: (PromoBanner) -> Unit
+) {
     if (banners.isEmpty()) return
     val pagerState = rememberPagerState(pageCount = { banners.size })
     LaunchedEffect(pagerState) {
@@ -744,13 +760,23 @@ private fun PromoHeroCarousel(banners: List<PromoBanner>) {
                     .fillMaxSize()
                     .clip(RoundedCornerShape(18.dp))
                     .background(Color(banner.backgroundColor))
+                    .clickable(onClick = { onBannerClick(banner) })
                     .padding(18.dp)
             ) {
-                Text(
-                    text = banner.emoji,
-                    fontSize = 44.sp,
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
-                )
+                if (banner.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = banner.imageUrl,
+                        contentDescription = banner.subtitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(84.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .padding(4.dp)
+                            .clip(CircleShape)
+                    )
+                }
                 Column(
                     modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.68f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -949,7 +975,7 @@ private fun DiscoverPhotoStoreCard(store: Store, onClick: () -> Unit) {
     }
 }
 
-/** Card editorial de coleção com botão salvar. */
+/** Card de coleção real: mostra logos das lojas filtradas + contagem. */
 @Composable
 private fun CollectionCard(
     collection: DiscoverCollection,
@@ -966,11 +992,40 @@ private fun CollectionCard(
             .padding(14.dp)
             .testTag("discover_collection_${collection.id}")
     ) {
-        Text(
-            text = collection.emoji,
-            fontSize = 52.sp,
-            modifier = Modifier.align(Alignment.TopStart).padding(top = 6.dp)
-        )
+        Row(
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy((-10).dp)
+        ) {
+            collection.stores.take(3).forEach { store ->
+                val logo = store.logoUrl.ifBlank { store.bannerUrl }
+                if (logo.isNotBlank()) {
+                    AsyncImage(
+                        model = logo,
+                        contentDescription = store.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Storefront,
+                            contentDescription = store.name,
+                            tint = ItaSuperTextSecondary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
+        }
         Icon(
             imageVector = if (collection.saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
             contentDescription = if (collection.saved) "Salva" else "Salvar coleção",
@@ -1005,14 +1060,6 @@ private fun CollectionCard(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "por ${collection.curatorName}",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = ManropeFontFamily,
-                    color = ItaSuperTextSecondary,
-                    fontSize = 11.sp
-                )
             )
         }
     }
@@ -1176,7 +1223,9 @@ private fun DailyDealCard(deal: DailyDeal, onClick: () -> Unit) {
                 )
             )
         }
-        CountdownPill(endsAtMillis = deal.endsAtMillis, modifier = Modifier.align(Alignment.TopEnd))
+        if (deal.endsAtMillis > 0) {
+            CountdownPill(endsAtMillis = deal.endsAtMillis, modifier = Modifier.align(Alignment.TopEnd))
+        }
         Column(
             modifier = Modifier.align(Alignment.BottomStart),
             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1204,9 +1253,12 @@ private fun DailyDealCard(deal: DailyDeal, onClick: () -> Unit) {
     }
 }
 
-/** Grade de ofertas (linhas de 2, alturas alternadas — sem lazy aninhado). */
+/** Grade de ofertas reais (linhas de 2, alturas alternadas — sem lazy aninhado). */
 @Composable
-private fun DailyDealsGrid(deals: List<DailyDeal>) {
+private fun DailyDealsGrid(
+    deals: List<DailyDeal>,
+    onDealClick: (DailyDeal) -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1218,7 +1270,7 @@ private fun DailyDealsGrid(deals: List<DailyDeal>) {
             ) {
                 row.forEach { deal ->
                     Box(modifier = Modifier.weight(1f)) {
-                        DailyDealCard(deal = deal, onClick = { })
+                        DailyDealCard(deal = deal, onClick = { onDealClick(deal) })
                     }
                 }
                 if (row.size == 1) {
