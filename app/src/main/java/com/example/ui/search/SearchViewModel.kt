@@ -69,20 +69,32 @@ fun resolveInitialCategoryId(categoryId: String?): String? {
 }
 
 enum class DiscoverQuickFilter(val label: String) {
-    OPEN_NOW("Aberto agora"),
-    DELIVERY_AVAILABLE("Entrega disponível"),
-    FREE_FEE("Taxa grátis"),
-    PICKUP("Retirada")
+    FREE("Entrega grátis"),
+    TOP("4.5+ ★"),
+    FAST("< 30 min"),
+    COUPON("Com cupom"),
+    CHEAP("Até R$ 30")
+}
+
+/** Extrai o maior número de minutos de um texto tipo "20–30 min". Null se não der pra parsear. */
+fun maxDeliveryMinutes(deliveryTime: String): Int? {
+    val numbers = Regex("\\d+").findAll(deliveryTime).map { it.value.toInt() }.toList()
+    return numbers.maxOrNull()
 }
 
 /** Política única dos chips da Descoberta; não permite resultados por suposição. */
-fun matchesDiscoverQuickFilter(store: Store, filter: DiscoverQuickFilter?): Boolean = when (filter) {
+fun matchesDiscoverQuickFilter(
+    store: Store,
+    filter: DiscoverQuickFilter?,
+    couponStoreIds: Set<String> = emptySet(),
+    cheapStoreIds: Set<String> = emptySet()
+): Boolean = when (filter) {
     null -> true
-    DiscoverQuickFilter.OPEN_NOW -> store.isOpen
-    DiscoverQuickFilter.DELIVERY_AVAILABLE -> supportsDelivery(store.deliveryMode) &&
-        store.hasAvailableDriver == true
-    DiscoverQuickFilter.FREE_FEE -> supportsDelivery(store.deliveryMode) && store.isFreeDelivery
-    DiscoverQuickFilter.PICKUP -> supportsPickup(store.deliveryMode)
+    DiscoverQuickFilter.FREE -> store.isFreeDelivery
+    DiscoverQuickFilter.TOP -> store.rating >= 4.5
+    DiscoverQuickFilter.FAST -> (maxDeliveryMinutes(store.deliveryTime) ?: Int.MAX_VALUE) <= 30
+    DiscoverQuickFilter.COUPON -> store.id in couponStoreIds
+    DiscoverQuickFilter.CHEAP -> store.id in cheapStoreIds
 }
 
 // ===== Modelos das novas seções da Descoberta (plano 8 ideias) =====
@@ -90,6 +102,7 @@ fun matchesDiscoverQuickFilter(store: Store, filter: DiscoverQuickFilter?): Bool
 /** Banner do carrossel hero: loja real com cupom ativo (via RPC get_stores_with_coupons). */
 data class PromoBanner(
     val id: String,
+    val tag: String = "Cupom",
     val title: String,
     val subtitle: String,
     val ctaText: String = "Ver loja",
@@ -290,8 +303,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val searchableProducts: StateFlow<List<DiscoverProduct>> = combine(
         _searchableProducts,
         regionalStores,
-        _uiState
-    ) { products, stores, state ->
+        _uiState,
+        _couponStoreIds,
+        cheapStoreIds
+    ) { products, stores, state, couponIds, cheapIds ->
         val query = state.debouncedQuery.normalizeText()
         val selectedCategory = searchCategories.find { it.id == state.selectedCategoryId }
         val storesById = stores.associateBy { it.id }
@@ -305,12 +320,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 selectedCategory.matchingTerms.any { term ->
                     product.storeCategory.normalizeText().contains(term.normalizeText())
                 } || product.storeCategory.normalizeText() == selectedCategory.name.normalizeText()
-            val matchesQuickFilter = store != null && matchesDiscoverQuickFilter(store, state.activeQuickFilter)
+            val matchesQuickFilter = store != null && matchesDiscoverQuickFilter(store, state.activeQuickFilter, couponIds, cheapIds)
             matchesQuery && matchesCategory && matchesQuickFilter
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val filteredStores: StateFlow<List<Store>> = combine(regionalStores, _uiState) { stores, state ->
+    val filteredStores: StateFlow<List<Store>> = combine(regionalStores, _uiState, _couponStoreIds, cheapStoreIds) { stores, state, couponIds, cheapIds ->
         val normQuery = state.debouncedQuery.normalizeText()
         val selectedCat = searchCategories.find { it.id == state.selectedCategoryId }
 
@@ -323,7 +338,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 normStoreName.contains(normQuery) ||
                 normCategories.any { it.contains(normQuery) } ||
                 store.addressNeighborhood.normalizeText().contains(normQuery)
-            val matchesQuickFilter = matchesDiscoverQuickFilter(store, state.activeQuickFilter)
+            val matchesQuickFilter = matchesDiscoverQuickFilter(store, state.activeQuickFilter, couponIds, cheapIds)
             matchesCategory && matchesQuery && matchesQuickFilter
         }
         matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
@@ -338,7 +353,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _couponStoreIds = MutableStateFlow<Set<String>>(emptySet())
 
-    private val bannerPalette = listOf(0xFFF26522, 0xFF7B4DFF, 0xFF2E7D32, 0xFFD81B60, 0xFF0288D1)
+    /** IDs das lojas com cupom ativo — usado pelo filtro "Com cupom". */
+    val couponStoreIds: StateFlow<Set<String>> = _couponStoreIds.asStateFlow()
+
+    /** IDs das lojas com ao menos um produto de até R$ 30 — usado pelo filtro "Até R$ 30". */
+    val cheapStoreIds: StateFlow<Set<String>> = _searchableProducts
+        .map { products -> products.filter { it.price <= 30.0 }.map { it.storeId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private val bannerPalette = listOf(0xFFF26522, 0xFF177A3D, 0xFF8A4B0F)
 
     init {
         viewModelScope.launch {

@@ -6,9 +6,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,47 +20,32 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.LocalPizza
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,17 +59,20 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -93,14 +81,29 @@ import com.example.data.model.DiscoverProduct
 import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
 import com.example.ui.navigation.ItaSuperBottomNavBar
-import com.example.ui.theme.ItaSuperBackground
-import com.example.ui.theme.ItaSuperPrimary
-import com.example.ui.theme.ItaSuperTextPrimary
-import com.example.ui.theme.ItaSuperTextSecondary
-import com.example.ui.theme.ManropeFontFamily
 import com.example.ui.permissions.LocationAndPermissionsDialog
 import com.example.ui.permissions.PermissionUtils
+import com.example.ui.theme.ItaSuperPrimary
+import com.example.ui.theme.ManropeFontFamily
 import java.util.Locale
+
+// ===== Tokens visuais do protótipo (ideias-para-aba-descobrir.html) =====
+// O protótipo usa --brand:#d92b1f; aqui o brand é o token real do produto (ItaSuperPrimary).
+private val DscBg = Color(0xFFFFFCF9)      // --phone-bg
+private val DscInk = Color(0xFF221812)     // --phone-ink
+private val DscInk2 = Color(0xFF6F6154)    // --phone-ink-2
+private val DscLine = Color(0xFFEEE3D6)     // --phone-line
+private val DscChipBg = Color(0xFFF4EDE5)   // --chip-bg
+private val DscSkel = Color(0xFFEADFD2)     // --skel
+private val DscAmber = Color(0xFFE8930C)    // --amber (estrelas)
+private val DscGreen = Color(0xFF177A3D)    // --green
+private val DscBrown = Color(0xFF8A4B0F)    // banner-3
+
+private fun dscMoney(value: Double): String =
+    String.format(Locale("pt", "BR"), "R$ %.2f", value).replace('.', ',')
+
+private fun dscRating(rating: Double): String =
+    String.format(Locale("pt", "BR"), "%.1f", rating).replace('.', ',')
 
 @Composable
 fun SearchScreen(
@@ -125,6 +128,7 @@ fun SearchScreen(
     val dailyDeals by viewModel.dailyDeals.collectAsStateWithLifecycle()
     val utilityStores by viewModel.utilityStores.collectAsStateWithLifecycle()
     val recommendedStores by viewModel.recommendedStores.collectAsStateWithLifecycle()
+    val couponStoreIds by viewModel.couponStoreIds.collectAsStateWithLifecycle()
     var showPermissionsDialog by remember { mutableStateOf(false) }
 
     LocationAndPermissionsDialog(
@@ -148,15 +152,16 @@ fun SearchScreen(
                 onNavigateToRoute = onNavigateToRoute
             )
         },
-        containerColor = ItaSuperBackground
+        containerColor = DscBg
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(DscBg)
                 .padding(paddingValues)
                 .imePadding()
         ) {
-            DiscoverHeader(
+            DiscoverAppBar(
                 city = city,
                 query = uiState.rawQuery,
                 onQueryChange = viewModel::onQueryChange,
@@ -181,28 +186,28 @@ fun SearchScreen(
                     selectedQuickFilter = uiState.activeQuickFilter,
                     products = searchableProducts,
                     stores = filteredStores,
+                    recentSearches = recentSearches,
                     onClearAll = viewModel::clearDiscovery,
+                    onRecentSearch = viewModel::onRecentSearchSelect,
                     onNavigateToStore = onNavigateToStore
                 )
             } else {
                 DiscoverLanding(
-                    city = city,
                     isLoadingDiscovery = uiState.isLoadingDiscovery,
                     quickFilter = uiState.activeQuickFilter,
                     categories = viewModel.searchCategories,
+                    selectedCategoryId = uiState.selectedCategoryId,
                     featuredProducts = featuredProducts,
                     trendingStores = trendingStores,
-                    recentSearches = recentSearches,
                     promoBanners = promoBanners,
                     collections = collections,
                     orderAgainItems = orderAgainItems,
                     dailyDeals = dailyDeals,
                     utilityStores = utilityStores,
                     recommendedStores = recommendedStores,
+                    couponStoreIds = couponStoreIds,
                     onQuickFilter = viewModel::toggleQuickFilter,
                     onCategory = viewModel::onCategorySelect,
-                    onRecentSearch = viewModel::onRecentSearchSelect,
-                    onClearRecentSearches = viewModel::clearRecentSearches,
                     onToggleCollectionSaved = viewModel::toggleCollectionSaved,
                     onReorder = viewModel::reorderItem,
                     onNavigateToStore = onNavigateToStore
@@ -212,8 +217,9 @@ fun SearchScreen(
     }
 }
 
+/** Appbar do protótipo: "Entregar em" + endereço + barra de busca. */
 @Composable
-private fun DiscoverHeader(
+private fun DiscoverAppBar(
     city: String,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -221,170 +227,210 @@ private fun DiscoverHeader(
     onLocationClick: () -> Unit,
     onSubmit: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ItaSuperBackground)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .background(DscBg)
+            .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 10.dp)
     ) {
         Text(
-            text = "Descobrir",
-            style = MaterialTheme.typography.headlineMedium.copy(
+            text = "Entregar em",
+            style = TextStyle(
                 fontFamily = ManropeFontFamily,
-                fontWeight = FontWeight.ExtraBold,
-                color = ItaSuperTextPrimary,
-                fontSize = 20.sp
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.5.sp,
+                color = DscInk2
             )
         )
-        Spacer(modifier = Modifier.height(4.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onLocationClick)
-                .padding(vertical = 3.dp)
+                .padding(vertical = 1.dp)
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_lucide_map_pin),
+                imageVector = Icons.Filled.LocationOn,
                 contentDescription = null,
-                tint = Color.Unspecified,
-                modifier = Modifier.size(22.dp)
+                tint = ItaSuperPrimary,
+                modifier = Modifier.size(15.dp)
             )
             Spacer(modifier = Modifier.width(5.dp))
             Text(
                 text = city.ifBlank { "Sua cidade" },
-                style = MaterialTheme.typography.titleMedium.copy(
+                style = TextStyle(
                     fontFamily = ManropeFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                color = ItaSuperTextPrimary,
-                fontSize = 15.sp
-
-                )
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    color = DscInk
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
-                .testTag("search_input"),
-            placeholder = {
-                Text(
-                    text = "Buscar produtos, lojas e categorias",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontFamily = ManropeFontFamily,
-                        color = ItaSuperTextSecondary,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            leadingIcon = {
-                Icon(painter = painterResource(R.drawable.ic_lucide_search), contentDescription = null, tint = Color.Unspecified)
-            },
-            trailingIcon = if (query.isNotBlank()) {
-                {
-                    IconButton(onClick = onClearQuery, modifier = Modifier.testTag("clear_search_button")) {
-                        Icon(painter = painterResource(R.drawable.ic_ita_close), contentDescription = "Limpar busca", tint = Color.Unspecified)
+                .clip(RoundedCornerShape(14.dp))
+                .background(DscChipBg)
+                .padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = DscInk2,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(9.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("search_input"),
+                textStyle = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontSize = 14.sp,
+                    color = DscInk
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    onSubmit()
+                    focusManager.clearFocus()
+                }),
+                cursorBrush = SolidColor(ItaSuperPrimary),
+                decorationBox = { innerTextField ->
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "Buscar restaurantes e pratos",
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontSize = 14.sp,
+                                color = DscInk2
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
+                    innerTextField()
                 }
-            } else null,
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ItaSuperPrimary,
-                unfocusedBorderColor = Color(0xFFE1E1E1),
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSubmit() })
-        )
+            )
+            if (query.isNotBlank()) {
+                IconButton(
+                    onClick = onClearQuery,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .testTag("clear_search_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Clear,
+                        contentDescription = "Limpar busca",
+                        tint = DscInk2,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
+/** Feed da Descoberta na ordem exata do protótipo. */
 @Composable
 private fun DiscoverLanding(
-    city: String,
     isLoadingDiscovery: Boolean,
     quickFilter: DiscoverQuickFilter?,
     categories: List<SearchCategory>,
+    selectedCategoryId: String?,
     featuredProducts: List<DiscoverProduct>,
     trendingStores: List<Store>,
-    recentSearches: List<String>,
     promoBanners: List<PromoBanner>,
     collections: List<DiscoverCollection>,
     orderAgainItems: List<OrderAgainItem>,
     dailyDeals: List<DailyDeal>,
     utilityStores: List<Store>,
     recommendedStores: List<Store>,
+    couponStoreIds: Set<String>,
     onQuickFilter: (DiscoverQuickFilter) -> Unit,
     onCategory: (String) -> Unit,
-    onRecentSearch: (String) -> Unit,
-    onClearRecentSearches: () -> Unit,
     onToggleCollectionSaved: (String) -> Unit,
     onReorder: (OrderAgainItem) -> Unit,
     onNavigateToStore: (String) -> Unit
 ) {
+    // "Perto de você": usa as lojas em alta; se vazio, cai para as recomendadas.
+    val nearStores = trendingStores.ifEmpty { recommendedStores }
+    val allStoresById = remember(trendingStores, recommendedStores, utilityStores) {
+        (trendingStores + recommendedStores + utilityStores).associateBy { it.id }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 18.dp)
+        contentPadding = PaddingValues(bottom = 14.dp)
     ) {
+        // Filtros rápidos
         item {
-            DiscoverQuickFilters(
+            DiscoverFilterChips(
                 selected = quickFilter,
                 onClick = onQuickFilter
             )
         }
+        // Categorias (grade 2 linhas)
         item {
-            DiscoverCuratedCategories(
+            DiscoverCategoryGrid(
                 categories = categories,
+                selectedId = selectedCategoryId,
                 onSelect = onCategory
             )
         }
-        if (isLoadingDiscovery && featuredProducts.isEmpty() && trendingStores.isEmpty()) {
+        if (isLoadingDiscovery && featuredProducts.isEmpty() && nearStores.isEmpty()) {
             item { DiscoverShimmerLoading() }
         } else {
-            // 1. Carrossel hero de promos reais (loja + cupom)
+            // Carrossel de promos
             if (promoBanners.isNotEmpty()) {
                 item {
-                    PromoHeroCarousel(
+                    PromoCarousel(
                         banners = promoBanners,
                         onBannerClick = { banner -> onNavigateToStore(banner.storeId) }
                     )
                 }
             }
-            // 2. Peça de novo (histórico)
+            // Peça de novo
             if (orderAgainItems.isNotEmpty()) {
-                item {
-                    DiscoverSectionHeader(title = "Peça de novo")
-                }
+                item { PSecHeader(title = "Peça de novo") }
                 item {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(orderAgainItems, key = { it.productId }) { item ->
-                            OrderAgainCard(item = item, onReorder = { onReorder(item) })
+                            DishCard(item = item, onReorder = { onReorder(item) })
                         }
                     }
                 }
             }
-            // 3. Coleções dinâmicas (dados reais)
-            if (collections.isNotEmpty()) {
+            // Perto de você (lista vertical)
+            if (nearStores.isNotEmpty()) {
                 item {
-                    DiscoverSectionHeader(title = "Coleções")
+                    NearYouSection(
+                        stores = nearStores,
+                        couponStoreIds = couponStoreIds,
+                        onNavigateToStore = onNavigateToStore
+                    )
                 }
+            }
+            // Coleções
+            if (collections.isNotEmpty()) {
+                item { PSecHeader(title = "Coleções") }
                 item {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(collections, key = { it.id }) { collection ->
-                            CollectionCard(
+                            ProtoCollectionCard(
                                 collection = collection,
                                 onToggleSave = { onToggleCollectionSaved(collection.id) },
                                 onClick = {
@@ -397,339 +443,210 @@ private fun DiscoverLanding(
                     }
                 }
             }
-            // 4. Em alta — cards com foto
-            if (trendingStores.isNotEmpty()) {
-                item {
-                    DiscoverSectionHeader(
-                        title = "Em alta em ${city.ifBlank { "sua cidade" }}",
-                        action = "Ver tudo"
-                    )
-                }
-                item {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(trendingStores, key = { it.id }) { store ->
-                            DiscoverPhotoStoreCard(
-                                store = store,
-                                onClick = { onNavigateToStore(store.id) }
-                            )
-                        }
-                    }
-                }
-            } else if (featuredProducts.isNotEmpty()) {
-                item {
-                    DiscoverSectionHeader(
-                        title = "Em alta em ${city.ifBlank { "sua cidade" }}",
-                        action = "Ver tudo"
-                    )
-                }
-                itemsIndexed(featuredProducts, key = { index, product -> "discover_product_${index}_${product.id}" }) { _, product ->
-                    DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
-                }
-            }
-            // 5. Ofertas do dia (cupons reais)
+            // Ofertas do dia
             if (dailyDeals.isNotEmpty()) {
                 item {
-                    DiscoverSectionHeader(title = "Ofertas do dia")
-                }
-                item {
-                    DailyDealsGrid(
+                    DealsSection(
                         deals = dailyDeals,
+                        storesById = allStoresById,
                         onDealClick = { deal ->
                             deal.storeId?.let { storeId -> onNavigateToStore(storeId) }
                         }
                     )
                 }
             }
-            // 6. Recomendado para você — cards com foto
-            if (recommendedStores.isNotEmpty()) {
-                item {
-                    DiscoverSectionHeader(title = "Recomendado para você")
-                }
-                item {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(recommendedStores, key = { it.id }) { store ->
-                            DiscoverPhotoStoreCard(
-                                store = store,
-                                onClick = { onNavigateToStore(store.id) }
-                            )
-                        }
-                    }
-                }
-            }
-            // 7. Mercados e mais — linhas compactas
+            // Mercados e mais
             if (utilityStores.isNotEmpty()) {
                 item {
-                    DiscoverSectionHeader(title = "Mercados e mais")
-                }
-                items(utilityStores, key = { it.id }) { store ->
-                    UtilityStoreRow(
-                        store = store,
-                        onClick = { onNavigateToStore(store.id) }
+                    UtilitySection(
+                        stores = utilityStores,
+                        onNavigateToStore = onNavigateToStore
                     )
                 }
-            }
-        }
-        if (recentSearches.isNotEmpty()) {
-            item {
-                DiscoverRecentSearches(
-                    searches = recentSearches,
-                    onSearch = onRecentSearch,
-                    onClear = onClearRecentSearches
-                )
             }
         }
     }
 }
 
-/** Shimmer animado reutilizável para skeletons (formato do conteúdo real). */
-fun Modifier.shimmer(): Modifier = composed {
-    val transition = rememberInfiniteTransition(label = "discover_shimmer")
-    val offset by transition.animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer_offset"
-    )
-    val brush = Brush.linearGradient(
-        colors = listOf(Color(0xFFEDEDED), Color(0xFFF8F8F8), Color(0xFFEDEDED)),
-        start = Offset(offset * 400f - 200f, 0f),
-        end = Offset(offset * 400f + 200f, 0f)
-    )
-    this.background(brush)
-}
-
+/** Filtros rápidos do protótipo (.chips / .fchip). */
 @Composable
-private fun DiscoverShimmerLoading() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Banner hero
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(148.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .shimmer()
-        )
-        // Categorias em círculo
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            repeat(5) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .shimmer()
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(44.dp)
-                            .height(10.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .shimmer()
-                    )
-                }
-            }
-        }
-        // Cards horizontais
-        repeat(2) {
-            Box(
-                modifier = Modifier
-                    .width(240.dp)
-                    .height(190.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .shimmer()
-            )
-        }
-    }
-}
-
-@Composable
-private fun DiscoverLoadingSkeleton() {
-    DiscoverShimmerLoading()
-}
-
-@Composable
-private fun DiscoverQuickFilters(
+private fun DiscoverFilterChips(
     selected: DiscoverQuickFilter?,
     onClick: (DiscoverQuickFilter) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(DiscoverQuickFilter.entries.toList()) { filter ->
-                FilterChip(
-                    selected = selected == filter,
-                    onClick = { onClick(filter) },
-                    label = {
-                        Text(
-                            text = filter.label,
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                    },
-                    leadingIcon = if (filter == DiscoverQuickFilter.DELIVERY_AVAILABLE) {
-                        { Icon(painter = painterResource(R.drawable.ic_ita_delivery), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(16.dp)) }
-                    } else null,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color.White,
-                        selectedContainerColor = Color(0xFFFFF4EC),
-                        selectedLabelColor = ItaSuperPrimary,
-                        selectedLeadingIconColor = ItaSuperPrimary
-                    ),
-                    border = FilterChipDefaults.filterChipBorder(
-                        borderColor = Color(0xFFE1E1E1),
-                        selectedBorderColor = ItaSuperPrimary,
-                        enabled = true,
-                        selected = selected == filter
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DiscoverCuratedCategories(
-    categories: List<SearchCategory>,
-    onSelect: (String) -> Unit
-) {
-    val wanted = listOf("pizzaria", "acai", "marmita", "bebidas", "farmacias")
-    val curated = wanted.mapNotNull { wantedId ->
-        categories.firstOrNull { it.id.equals(wantedId, ignoreCase = true) }
-    }
-    if (curated.isEmpty()) return
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 22.dp)) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            Text(
-                text = "Explorar",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp,
-                    color = ItaSuperTextPrimary
-                )
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+    LazyRow(
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(DiscoverQuickFilter.entries.toList()) { filter ->
+            val isSelected = selected == filter
             Box(
                 modifier = Modifier
-                    .width(34.dp)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(ItaSuperPrimary)
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            curated.forEach { category ->
-                val iconRes = when (category.id) {
-                    "pizzaria" -> R.drawable.ic_preview_pizza
-                    "acai" -> R.drawable.ic_preview_acai
-                    "marmita" -> R.drawable.ic_preview_marmita
-                    "bebidas" -> R.drawable.ic_preview_drink
-                    "farmacias" -> R.drawable.ic_preview_pharmacy
-                    else -> R.drawable.ic_lucide_hamburger
-                }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onSelect(category.id) }
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE8E8E8)),
-                        modifier = Modifier.size(50.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                painter = painterResource(iconRes),
-                                contentDescription = category.name,
-                                tint = Color.Unspecified,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(7.dp))
-                    Text(
-                        text = category.name,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF262626),
-                            fontSize = 12.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    .clip(RoundedCornerShape(50))
+                    .border(
+                        width = 1.5.dp,
+                        color = if (isSelected) DscInk else DscLine,
+                        shape = RoundedCornerShape(50)
                     )
-                }
+                    .background(if (isSelected) DscInk else Color.Transparent)
+                    .clickable { onClick(filter) }
+                    .padding(horizontal = 13.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    text = filter.label,
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = if (isSelected) DscBg else DscInk
+                    ),
+                    maxLines = 1
+                )
             }
         }
     }
 }
 
+private fun categoryDrawableId(categoryId: String): Int? = when (categoryId.lowercase()) {
+    "pizzaria", "pizza" -> R.drawable.ic_preview_pizza
+    "acai", "açaí" -> R.drawable.ic_preview_acai
+    "marmita" -> R.drawable.ic_preview_marmita
+    "bebidas", "bebida" -> R.drawable.ic_preview_drink
+    "farmacia", "farmacias", "farmácia" -> R.drawable.ic_preview_pharmacy
+    "lanches", "lanche", "hamburguer", "hambúrguer", "burger" -> R.drawable.ic_preview_burger
+    else -> null
+}
+
+/** Grade de categorias do protótipo: 2 linhas com rolagem horizontal (.cats). */
 @Composable
-private fun DiscoverSectionHeader(title: String, action: String? = null, onActionClick: (() -> Unit)? = null) {
+private fun DiscoverCategoryGrid(
+    categories: List<SearchCategory>,
+    selectedId: String?,
+    onSelect: (String) -> Unit
+) {
+    if (categories.isEmpty()) return
+    LazyHorizontalGrid(
+        rows = GridCells.Fixed(2),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(170.dp),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(categories, key = { it.id }) { category ->
+            val isSelected = selectedId == category.id
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(62.dp)
+                    .clickable { onSelect(category.id) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .graphicsLayer {
+                            scaleX = if (isSelected) 1.05f else 1f
+                            scaleY = if (isSelected) 1.05f else 1f
+                        }
+                        .clip(CircleShape)
+                        .background(DscChipBg)
+                        .border(
+                            width = if (isSelected) 2.5.dp else 0.dp,
+                            color = if (isSelected) ItaSuperPrimary else Color.Transparent,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val iconRes = categoryDrawableId(category.id)
+                    if (iconRes != null) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(iconRes),
+                            contentDescription = category.name,
+                            modifier = Modifier.size(56.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = category.name.take(1).uppercase(Locale("pt", "BR")),
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 19.sp,
+                                color = ItaSuperPrimary
+                            )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(
+                    text = category.name,
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp,
+                        color = if (isSelected) ItaSuperPrimary else DscInk
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/** Cabeçalho de seção do protótipo (.psec-head). */
+@Composable
+private fun PSecHeader(
+    title: String,
+    action: String? = null,
+    onActionClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 9.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge.copy(
+            style = TextStyle(
                 fontFamily = ManropeFontFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 16.sp,
-                color = ItaSuperTextPrimary
+                fontSize = 17.5.sp,
+                color = DscInk
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f, fill = false)
         )
-        if (action != null) {
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            trailing()
+        } else if (action != null) {
             Text(
                 text = action,
-                modifier = Modifier.clickable(enabled = onActionClick != null, onClick = { onActionClick?.invoke() }),
-                style = MaterialTheme.typography.labelLarge.copy(
+                modifier = Modifier.clickable(
+                    enabled = onActionClick != null,
+                    onClick = { onActionClick?.invoke() }
+                ),
+                style = TextStyle(
                     fontFamily = ManropeFontFamily,
                     fontWeight = FontWeight.Bold,
-                    color = ItaSuperPrimary,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    color = ItaSuperPrimary
                 )
             )
         }
     }
 }
 
-/** Carrossel hero de promos reais (loja + cupom) com auto-scroll. */
+/** Carrossel de promos do protótipo (.promo): tag + título + subtítulo, dots abaixo. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PromoHeroCarousel(
+private fun PromoCarousel(
     banners: List<PromoBanner>,
     onBannerClick: (PromoBanner) -> Unit
 ) {
@@ -746,80 +663,61 @@ private fun PromoHeroCarousel(
             }
         }
     }
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .padding(horizontal = 16.dp)
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 18.dp),
+            pageSpacing = 10.dp
         ) { page ->
             val banner = banners[page]
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
                     .background(Color(banner.backgroundColor))
-                    .clickable(onClick = { onBannerClick(banner) })
+                    .clickable { onBannerClick(banner) }
                     .padding(18.dp)
+                    .heightIn(min = 118.dp),
+                verticalArrangement = Arrangement.Center
             ) {
-                if (banner.imageUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = banner.imageUrl,
-                        contentDescription = banner.subtitle,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(84.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .padding(4.dp)
-                            .clip(CircleShape)
+                Text(
+                    text = banner.tag.uppercase(Locale("pt", "BR")),
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.08.em,
+                        color = Color.White.copy(alpha = 0.85f)
                     )
-                }
-                Column(
-                    modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.68f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = banner.title,
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            fontSize = 22.sp
-                        )
-                    )
-                    Text(
-                        text = banner.subtitle,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = ManropeFontFamily,
-                            color = Color.White.copy(alpha = 0.92f),
-                            fontSize = 13.sp
-                        ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    androidx.compose.material3.Surface(
-                        shape = RoundedCornerShape(10.dp),
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = banner.title,
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 21.sp,
+                        lineHeight = 24.sp,
                         color = Color.White
-                    ) {
-                        Text(
-                            text = banner.ctaText,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(banner.backgroundColor),
-                                fontSize = 12.sp
-                            )
-                        )
-                    }
-                }
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = banner.subtitle,
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.92f)
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
@@ -829,143 +727,274 @@ private fun PromoHeroCarousel(
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 3.dp)
-                        .size(width = if (selected) 20.dp else 7.dp, height = 7.dp)
-                        .clip(CircleShape)
-                        .background(if (selected) ItaSuperPrimary else Color(0xFFD9D9D9))
+                        .size(
+                            width = if (selected) 20.dp else 7.dp,
+                            height = 7.dp
+                        )
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (selected) ItaSuperPrimary else DscLine)
                 )
             }
         }
     }
 }
 
-/** Card de loja com foto 16:9, avaliação, ETA, taxa e badges. */
+/** Card "Peça de novo" do protótipo (.dish-card). */
 @Composable
-private fun DiscoverPhotoStoreCard(store: Store, onClick: () -> Unit) {
-    androidx.compose.material3.Card(
-        modifier = Modifier
-            .width(240.dp)
-            .clickable(onClick = onClick)
-            .testTag("discover_photo_store_${store.id}"),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column {
+private fun DishCard(item: OrderAgainItem, onReorder: () -> Unit) {
+    Column(modifier = Modifier.width(148.dp)) {
+        Box(
+            modifier = Modifier
+                .size(width = 148.dp, height = 104.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(DscChipBg),
+            contentAlignment = Alignment.Center
+        ) {
+            if (item.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = item.imageUrl,
+                    contentDescription = item.productName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                androidx.compose.foundation.Image(
+                    painter = painterResource(R.drawable.ic_ita_bag),
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(7.dp))
+        Text(
+            text = item.productName,
+            style = TextStyle(
+                fontFamily = ManropeFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+                lineHeight = 17.sp,
+                color = DscInk
+            ),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = item.storeName,
+            style = TextStyle(
+                fontFamily = ManropeFontFamily,
+                fontSize = 12.sp,
+                color = DscInk2
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = dscMoney(item.price),
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.sp,
+                    color = DscInk
+                ),
+                maxLines = 1
+            )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color(0xFFF5F5F5))
+                    .clip(RoundedCornerShape(50))
+                    .background(ItaSuperPrimary)
+                    .clickable(onClick = onReorder)
+                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                    .testTag("reorder_${item.productId}")
             ) {
-                val imageUrl = store.bannerUrl.ifBlank { store.logoUrl }
-                if (imageUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = store.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                Text(
+                    text = "Pedir de novo",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.5.sp,
+                        color = Color.White
+                    ),
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/** "Perto de você" do protótipo: lista vertical (.rest-list) com "Ver tudo". */
+@Composable
+private fun NearYouSection(
+    stores: List<Store>,
+    couponStoreIds: Set<String>,
+    onNavigateToStore: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val visible = if (expanded) stores else stores.take(3)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        PSecHeader(
+            title = "Perto de você",
+            action = if (stores.size > 3) "Ver tudo" else null,
+            onActionClick = if (stores.size > 3) {
+                { expanded = !expanded }
+            } else null
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            visible.forEach { store ->
+                RestCard(
+                    store = store,
+                    hasCoupon = store.id in couponStoreIds,
+                    onClick = { onNavigateToStore(store.id) }
+                )
+            }
+        }
+    }
+}
+
+/** Card de restaurante vertical do protótipo (.rest-card). */
+@Composable
+private fun RestCard(
+    store: Store,
+    hasCoupon: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("discover_rest_${store.id}")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(DscChipBg)
+        ) {
+            val imageUrl = store.bannerUrl.ifBlank { store.logoUrl }
+            if (imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = store.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(R.drawable.ic_ita_store),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp)
                     )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_ita_store),
-                            contentDescription = null,
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
-                }
-                if (store.isFreeDelivery && store.isOpen) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF2E7D32))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Entrega grátis",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        )
-                    }
-                }
-                if (!store.isOpen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Fechado",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        )
-                    }
                 }
             }
-            Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                Text(
-                    text = store.name,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = ItaSuperTextPrimary,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFFFA000),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
+            if (hasCoupon) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ItaSuperPrimary)
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
                     Text(
-                        text = String.format(Locale("pt", "BR"), "%.1f", store.rating),
-                        style = MaterialTheme.typography.labelMedium.copy(
+                        text = "Cupom",
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.5.sp,
+                            color = Color.White
+                        )
+                    )
+                }
+            }
+            if (!store.isOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Fechado",
+                        style = TextStyle(
                             fontFamily = ManropeFontFamily,
                             fontWeight = FontWeight.Bold,
-                            color = ItaSuperTextPrimary,
-                            fontSize = 12.sp
+                            fontSize = 15.sp,
+                            color = Color.White
                         )
                     )
-                    if (store.deliveryTime.isNotBlank()) {
-                        Text(
-                            text = " · ${store.deliveryTime}",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontFamily = ManropeFontFamily,
-                                color = ItaSuperTextSecondary,
-                                fontSize = 12.sp
-                            )
-                        )
-                    }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                val feeText = when {
-                    store.isFreeDelivery -> "Entrega grátis"
-                    store.deliveryFee.isNotBlank() -> store.deliveryFee
-                    else -> store.category
-                }
+            }
+        }
+        Spacer(modifier = Modifier.height(9.dp))
+        Text(
+            text = store.name,
+            style = TextStyle(
+                fontFamily = ManropeFontFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.5.sp,
+                color = DscInk
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "★ ${dscRating(store.rating)}",
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 12.5.sp,
+                    color = DscAmber
+                )
+            )
+            if (store.deliveryTime.isNotBlank()) {
                 Text(
-                    text = feeText,
-                    style = MaterialTheme.typography.bodySmall.copy(
+                    text = " · ${store.deliveryTime}",
+                    style = TextStyle(
                         fontFamily = ManropeFontFamily,
-                        color = ItaSuperTextSecondary,
-                        fontSize = 12.sp
+                        fontSize = 12.5.sp,
+                        color = DscInk2
+                    )
+                )
+            }
+            if (store.isFreeDelivery) {
+                Text(
+                    text = " · ",
+                    style = TextStyle(fontFamily = ManropeFontFamily, fontSize = 12.5.sp, color = DscInk2)
+                )
+                Text(
+                    text = "Entrega grátis",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp,
+                        color = DscGreen
+                    )
+                )
+            } else if (store.deliveryFee.isNotBlank()) {
+                Text(
+                    text = " · Entrega ${store.deliveryFee}",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 12.5.sp,
+                        color = DscInk2
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -975,191 +1004,243 @@ private fun DiscoverPhotoStoreCard(store: Store, onClick: () -> Unit) {
     }
 }
 
-/** Card de coleção real: mostra logos das lojas filtradas + contagem. */
+/** Card de coleção do protótipo (.col-card): foto + gradiente + Salvar. */
 @Composable
-private fun CollectionCard(
+private fun ProtoCollectionCard(
     collection: DiscoverCollection,
     onToggleSave: () -> Unit,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .width(190.dp)
-            .height(230.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(collection.backgroundColor))
+            .width(218.dp)
+            .heightIn(min = 138.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(DscChipBg)
             .clickable(onClick = onClick)
-            .padding(14.dp)
             .testTag("discover_collection_${collection.id}")
     ) {
-        Row(
-            modifier = Modifier.align(Alignment.TopStart).padding(top = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy((-10).dp)
-        ) {
-            collection.stores.take(3).forEach { store ->
-                val logo = store.logoUrl.ifBlank { store.bannerUrl }
-                if (logo.isNotBlank()) {
-                    AsyncImage(
-                        model = logo,
-                        contentDescription = store.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(Color.White),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Storefront,
-                            contentDescription = store.name,
-                            tint = ItaSuperTextSecondary,
-                            modifier = Modifier.size(26.dp)
+        val bgUrl = collection.stores.firstOrNull()
+            ?.let { it.bannerUrl.ifBlank { it.logoUrl } }
+            .orEmpty()
+        if (bgUrl.isNotBlank()) {
+            AsyncImage(
+                model = bgUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xD20F0804),
+                            Color(0x400F0804),
+                            Color(0x000F0804)
                         )
+                    )
+                )
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            Text(
+                text = collection.title,
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    lineHeight = 19.sp,
+                    color = Color.White
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = collection.subtitle,
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontSize = 11.5.sp,
+                    color = Color.White.copy(alpha = 0.9f)
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (collection.saved) ItaSuperPrimary
+                        else Color.White.copy(alpha = 0.94f)
+                    )
+                    .clickable(onClick = onToggleSave)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = if (collection.saved) "Salva" else "Salvar",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 12.sp,
+                        color = if (collection.saved) Color.White else DscInk
+                    )
+                )
+            }
+        }
+    }
+}
+
+/** "Ofertas do dia" do protótipo: título + countdown + grade 2 colunas. */
+@Composable
+private fun DealsSection(
+    deals: List<DailyDeal>,
+    storesById: Map<String, Store>,
+    onDealClick: (DailyDeal) -> Unit
+) {
+    val soonestExpiry = remember(deals) {
+        deals.mapNotNull { it.endsAtMillis.takeIf { millis -> millis > 0 } }.minOrNull()
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        PSecHeader(
+            title = "Ofertas do dia",
+            trailing = if (soonestExpiry != null) {
+                { ProtoCountdownPill(endsAtMillis = soonestExpiry) }
+            } else null
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            deals.chunked(2).forEachIndexed { rowIndex, row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    row.forEach { deal ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            val store = deal.storeId?.let { storesById[it] }
+                            val imageUrl = store?.bannerUrl.ifNullOrBlank { store?.logoUrl.orEmpty() }
+                            ProtoDealCard(
+                                deal = deal,
+                                imageUrl = imageUrl,
+                                storeName = store?.name.orEmpty(),
+                                onClick = { onDealClick(deal) }
+                            )
+                        }
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
         }
-        Icon(
-            imageVector = if (collection.saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-            contentDescription = if (collection.saved) "Salva" else "Salvar coleção",
-            tint = if (collection.saved) ItaSuperPrimary else ItaSuperTextSecondary,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(30.dp)
-                .clickable(onClick = onToggleSave)
-                .padding(4.dp)
-        )
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = collection.title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = ItaSuperTextPrimary,
-                    fontSize = 16.sp
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = collection.subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = ManropeFontFamily,
-                    color = ItaSuperTextSecondary,
-                    fontSize = 12.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 
-/** Card "Peça de novo" com botão de recompra. */
+private fun String?.ifNullOrBlank(default: () -> String): String =
+    if (this.isNullOrBlank()) default() else this
+
+/** Card de oferta do protótipo (.deal). */
 @Composable
-private fun OrderAgainCard(item: OrderAgainItem, onReorder: () -> Unit) {
-    androidx.compose.material3.Card(
-        modifier = Modifier.width(150.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+private fun ProtoDealCard(
+    deal: DailyDeal,
+    imageUrl: String,
+    storeName: String,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(DscChipBg)
+            .clickable(onClick = onClick)
+            .testTag("daily_deal_${deal.id}")
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (item.imageUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = item.imageUrl,
-                        contentDescription = item.productName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_ita_bag),
-                        contentDescription = null,
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(34.dp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = item.productName,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = ItaSuperTextPrimary,
-                    fontSize = 13.sp
-                ),
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = item.storeName,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = ManropeFontFamily,
-                    color = ItaSuperTextSecondary,
-                    fontSize = 11.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (deal.tall) 138.dp else 92.dp)
+                .background(DscLine),
+            contentAlignment = Alignment.Center
+        ) {
+            if (imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
                 Text(
-                    text = String.format(Locale("pt", "BR"), "R$ %.2f", item.price).replace('.', ','),
-                    style = MaterialTheme.typography.labelLarge.copy(
+                    text = deal.discountBadge,
+                    style = TextStyle(
                         fontFamily = ManropeFontFamily,
                         fontWeight = FontWeight.ExtraBold,
-                        color = ItaSuperPrimary,
-                        fontSize = 13.sp
+                        fontSize = 22.sp,
+                        color = ItaSuperPrimary
                     )
                 )
-                androidx.compose.material3.IconButton(
-                    onClick = onReorder,
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(ItaSuperPrimary)
-                        .testTag("reorder_${item.productId}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Pedir de novo",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
+        ) {
+            Text(
+                text = deal.discountBadge,
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 17.sp,
+                    color = ItaSuperPrimary
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = deal.title,
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.5.sp,
+                    lineHeight = 16.sp,
+                    color = DscInk
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            val sub = storeName.ifBlank { deal.description }.ifBlank { null }
+            if (sub != null) {
+                Text(
+                    text = sub,
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 11.5.sp,
+                        color = DscInk2
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
 }
 
-/** Contagem regressiva da oferta (atualiza a cada segundo, sem java.time). */
+/** Contagem regressiva do protótipo (.countdown): pílula escura "Termina em HH:MM:SS". */
 @Composable
-private fun CountdownPill(endsAtMillis: Long, modifier: Modifier = Modifier) {
+private fun ProtoCountdownPill(endsAtMillis: Long) {
     var remaining by remember(endsAtMillis) { mutableStateOf(endsAtMillis - System.currentTimeMillis()) }
     LaunchedEffect(endsAtMillis) {
         while (remaining > 0) {
@@ -1167,388 +1248,272 @@ private fun CountdownPill(endsAtMillis: Long, modifier: Modifier = Modifier) {
             remaining = endsAtMillis - System.currentTimeMillis()
         }
     }
+    if (remaining <= 0) return
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFD32F2F))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(DscInk)
+            .padding(horizontal = 9.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Icon(
-            imageVector = Icons.Filled.Timer,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(13.dp)
-        )
         Text(
-            text = formatCountdown(remaining),
-            style = MaterialTheme.typography.labelSmall.copy(
+            text = "Termina em ${formatCountdown(remaining)}",
+            style = TextStyle(
                 fontFamily = ManropeFontFamily,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                fontSize = 11.sp
-            )
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 11.5.sp,
+                color = DscBg
+            ),
+            maxLines = 1
         )
     }
 }
 
-/** Card de oferta do dia para a grade (alturas variadas). */
+/** "Mercados e mais" do protótipo: sub-chips + linhas compactas (.store-row). */
 @Composable
-private fun DailyDealCard(deal: DailyDeal, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(if (deal.tall) 190.dp else 160.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFFFF4EC))
-            .clickable(onClick = onClick)
-            .padding(14.dp)
-            .testTag("daily_deal_${deal.id}")
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .clip(RoundedCornerShape(8.dp))
-                .background(ItaSuperPrimary)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = deal.discountBadge,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    fontSize = 12.sp
-                )
-            )
-        }
-        if (deal.endsAtMillis > 0) {
-            CountdownPill(endsAtMillis = deal.endsAtMillis, modifier = Modifier.align(Alignment.TopEnd))
-        }
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = deal.title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = ItaSuperTextPrimary,
-                    fontSize = 16.sp
-                )
-            )
-            Text(
-                text = deal.description,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = ManropeFontFamily,
-                    color = ItaSuperTextSecondary,
-                    fontSize = 12.sp
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/** Grade de ofertas reais (linhas de 2, alturas alternadas — sem lazy aninhado). */
-@Composable
-private fun DailyDealsGrid(
-    deals: List<DailyDeal>,
-    onDealClick: (DailyDeal) -> Unit
+private fun UtilitySection(
+    stores: List<Store>,
+    onNavigateToStore: (String) -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        deals.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                row.forEach { deal ->
-                    Box(modifier = Modifier.weight(1f)) {
-                        DailyDealCard(deal = deal, onClick = { onDealClick(deal) })
-                    }
+    val subCats = listOf("Mercado", "Farmácia", "Pet", "Bebidas")
+    var selected by remember { mutableStateOf(subCats.first()) }
+    val filtered = remember(stores, selected) {
+        val norm = selected.lowercase(Locale("pt", "BR"))
+            .replace("á", "a").replace("é", "e").replace("í", "i")
+            .replace("ó", "o").replace("ú", "u").replace("ã", "a").replace("õ", "o")
+        val matched = stores.filter { store ->
+            val cats = (listOf(store.category) + store.secondaryCategories)
+                .joinToString(" ").lowercase(Locale("pt", "BR"))
+            cats.contains(norm) || (norm == "bebidas" && cats.contains("bebida"))
+        }
+        matched.ifEmpty { stores }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        PSecHeader(title = "Mercados e mais")
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(subCats) { cat ->
+                val isSelected = selected == cat
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .border(
+                            width = 1.5.dp,
+                            color = if (isSelected) DscInk else DscLine,
+                            shape = RoundedCornerShape(50)
+                        )
+                        .background(if (isSelected) DscInk else Color.Transparent)
+                        .clickable { selected = cat }
+                        .padding(horizontal = 13.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        text = cat,
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = if (isSelected) DscBg else DscInk
+                        )
+                    )
                 }
-                if (row.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            filtered.forEach { store ->
+                ProtoUtilityStoreRow(
+                    store = store,
+                    onClick = { onNavigateToStore(store.id) }
+                )
             }
         }
     }
 }
 
-/** Linha compacta para lojas utilitárias (mercado/farmácia/pet). */
+/** Linha compacta de loja do protótipo (.store-row). */
 @Composable
-private fun UtilityStoreRow(store: Store, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .testTag("utility_store_${store.id}"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
+private fun ProtoUtilityStoreRow(store: Store, onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFF5F5F5)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (store.logoUrl.isNotBlank()) {
-                AsyncImage(
-                    model = store.logoUrl,
-                    contentDescription = store.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.Storefront,
-                    contentDescription = null,
-                    tint = ItaSuperTextSecondary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = store.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = ItaSuperTextPrimary,
-                    fontSize = 14.sp
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFFFA000),
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = String.format(Locale("pt", "BR"), "%.1f", store.rating),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = ItaSuperTextPrimary,
-                        fontSize = 11.sp
-                    )
-                )
-                store.distanceKm?.let { km ->
-                    Text(
-                        text = " · ${String.format(Locale("pt", "BR"), "%.1f km", km).replace('.', ',')}",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = ManropeFontFamily,
-                            color = ItaSuperTextSecondary,
-                            fontSize = 11.sp
-                        )
-                    )
-                }
-                if (!store.isOpen) {
-                    Text(
-                        text = " · Fechado",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = ManropeFontFamily,
-                            color = Color(0xFFD32F2F),
-                            fontSize = 11.sp
-                        )
-                    )
-                }
-            }
-        }
-        Icon(
-            painter = painterResource(R.drawable.ic_ita_chevron_right),
-            contentDescription = "Abrir loja",
-            tint = Color.Unspecified,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-    Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)).padding(horizontal = 16.dp))
-}
-
-@Composable
-private fun DiscoverProductCard(product: DiscoverProduct, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(vertical = 10.dp),
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+                .testTag("utility_store_${store.id}"),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val logoUrl = store.logoUrl.ifBlank { store.bannerUrl }
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F5)),
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(DscChipBg),
                 contentAlignment = Alignment.Center
             ) {
-                if (product.imageUrl.isNotBlank()) {
+                if (logoUrl.isNotBlank()) {
                     AsyncImage(
-                        model = product.imageUrl,
-                        contentDescription = product.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(painter = painterResource(R.drawable.ic_ita_bag), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(25.dp))
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = product.name,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = ItaSuperTextPrimary,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = product.storeName,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = ManropeFontFamily,
-                        color = ItaSuperTextSecondary,
-                        fontSize = 13.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = String.format(Locale("pt", "BR"), "R$ %.2f", product.price).replace('.', ','),
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = ItaSuperPrimary,
-                        fontSize = 15.sp
-                    )
-                )
-            }
-            Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = "Abrir loja", tint = Color.Unspecified, modifier = Modifier.size(23.dp))
-        }
-        Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)))
-    }
-}
-
-@Composable
-private fun DiscoverStoreCard(store: Store, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF5F5F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (store.logoUrl.isNotBlank() || store.bannerUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = store.logoUrl.ifBlank { store.bannerUrl },
+                        model = logoUrl,
                         contentDescription = store.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(painter = painterResource(R.drawable.ic_ita_store), contentDescription = null, tint = Color.Unspecified)
+                    Text(
+                        text = store.name.take(1).uppercase(Locale("pt", "BR")),
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            color = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(DscGreen)
+                            .wrapContentSize(Alignment.Center)
+                    )
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = store.name,
-                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary),
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.5.sp,
+                        color = DscInk
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = listOf(store.category, store.deliveryTime, store.deliveryFee).filter { it.isNotBlank() }.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary),
+                    text = buildString {
+                        append("★ ${dscRating(store.rating)}")
+                        if (store.deliveryTime.isNotBlank()) append(" · ${store.deliveryTime}")
+                    },
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 12.sp,
+                        color = DscInk2
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Icon(painter = painterResource(R.drawable.ic_ita_chevron_right), contentDescription = "Abrir loja", tint = Color.Unspecified, modifier = Modifier.size(23.dp))
-        }
-        Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFEEEEEE)))
-    }
-}
-
-@Composable
-private fun DiscoverRecentSearches(
-    searches: List<String>,
-    onSearch: (String) -> Unit,
-    onClear: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 23.dp, bottom = 14.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Buscas recentes",
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary)
-            )
-            Text(
-                text = "Limpar",
-                modifier = Modifier.clickable(onClick = onClear),
-                style = MaterialTheme.typography.labelLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
-            )
-        }
-        Spacer(modifier = Modifier.height(9.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(searches.take(6)) { term ->
-                Surface(
-                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { onSearch(term) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE1E1E1))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(painter = painterResource(R.drawable.ic_ita_clock), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(16.dp))
-                        Text(term, fontFamily = ManropeFontFamily, fontSize = 13.sp, color = ItaSuperTextPrimary)
-                    }
-                }
+            store.distanceKm?.let { km ->
+                Text(
+                    text = String.format(Locale("pt", "BR"), "%.1f km", km).replace('.', ','),
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = DscInk2
+                    )
+                )
             }
         }
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .height(1.dp)
+                .background(DscLine)
+        )
     }
 }
 
+/** Shimmer animado reutilizável. */
+fun Modifier.shimmer(): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "discover_shimmer")
+    val offset by transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1150, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_offset"
+    )
+    val brush = Brush.linearGradient(
+        colors = listOf(DscSkel, DscSkel.copy(alpha = 0.55f), DscSkel),
+        start = Offset(offset * 400f - 200f, 0f),
+        end = Offset(offset * 400f + 200f, 0f)
+    )
+    this.background(brush)
+}
+
+/** Skeleton do protótipo (.skel-wrap): círculos, banner, linhas e fotos no formato do conteúdo. */
+@Composable
+private fun DiscoverShimmerLoading() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(5) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .shimmer()
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .shimmer()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.55f)
+                .height(13.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .shimmer()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .shimmer()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(13.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .shimmer()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.55f)
+                .height(13.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .shimmer()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .shimmer()
+        )
+    }
+}
+
+/** Tela de resultados da busca, nas cores do protótipo. */
 @Composable
 private fun DiscoverResults(
     query: String,
@@ -1556,78 +1521,199 @@ private fun DiscoverResults(
     selectedQuickFilter: DiscoverQuickFilter?,
     products: List<DiscoverProduct>,
     stores: List<Store>,
+    recentSearches: List<String>,
     onClearAll: () -> Unit,
+    onRecentSearch: (String) -> Unit,
     onNavigateToStore: (String) -> Unit
 ) {
-    if (products.isEmpty() && stores.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(shape = RoundedCornerShape(20.dp), color = Color(0xFFFFF4EC), modifier = Modifier.size(72.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(painter = painterResource(R.drawable.ic_lucide_search), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(34.dp))
-                    }
+    if (query.length < 2 && selectedCategory == null && selectedQuickFilter == null) {
+        // Busca vazia: mostra buscas recentes
+        if (recentSearches.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Busque por restaurantes e pratos",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 14.sp,
+                        color = DscInk2
+                    )
+                )
+            }
+            return
+        }
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            PSecHeader(title = "Buscas recentes")
+            recentSearches.take(6).forEach { term ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onRecentSearch(term) }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = DscInk2,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = term,
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontSize = 14.sp,
+                            color = DscInk
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("Nada encontrado", style = MaterialTheme.typography.titleMedium.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary))
-                Spacer(modifier = Modifier.height(5.dp))
-                Text("Tente outro termo ou ajuste a descoberta.", style = MaterialTheme.typography.bodyMedium.copy(fontFamily = ManropeFontFamily, color = ItaSuperTextSecondary))
-                Spacer(modifier = Modifier.height(15.dp))
-                Text("Voltar para Descobrir", modifier = Modifier.clickable(onClick = onClearAll).testTag("clear_discovery_button"), style = MaterialTheme.typography.labelLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = ItaSuperPrimary))
             }
         }
         return
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onClearAll)
-                    .testTag("clear_discovery_button")
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_ita_chevron_right),
-                    contentDescription = null,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(18.dp).graphicsLayer(rotationZ = 180f)
+    if (products.isEmpty() && stores.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Nenhuma loja bate com esse filtro. Toca de novo no filtro pra limpar.",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontSize = 13.5.sp,
+                        color = DscInk2
+                    )
                 )
+                Spacer(modifier = Modifier.height(15.dp))
                 Text(
                     text = "Voltar para Descobrir",
-                    style = MaterialTheme.typography.labelLarge.copy(
+                    modifier = Modifier
+                        .clickable(onClick = onClearAll)
+                        .testTag("clear_discovery_button"),
+                    style = TextStyle(
                         fontFamily = ManropeFontFamily,
                         fontWeight = FontWeight.Bold,
-                        color = ItaSuperPrimary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        color = ItaSuperPrimary
                     )
                 )
             }
         }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 16.dp)
+    ) {
         item {
-            val label = selectedCategory?.name ?: selectedQuickFilter?.label ?: query.ifBlank { "Resultados" }
             Text(
-                text = "Resultados para $label",
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.ExtraBold, color = ItaSuperTextPrimary),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp)
+                text = "Voltar para Descobrir",
+                modifier = Modifier
+                    .clickable(onClick = onClearAll)
+                    .testTag("clear_discovery_button")
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                style = TextStyle(
+                    fontFamily = ManropeFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = ItaSuperPrimary
+                )
             )
-        }
-        if (products.isNotEmpty()) {
-            item {
-                Text("Produtos", style = MaterialTheme.typography.labelLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = ItaSuperTextSecondary), modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp))
-            }
-            itemsIndexed(products, key = { index, product -> "result_product_${index}_${product.id}" }) { _, product ->
-                DiscoverProductCard(product = product, onClick = { onNavigateToStore(product.storeId) })
-            }
         }
         if (stores.isNotEmpty()) {
             item {
-                Text("Lojas", style = MaterialTheme.typography.labelLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold, color = ItaSuperTextSecondary), modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                PSecHeader(title = "Lojas")
             }
-            itemsIndexed(stores, key = { index, store -> "result_store_${index}_${store.id}" }) { _, store ->
-                DiscoverStoreCard(store = store, onClick = { onNavigateToStore(store.id) })
+            items(stores, key = { it.id }) { store ->
+                Column(modifier = Modifier.padding(horizontal = 18.dp)) {
+                    RestCard(
+                        store = store,
+                        hasCoupon = false,
+                        onClick = { onNavigateToStore(store.id) }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+        }
+        if (products.isNotEmpty()) {
+            item {
+                PSecHeader(title = "Pratos")
+            }
+            items(products, key = { it.id }) { product ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToStore(product.storeId) }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DscChipBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (product.imageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = product.imageUrl,
+                                contentDescription = product.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = product.name,
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = DscInk
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = product.storeName,
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontSize = 13.sp,
+                                color = DscInk2
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = dscMoney(product.price),
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                                color = ItaSuperPrimary
+                            )
+                        )
+                    }
+                }
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp)
+                        .height(1.dp)
+                        .background(DscLine)
+                )
             }
         }
     }
