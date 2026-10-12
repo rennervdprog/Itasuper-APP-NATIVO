@@ -94,7 +94,7 @@ import com.example.data.model.DiscoverProduct
 import com.example.data.model.Store
 import com.example.data.repository.SearchCategory
 import com.example.ui.navigation.ItaSuperBottomNavBar
-import com.example.ui.theme.ItaSuperBackground.ItaSuperBackground
+import com.example.ui.theme.ItaSuperBackground
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import com.example.ui.theme.ItaSuperTextSecondary
