@@ -540,9 +540,22 @@ private fun ActiveOrderCard(
             ) {
                 StatusPill(presentation)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(order.estimatedWindow(), style = MaterialTheme.typography.labelMedium, color = Color(0xFF5D5D5D), fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(9.dp))
-                    Text(order.shortCode(), style = MaterialTheme.typography.labelSmall, color = Color(0xFF737373))
+                    Text(
+                        order.estimatedWindow(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF5D5D5D),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        order.shortCode(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = Color(0xFF737373),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             HorizontalDivider(color = Color(0xFFEEEEEE))
@@ -819,6 +832,15 @@ private fun OrderFinancialSummary(order: Order) {
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
+        // Data do pedido
+        if (order.createdAt.isNotBlank()) {
+            SummaryLine("Data do pedido", formatOrderDate(order.createdAt))
+        }
+        // Forma de pagamento
+        if (order.paymentMethod.isNotBlank()) {
+            SummaryLine("Pagamento", formatPaymentMethod(order.paymentMethod))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         order.items.forEach { item ->
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${item.quantity}x ${item.product.name}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -834,6 +856,16 @@ private fun OrderFinancialSummary(order: Order) {
                 if (confirmedDeliveryFee > 0) money(confirmedDeliveryFee) else "Grátis"
             )
         }
+        // Descontos
+        if (order.discount > 0) {
+            SummaryLine("Cupom", "- ${money(order.discount)}", valueColor = ItaSuperSuccess)
+        }
+        if (order.walletDiscount > 0) {
+            SummaryLine("Carteira", "- ${money(order.walletDiscount)}", valueColor = ItaSuperSuccess)
+        }
+        if (order.loyaltyDiscount > 0) {
+            SummaryLine("Pontos fidelidade", "- ${money(order.loyaltyDiscount)}", valueColor = ItaSuperSuccess)
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Total", fontWeight = FontWeight.ExtraBold)
             Text(money(order.total), fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
@@ -841,11 +873,41 @@ private fun OrderFinancialSummary(order: Order) {
     }
 }
 
+private fun formatPaymentMethod(method: String): String = when (method.lowercase()) {
+    "pix" -> "PIX"
+    "pix_direto" -> "PIX direto"
+    "dinheiro", "cash" -> "Dinheiro"
+    "cartao", "card", "cartão" -> "Cartão"
+    "cartao_credito" -> "Cartão de crédito"
+    "cartao_debito" -> "Cartão de débito"
+    else -> method.replaceFirstChar { it.uppercase() }
+}
+
+private fun formatOrderDate(iso: String): String {
+    return try {
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale("pt", "BR")).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val cleaned = iso.substringBefore(".").substringBefore("+").substringBefore("Z")
+        val date = format.parse(cleaned) ?: return iso
+        val out = java.text.SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", java.util.Locale("pt", "BR")).apply {
+            timeZone = java.util.TimeZone.getTimeZone("America/Sao_Paulo")
+        }
+        out.format(date)
+    } catch (t: Throwable) {
+        iso
+    }
+}
+
 @Composable
-private fun SummaryLine(label: String, value: String) {
+private fun SummaryLine(label: String, value: String, valueColor: Color = Color.Unspecified) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (valueColor != Color.Unspecified) valueColor else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
