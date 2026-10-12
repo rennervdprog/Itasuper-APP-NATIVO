@@ -662,17 +662,15 @@ fun ProfileScreen(
                             onClick = { showDeleteConfirmation = true },
                             destructive = true
                         )
+                        // TODO(DEBUG): REMOVER ANTES DE PUBLICAR
+                        ProfileDivider()
+                        ProfileMenuRow(
+                            iconRes = R.drawable.ic_ita_info,
+                            title = "Debug Mapa (temporário)",
+                            subtitle = "Diagnosticar mapa em branco",
+                            onClick = { com.example.ui.debug.MapDebugActivity.open(context) }
+                        )
                     }
-
-                    // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - botão temporário para debug do mapa
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(
-                        onClick = { com.example.ui.debug.MapDebugActivity.open(context) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Debug Mapa (temporário)")
-                    }
-                    Spacer(Modifier.height(12.dp))
                 }
             }
         }
