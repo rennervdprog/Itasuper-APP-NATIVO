@@ -5,10 +5,12 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.R
 import com.example.data.model.DiscoverProduct
+import com.example.data.model.Product
 import com.example.data.model.Store
 import com.example.data.remote.SupabaseClient
+import com.example.data.repository.CartRepository
+import com.example.data.repository.OrderRepository
 import com.example.data.repository.SearchCategory
 import com.example.data.repository.SearchHistoryRepository
 import com.example.data.repository.StoreRepository
@@ -25,8 +27,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.Normalizer
-import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 fun String.normalizeText(): String {
     val unaccented = Normalizer.normalize(this, Normalizer.Form.NFD)
@@ -79,6 +82,59 @@ fun matchesDiscoverQuickFilter(store: Store, filter: DiscoverQuickFilter?): Bool
         store.hasAvailableDriver == true
     DiscoverQuickFilter.FREE_FEE -> supportsDelivery(store.deliveryMode) && store.isFreeDelivery
     DiscoverQuickFilter.PICKUP -> supportsPickup(store.deliveryMode)
+}
+
+// ===== Modelos das novas seções da Descoberta (plano 8 ideias) =====
+
+/** Banner do carrossel hero de promoções (dados mockados por enquanto). */
+data class PromoBanner(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val ctaText: String,
+    val backgroundColor: Long,
+    val emoji: String = ""
+)
+
+/** Coleção editorial ("Top 10 hambúrgueres") com curador e botão salvar. */
+data class DiscoverCollection(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val curatorName: String,
+    val emoji: String = "",
+    val backgroundColor: Long = 0xFFFFF4EC,
+    val saved: Boolean = false
+)
+
+/** Oferta do dia com contagem regressiva. */
+data class DailyDeal(
+    val id: String,
+    val title: String,
+    val description: String,
+    val discountBadge: String,
+    val endsAtMillis: Long,
+    val tall: Boolean = false
+)
+
+/** Item para o rail "Peça de novo", derivado do histórico de pedidos. */
+data class OrderAgainItem(
+    val productId: String,
+    val productName: String,
+    val storeId: String,
+    val storeName: String,
+    val price: Double,
+    val imageUrl: String,
+    val product: Product
+)
+
+/** Formata millis restantes como HH:MM:SS ou MM:SS (sem java.time). */
+fun formatCountdown(remainingMillis: Long): String {
+    val totalSec = (remainingMillis / 1000).toInt().coerceAtLeast(0)
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
 
 data class SearchUiState(
@@ -180,33 +236,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val newStores: StateFlow<List<Store>> = regionalStores.map { stores ->
-        val thirtyDaysAgo = runCatching { Instant.now().minus(30, ChronoUnit.DAYS).toString() }.getOrDefault("")
+        // API 24-safe: sem java.time (Instant/ChronoUnit são API 26+)
+        val thirtyDaysAgo = try {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, -30)
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(cal.time)
+        } catch (_: Throwable) { "" }
         stores.filter { store ->
             store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank() && store.createdAt >= thirtyDaysAgo
         }.sortedByDescending { it.createdAt }.take(8)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /**
-     * Coleções da aba Descobrir: atalhos curatoriais para categorias existentes.
-     * 100% client-side, sem mudança no banco (contrato compartilhado com os outros apps):
-     * cada coleção só conta lojas abertas da cidade e, ao tocar, aplica o filtro
-     * de categoria já existente via onCategorySelect.
-     */
-    val collections: StateFlow<List<DiscoverCollection>> = regionalStores.map { stores ->
-        listOf(
-            Triple("Fim de semana", "pizzaria", R.drawable.ic_preview_pizza),
-            Triple("Hora do açaí", "acai", R.drawable.ic_preview_acai),
-            Triple("Bebidas geladas", "bebidas", R.drawable.ic_preview_drink)
-        ).mapNotNull { (title, categoryId, iconRes) ->
-            val count = stores.count { StoreRepository.matchesCategory(it, categoryId) && it.isOpen }
-            if (count == 0) null
-            else DiscoverCollection(
-                title = title,
-                categoryId = categoryId,
-                iconRes = iconRes,
-                storeCount = count
-            )
-        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val featuredProducts: StateFlow<List<DiscoverProduct>> = _featuredProducts.asStateFlow()
@@ -252,6 +290,171 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             matchesCategory && matchesQuery && matchesQuickFilter
         }
         matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ===== Novas seções da Descoberta (plano 8 ideias) =====
+
+    /** Banners do carrossel hero (mockados; no futuro vêm de campanha ativa). */
+    val promoBanners: StateFlow<List<PromoBanner>> = MutableStateFlow(
+        listOf(
+            PromoBanner(
+                id = "frete_gratis",
+                title = "Frete grátis",
+                subtitle = "Em pedidos acima de R$ 35 nas lojas participantes",
+                ctaText = "Ver lojas",
+                backgroundColor = 0xFFF26522,
+                emoji = "\uD83D\uDE9A"
+            ),
+            PromoBanner(
+                id = "bemvindo30",
+                title = "30% OFF",
+                subtitle = "Na primeira compra com o cupom BEMVINDO30",
+                ctaText = "Pedir agora",
+                backgroundColor = 0xFF7B4DFF,
+                emoji = "\uD83C\uDF89"
+            ),
+            PromoBanner(
+                id = "acai_dobro",
+                title = "Açaí em dobro",
+                subtitle = "Na compra de 1 açaí 500ml, ganhe outro",
+                ctaText = "Aproveitar",
+                backgroundColor = 0xFF2E7D32,
+                emoji = "\uD83C\uDF67"
+            )
+        )
+    ).asStateFlow()
+
+    private val _collections = MutableStateFlow(
+        listOf(
+            DiscoverCollection(
+                id = "top_burger",
+                title = "Top 10 hambúrgueres",
+                subtitle = "Os mais pedidos da cidade",
+                curatorName = "Equipe ItaSuper",
+                emoji = "\uD83C\uDF54",
+                backgroundColor = 0xFFFFF4EC
+            ),
+            DiscoverCollection(
+                id = "barato_30",
+                title = "Comida boa < R$ 30",
+                subtitle = "Delícias que cabem no bolso",
+                curatorName = "Equipe ItaSuper",
+                emoji = "\uD83D\uDCB0",
+                backgroundColor = 0xFFE8F5E9
+            ),
+            DiscoverCollection(
+                id = "sobremesas",
+                title = "Sobremesas pra hoje",
+                subtitle = "Açúcar na medida certa",
+                curatorName = "Equipe ItaSuper",
+                emoji = "\uD83C\uDF70",
+                backgroundColor = 0xFFFCE4EC
+            ),
+            DiscoverCollection(
+                id = "saudavel",
+                title = "Leve e saudável",
+                subtitle = "Opções fit perto de você",
+                curatorName = "Equipe ItaSuper",
+                emoji = "\uD83E\uDD57",
+                backgroundColor = 0xFFE0F2F1
+            )
+        )
+    )
+    val collections: StateFlow<List<DiscoverCollection>> = _collections.asStateFlow()
+
+    fun toggleCollectionSaved(id: String) {
+        _collections.value = _collections.value.map {
+            if (it.id == id) it.copy(saved = !it.saved) else it
+        }
+    }
+
+    /** "Peça de novo": pratos distintos do histórico de pedidos. */
+    val orderAgainItems: StateFlow<List<OrderAgainItem>> = OrderRepository.orders
+        .map { orders ->
+            orders
+                .flatMap { order -> order.items.map { it to order } }
+                .distinctBy { (item, _) -> item.product.id }
+                .take(8)
+                .map { (item, order) ->
+                    OrderAgainItem(
+                        productId = item.product.id,
+                        productName = item.product.name,
+                        storeId = item.product.storeId,
+                        storeName = order.storeName,
+                        price = item.unitPrice,
+                        imageUrl = item.product.imageUrl,
+                        product = item.product
+                    )
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Adiciona o produto ao carrinho (1 unidade). */
+    fun reorderItem(item: OrderAgainItem) {
+        viewModelScope.launch {
+            try {
+                CartRepository.addProduct(item.product, item.storeName, quantity = 1)
+            } catch (_: Exception) {
+                // carrinho indisponível no momento; sem crash
+            }
+        }
+    }
+
+    /** Ofertas do dia com contagem regressiva (mockadas; expiram em horas). */
+    val dailyDeals: StateFlow<List<DailyDeal>> = MutableStateFlow(
+        run {
+            val now = System.currentTimeMillis()
+            val hour = 3_600_000L
+            listOf(
+                DailyDeal(
+                    id = "deal_frete",
+                    title = "FRETE10",
+                    description = "Frete grátis em qualquer pedido",
+                    discountBadge = "-R$ 10",
+                    endsAtMillis = now + 5 * hour,
+                    tall = true
+                ),
+                DailyDeal(
+                    id = "deal_pizza",
+                    title = "PIZZA20",
+                    description = "20% off em pizzarias",
+                    discountBadge = "-20%",
+                    endsAtMillis = now + 2 * hour + 34 * 60_000L
+                ),
+                DailyDeal(
+                    id = "deal_acai",
+                    title = "ACAI15",
+                    description = "15% off em açaís",
+                    discountBadge = "-15%",
+                    endsAtMillis = now + 8 * hour,
+                    tall = true
+                ),
+                DailyDeal(
+                    id = "deal_primeira",
+                    title = "BEMVINDO30",
+                    description = "30% off na 1ª compra",
+                    discountBadge = "-30%",
+                    endsAtMillis = now + 11 * hour + 12 * 60_000L
+                )
+            )
+        }
+    ).asStateFlow()
+
+    private val utilityTerms = setOf("farmacia", "pet", "mercado", "supermercado", "conveniencia", "padaria")
+
+    /** "Mercados e mais": farmácia/pet/mercado em linhas compactas. */
+    val utilityStores: StateFlow<List<Store>> = regionalStores.map { stores ->
+        stores.filter { store ->
+            val cats = (listOf(store.category) + store.secondaryCategories).map { it.normalizeText() }
+            utilityTerms.any { term -> cats.any { it.contains(term) } }
+        }.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating }).take(6)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Recomendado: abertas, bem avaliadas (base da personalização futura). */
+    val recommendedStores: StateFlow<List<Store>> = regionalStores.map { stores ->
+        stores.filter { it.isOpen }
+            .sortedWith(compareByDescending<Store> { it.rating }.thenBy { it.distanceKm ?: Double.MAX_VALUE })
+            .take(8)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
