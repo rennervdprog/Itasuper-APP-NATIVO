@@ -663,6 +663,15 @@ fun ProfileScreen(
                             destructive = true
                         )
                     }
+
+                    // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - botão temporário para debug do mapa
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = { com.example.ui.debug.MapDebugActivity.open(context) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Debug Mapa (temporário)")
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
             }
