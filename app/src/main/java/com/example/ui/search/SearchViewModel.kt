@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.Coupon
 import com.example.data.model.DiscoverProduct
 import com.example.data.model.Product
 import com.example.data.model.Store
@@ -86,35 +87,36 @@ fun matchesDiscoverQuickFilter(store: Store, filter: DiscoverQuickFilter?): Bool
 
 // ===== Modelos das novas seções da Descoberta (plano 8 ideias) =====
 
-/** Banner do carrossel hero de promoções (dados mockados por enquanto). */
+/** Banner do carrossel hero: loja real com cupom ativo (via RPC get_stores_with_coupons). */
 data class PromoBanner(
     val id: String,
     val title: String,
     val subtitle: String,
-    val ctaText: String,
+    val ctaText: String = "Ver loja",
     val backgroundColor: Long,
-    val emoji: String = ""
+    val storeId: String,
+    val imageUrl: String = ""
 )
 
-/** Coleção editorial ("Top 10 hambúrgueres") com curador e botão salvar. */
+/** Coleção dinâmica gerada de dados reais (lojas filtradas), com botão salvar. */
 data class DiscoverCollection(
     val id: String,
     val title: String,
     val subtitle: String,
-    val curatorName: String,
-    val emoji: String = "",
+    val stores: List<Store>,
     val backgroundColor: Long = 0xFFFFF4EC,
     val saved: Boolean = false
 )
 
-/** Oferta do dia com contagem regressiva. */
+/** Oferta do dia: cupom real; endsAtMillis = 0 quando o cupom não tem expiração. */
 data class DailyDeal(
     val id: String,
     val title: String,
     val description: String,
     val discountBadge: String,
     val endsAtMillis: Long,
-    val tall: Boolean = false
+    val tall: Boolean = false,
+    val storeId: String? = null
 )
 
 /** Item para o rail "Peça de novo", derivado do histórico de pedidos. */
@@ -135,6 +137,41 @@ fun formatCountdown(remainingMillis: Long): String {
     val m = (totalSec % 3600) / 60
     val s = totalSec % 60
     return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+/** Converte "2026-10-20T23:59:59+00:00" em millis (API 24-safe, sem java.time). 0 = sem expiração. */
+fun parseIsoToMillis(iso: String?): Long {
+    if (iso.isNullOrBlank()) return 0L
+    return try {
+        val clean = iso.trim()
+            .replace(Regex("[+-]\\d{2}:?\\d{2}$"), "")
+            .replace(Regex("Z$"), "")
+            .substringBefore(".")
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(clean)?.time ?: 0L
+    } catch (_: Throwable) {
+        0L
+    }
+}
+
+/** Badge do cupom real, ex: "-20%" ou "-R$10". */
+fun couponBadgeText(discountType: String, discountValue: Double): String =
+    if (discountType.equals("percent", ignoreCase = true) || discountType.equals("percentage", ignoreCase = true))
+        "-${discountValue.toInt()}%"
+    else
+        "-R$${discountValue.toInt()}"
+
+/** Descrição legível do cupom real em pt-BR. */
+fun couponDescriptionText(coupon: Coupon): String {
+    val parts = mutableListOf<String>()
+    val discount = if (coupon.discountType.equals("percent", ignoreCase = true) || coupon.discountType.equals("percentage", ignoreCase = true))
+        "${coupon.discountValue.toInt()}% de desconto"
+    else
+        "R$ ${"%.2f".format(coupon.discountValue).replace('.', ',')} de desconto"
+    parts += discount
+    if (coupon.minOrderValue > 0)
+        parts += "em pedidos acima de R$ ${"%.2f".format(coupon.minOrderValue).replace('.', ',')}"
+    if (coupon.firstOrderOnly) parts += "só na 1ª compra"
+    return parts.joinToString(" • ")
 }
 
 data class SearchUiState(
@@ -292,80 +329,110 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         matched.sortedWith(compareByDescending<Store> { it.isOpen }.thenByDescending { it.rating })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // ===== Novas seções da Descoberta (plano 8 ideias) =====
+    // ===== Seções da Descoberta com dados reais =====
 
-    /** Banners do carrossel hero (mockados; no futuro vêm de campanha ativa). */
-    val promoBanners: StateFlow<List<PromoBanner>> = MutableStateFlow(
-        listOf(
-            PromoBanner(
-                id = "frete_gratis",
-                title = "Frete grátis",
-                subtitle = "Em pedidos acima de R$ 35 nas lojas participantes",
-                ctaText = "Ver lojas",
-                backgroundColor = 0xFFF26522,
-                emoji = "\uD83D\uDE9A"
-            ),
-            PromoBanner(
-                id = "bemvindo30",
-                title = "30% OFF",
-                subtitle = "Na primeira compra com o cupom BEMVINDO30",
-                ctaText = "Pedir agora",
-                backgroundColor = 0xFF7B4DFF,
-                emoji = "\uD83C\uDF89"
-            ),
-            PromoBanner(
-                id = "acai_dobro",
-                title = "Açaí em dobro",
-                subtitle = "Na compra de 1 açaí 500ml, ganhe outro",
-                ctaText = "Aproveitar",
-                backgroundColor = 0xFF2E7D32,
-                emoji = "\uD83C\uDF67"
-            )
-        )
-    ).asStateFlow()
+    private val _promoBanners = MutableStateFlow<List<PromoBanner>>(emptyList())
 
-    private val _collections = MutableStateFlow(
-        listOf(
-            DiscoverCollection(
-                id = "top_burger",
-                title = "Top 10 hambúrgueres",
-                subtitle = "Os mais pedidos da cidade",
-                curatorName = "Equipe ItaSuper",
-                emoji = "\uD83C\uDF54",
-                backgroundColor = 0xFFFFF4EC
-            ),
-            DiscoverCollection(
-                id = "barato_30",
-                title = "Comida boa < R$ 30",
-                subtitle = "Delícias que cabem no bolso",
-                curatorName = "Equipe ItaSuper",
-                emoji = "\uD83D\uDCB0",
-                backgroundColor = 0xFFE8F5E9
-            ),
-            DiscoverCollection(
-                id = "sobremesas",
-                title = "Sobremesas pra hoje",
-                subtitle = "Açúcar na medida certa",
-                curatorName = "Equipe ItaSuper",
-                emoji = "\uD83C\uDF70",
-                backgroundColor = 0xFFFCE4EC
-            ),
-            DiscoverCollection(
-                id = "saudavel",
-                title = "Leve e saudável",
-                subtitle = "Opções fit perto de você",
-                curatorName = "Equipe ItaSuper",
-                emoji = "\uD83E\uDD57",
-                backgroundColor = 0xFFE0F2F1
+    /** Banners reais: lojas da cidade com cupom ativo (RPC get_stores_with_coupons). */
+    val promoBanners: StateFlow<List<PromoBanner>> = _promoBanners.asStateFlow()
+
+    private val _couponStoreIds = MutableStateFlow<Set<String>>(emptySet())
+
+    private val bannerPalette = listOf(0xFFF26522, 0xFF7B4DFF, 0xFF2E7D32, 0xFFD81B60, 0xFF0288D1)
+
+    init {
+        viewModelScope.launch {
+            regionalStores.collect { stores ->
+                try {
+                    val ids = stores.map { it.id }.toSet()
+                    val withCoupons = SupabaseClient.fetchStoresWithCoupons(limit = 20)
+                        .filter { it.storeId in ids }
+                    _couponStoreIds.value = withCoupons.map { it.storeId }.toSet()
+                    _promoBanners.value = withCoupons.take(5).mapIndexed { index, swc ->
+                        PromoBanner(
+                            id = "coupon_${swc.storeId}_${swc.couponCode}",
+                            title = couponBadgeText(swc.discountType, swc.discountValue),
+                            subtitle = "${swc.storeName} • Cupom ${swc.couponCode}",
+                            backgroundColor = bannerPalette[index % bannerPalette.size],
+                            storeId = swc.storeId,
+                            imageUrl = swc.storeLogoUrl.orEmpty()
+                        )
+                    }
+                } catch (_: Exception) {
+                    _promoBanners.value = emptyList()
+                    _couponStoreIds.value = emptySet()
+                }
+            }
+        }
+    }
+
+    private val _collectionsSaved = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Coleções dinâmicas geradas de dados reais da cidade. Só aparece quem tem loja. */
+    val collections: StateFlow<List<DiscoverCollection>> = combine(
+        regionalStores,
+        _couponStoreIds,
+        _collectionsSaved
+    ) { stores, couponIds, savedIds ->
+        // API 24-safe: sem java.time
+        val thirtyDaysAgo = try {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, -30)
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(cal.time)
+        } catch (_: Throwable) { "" }
+        buildList {
+            val onSale = stores.filter { it.id in couponIds }
+            if (onSale.isNotEmpty()) add(
+                DiscoverCollection(
+                    id = "em_oferta",
+                    title = "Em oferta",
+                    subtitle = "${onSale.size} ${if (onSale.size == 1) "loja" else "lojas"} com cupom",
+                    stores = onSale.sortedByDescending { it.rating }.take(3),
+                    backgroundColor = 0xFFFFF4EC,
+                    saved = "em_oferta" in savedIds
+                )
             )
-        )
-    )
-    val collections: StateFlow<List<DiscoverCollection>> = _collections.asStateFlow()
+            val topRated = stores.filter { it.rating >= 4.5 }
+            if (topRated.isNotEmpty()) add(
+                DiscoverCollection(
+                    id = "bem_avaliados",
+                    title = "Bem avaliados",
+                    subtitle = "${topRated.size} ${if (topRated.size == 1) "loja" else "lojas"} nota 4.5+",
+                    stores = topRated.sortedByDescending { it.rating }.take(3),
+                    backgroundColor = 0xFFE8F5E9,
+                    saved = "bem_avaliados" in savedIds
+                )
+            )
+            val freeDelivery = stores.filter { it.isFreeDelivery }
+            if (freeDelivery.isNotEmpty()) add(
+                DiscoverCollection(
+                    id = "entrega_gratis",
+                    title = "Entrega grátis",
+                    subtitle = "${freeDelivery.size} ${if (freeDelivery.size == 1) "loja" else "lojas"} sem taxa",
+                    stores = freeDelivery.sortedByDescending { it.rating }.take(3),
+                    backgroundColor = 0xFFE3F2FD,
+                    saved = "entrega_gratis" in savedIds
+                )
+            )
+            val newOnes = stores.filter { store ->
+                store.createdAt.isNotBlank() && thirtyDaysAgo.isNotBlank() && store.createdAt >= thirtyDaysAgo
+            }
+            if (newOnes.isNotEmpty()) add(
+                DiscoverCollection(
+                    id = "novidades",
+                    title = "Novidades",
+                    subtitle = "${newOnes.size} ${if (newOnes.size == 1) "loja nova" else "lojas novas"}",
+                    stores = newOnes.sortedByDescending { it.createdAt }.take(3),
+                    backgroundColor = 0xFFF3E5F5,
+                    saved = "novidades" in savedIds
+                )
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun toggleCollectionSaved(id: String) {
-        _collections.value = _collections.value.map {
-            if (it.id == id) it.copy(saved = !it.saved) else it
-        }
+        _collectionsSaved.value = if (id in _collectionsSaved.value)
+            _collectionsSaved.value - id else _collectionsSaved.value + id
     }
 
     /** "Peça de novo": pratos distintos do histórico de pedidos. */
@@ -400,45 +467,34 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Ofertas do dia com contagem regressiva (mockadas; expiram em horas). */
-    val dailyDeals: StateFlow<List<DailyDeal>> = MutableStateFlow(
-        run {
-            val now = System.currentTimeMillis()
-            val hour = 3_600_000L
-            listOf(
-                DailyDeal(
-                    id = "deal_frete",
-                    title = "FRETE10",
-                    description = "Frete grátis em qualquer pedido",
-                    discountBadge = "-R$ 10",
-                    endsAtMillis = now + 5 * hour,
-                    tall = true
-                ),
-                DailyDeal(
-                    id = "deal_pizza",
-                    title = "PIZZA20",
-                    description = "20% off em pizzarias",
-                    discountBadge = "-20%",
-                    endsAtMillis = now + 2 * hour + 34 * 60_000L
-                ),
-                DailyDeal(
-                    id = "deal_acai",
-                    title = "ACAI15",
-                    description = "15% off em açaís",
-                    discountBadge = "-15%",
-                    endsAtMillis = now + 8 * hour,
-                    tall = true
-                ),
-                DailyDeal(
-                    id = "deal_primeira",
-                    title = "BEMVINDO30",
-                    description = "30% off na 1ª compra",
-                    discountBadge = "-30%",
-                    endsAtMillis = now + 11 * hour + 12 * 60_000L
-                )
-            )
+    private val _dailyDeals = MutableStateFlow<List<DailyDeal>>(emptyList())
+
+    /** Ofertas do dia: cupons reais ativos; countdown só quando há expiração real. */
+    val dailyDeals: StateFlow<List<DailyDeal>> = _dailyDeals.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _dailyDeals.value = try {
+                val now = System.currentTimeMillis()
+                SupabaseClient.fetchActiveCoupons(limit = 10).mapNotNull { coupon ->
+                    if (coupon.code.isBlank()) return@mapNotNull null
+                    val endsAt = parseIsoToMillis(coupon.expiresAt)
+                    // Descarta cupom com expiração real já passada
+                    if (coupon.expiresAt?.isNotBlank() == true && endsAt in 1 until now) return@mapNotNull null
+                    DailyDeal(
+                        id = coupon.id.ifBlank { coupon.code },
+                        title = coupon.code.uppercase(),
+                        description = couponDescriptionText(coupon),
+                        discountBadge = couponBadgeText(coupon.discountType, coupon.discountValue),
+                        endsAtMillis = endsAt,
+                        storeId = coupon.storeId?.takeIf { it.isNotBlank() }
+                    )
+                }.take(6).mapIndexed { index, deal -> deal.copy(tall = index % 2 == 0) }
+            } catch (_: Exception) {
+                emptyList()
+            }
         }
-    ).asStateFlow()
+    }
 
     private val utilityTerms = setOf("farmacia", "pet", "mercado", "supermercado", "conveniencia", "padaria")
 
