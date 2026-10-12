@@ -299,6 +299,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     val featuredProducts: StateFlow<List<DiscoverProduct>> = _featuredProducts.asStateFlow()
 
+    private val _couponStoreIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** IDs das lojas com cupom ativo — usado pelo filtro "Com cupom". */
+    val couponStoreIds: StateFlow<Set<String>> = _couponStoreIds.asStateFlow()
+
+    /** IDs das lojas com ao menos um produto de até R$ 30 — usado pelo filtro "Até R$ 30". */
+    val cheapStoreIds: StateFlow<Set<String>> = _searchableProducts
+        .map { products -> products.filter { it.price <= 30.0 }.map { it.storeId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     /** Catálogo mais amplo para resultados por nome de produto, loja ou categoria. */
     val searchableProducts: StateFlow<List<DiscoverProduct>> = combine(
         _searchableProducts,
@@ -351,15 +361,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     /** Banners reais: lojas da cidade com cupom ativo (RPC get_stores_with_coupons). */
     val promoBanners: StateFlow<List<PromoBanner>> = _promoBanners.asStateFlow()
 
-    private val _couponStoreIds = MutableStateFlow<Set<String>>(emptySet())
 
-    /** IDs das lojas com cupom ativo — usado pelo filtro "Com cupom". */
-    val couponStoreIds: StateFlow<Set<String>> = _couponStoreIds.asStateFlow()
-
-    /** IDs das lojas com ao menos um produto de até R$ 30 — usado pelo filtro "Até R$ 30". */
-    val cheapStoreIds: StateFlow<Set<String>> = _searchableProducts
-        .map { products -> products.filter { it.price <= 30.0 }.map { it.storeId }.toSet() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val bannerPalette = listOf(0xFFF26522, 0xFF177A3D, 0xFF8A4B0F)
 
