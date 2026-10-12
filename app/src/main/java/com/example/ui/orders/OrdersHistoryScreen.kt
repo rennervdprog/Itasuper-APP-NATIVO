@@ -829,11 +829,11 @@ private fun OrderFinancialSummary(order: Order) {
     ) {
         // Data do pedido
         if (order.createdAt.isNotBlank()) {
-            SummaryLine("Data do pedido", formatOrderDate(order.createdAt))
+            SummaryLine("Data do pedido", order.createdLabel())
         }
         // Forma de pagamento
         if (order.paymentMethod.isNotBlank()) {
-            SummaryLine("Pagamento", formatPaymentMethod(order.paymentMethod))
+            SummaryLine("Pagamento", paymentLabel(order.paymentMethod))
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         order.items.forEach { item ->
