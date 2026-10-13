@@ -509,12 +509,15 @@ private fun DiscoverFilterChips(
 }
 
 private fun categoryDrawableId(categoryId: String): Int? = when (categoryId.lowercase()) {
-    "pizzaria", "pizza" -> R.drawable.ic_preview_pizza
-    "acai", "açaí" -> R.drawable.ic_preview_acai
-    "marmita" -> R.drawable.ic_preview_marmita
-    "bebidas", "bebida" -> R.drawable.ic_preview_drink
-    "farmacia", "farmacias", "farmácia" -> R.drawable.ic_preview_pharmacy
-    "lanches", "lanche", "hamburguer", "hambúrguer", "burger" -> R.drawable.ic_preview_burger
+    "pizzaria", "pizza" -> R.drawable.ic_cat_pizzaria_3d
+    "acai", "açaí" -> R.drawable.ic_cat_acai_3d
+    "marmita" -> R.drawable.ic_cat_marmita_3d
+    "bebidas", "bebida" -> R.drawable.ic_cat_bebidas_3d
+    "farmacia", "farmacias", "farmácia" -> R.drawable.ic_cat_farmacia_3d
+    "lanches", "lanche", "hamburguer", "hambúrguer", "burger" -> R.drawable.ic_cat_lanches_3d
+    "churrasco" -> R.drawable.ic_cat_churrasco_3d
+    "mercado", "mercados" -> R.drawable.ic_cat_mercado_3d
+    "pastel", "pasteis", "pastéis" -> R.drawable.ic_cat_pastel_3d
     else -> null
 }
 
