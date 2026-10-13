@@ -683,7 +683,7 @@ private fun HomeExplorationCategoryItem(
     onClick: () -> Unit
 ) {
     val iconRes = when (category.iconName.lowercase()) {
-        "layout_grid", "todas", "todos", "all" -> R.drawable.ic_lucide_layout_grid
+        "layout_grid", "todas", "todos", "all" -> R.drawable.ic_cat_todos_3d
         "fastfood", "lanche", "lanches", "hamburger", "hamburguer" -> R.drawable.ic_cat_lanches_3d
         "local_pizza", "pizza", "pizzaria" -> R.drawable.ic_cat_pizzaria_3d
         "restaurant", "marmita" -> R.drawable.ic_cat_marmita_3d
@@ -713,14 +713,14 @@ private fun HomeExplorationCategoryItem(
             ),
             modifier = Modifier.size(50.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = label,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(CircleShape)
+            )
         }
         Spacer(modifier = Modifier.height(7.dp))
         Text(
