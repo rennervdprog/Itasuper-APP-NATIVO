@@ -156,6 +156,7 @@ fun VideoSplashScreen(onFinished: () -> Unit) {
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
+                    setBackgroundColor(android.graphics.Color.WHITE)
                     val uri = Uri.parse("android.resource://${ctx.packageName}/${R.raw.splash_animation}")
                     setVideoURI(uri)
                     setOnPreparedListener { mp ->
@@ -199,6 +200,7 @@ fun SessionRestoreScreen() {
         AndroidView(
             factory = { ctx ->
                 VideoView(ctx).apply {
+                    setBackgroundColor(android.graphics.Color.WHITE)
                     val uri = Uri.parse("android.resource://${ctx.packageName}/${R.raw.splash_animation}")
                     setVideoURI(uri)
                     setOnPreparedListener { mp ->
