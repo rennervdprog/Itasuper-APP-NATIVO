@@ -140,6 +140,50 @@ class MainActivity : ComponentActivity() {
 private val SPLASH_MARK_SIZE = 208.dp
 
 /**
+ * Splash de video dedicada: reproduz a animacao da marca uma vez (~2s)
+ * com fundo laranja, depois chama onFinished.
+ */
+@Composable
+fun VideoSplashScreen(onFinished: () -> Unit) {
+    val context = LocalContext.current
+    var finished by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ItaSuperPrimary),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                VideoView(ctx).apply {
+                    val uri = Uri.parse("android.resource://${ctx.packageName}/${R.raw.splash_animation}")
+                    setVideoURI(uri)
+                    setOnPreparedListener { mp ->
+                        mp.isLooping = false
+                        start()
+                    }
+                    setOnCompletionListener {
+                        if (!finished) {
+                            finished = true
+                            onFinished()
+                        }
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+    // Fallback: se o video falhar, avanca apos 3s
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3000)
+        if (!finished) {
+            finished = true
+            onFinished()
+        }
+    }
+}
+
+/**
  * Tela exibida enquanto a sessao local e lida.
  * Reproduz o video animado da marca em loop ate a sessao estar pronta.
  */
@@ -178,6 +222,7 @@ fun ItaSuperApp() {
     val connectivityMonitor = remember(context) { ConnectivityMonitor(context) }
     val isOnline by connectivityMonitor.isOnline.collectAsState()
     var hasLostConnection by remember { mutableStateOf(false) }
+    var showVideoSplash by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         UserSessionRepository.initialize(context)
@@ -190,6 +235,11 @@ fun ItaSuperApp() {
         if (userSession.isLoggedIn) {
             PushNotificationManager.registerCurrentDevice(context)
         }
+    }
+
+    if (showVideoSplash) {
+        VideoSplashScreen(onFinished = { showVideoSplash = false })
+        return
     }
 
     if (!userSession.isSessionRestored) {
