@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -40,7 +41,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -52,6 +56,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +99,7 @@ fun CartScreen(
         it.deliveryMode.equals("own", ignoreCase = true) && it.hasAvailableDriver == false
     } == true
     val deliveryBlockedForCurrentSelection = isDeliveryUnavailable && cart.deliveryType == "DELIVERY"
+    var showDeliveryFeeInfo by remember { mutableStateOf(false) }
 
     // Auto-aplica cupom vindo da seção "Lojas com Cupom" (somente se o carrinho for da mesma loja)
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -537,9 +545,23 @@ fun CartScreen(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Taxa de entrega", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Taxa de entrega", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    IconButton(
+                                        onClick = { showDeliveryFeeInfo = true },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Info,
+                                            contentDescription = "Sobre a taxa de entrega",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                                 when {
                                     cart.deliveryType == "RETIRADA" -> Text("Grátis (Retirada)", color = ItaSuperSuccess, fontWeight = FontWeight.Bold)
                                     !deliveryQuoteReady -> Text("A confirmar", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -643,6 +665,64 @@ fun CartScreen(
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                 }
+            }
+        }
+    }
+
+    // Modal estilo Zé Delivery: explica para onde vai a taxa de entrega.
+    if (showDeliveryFeeInfo) {
+        DeliveryFeeInfoBottomSheet(
+            isPdvOnly = store?.planType.equals("pdv_only", ignoreCase = true),
+            onDismiss = { showDeliveryFeeInfo = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeliveryFeeInfoBottomSheet(
+    isPdvOnly: Boolean,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Valor de entrega",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = if (isPdvOnly) {
+                    "A taxa de entrega fica integralmente com a loja, responsável pela remuneração do entregador."
+                } else {
+                    "Da taxa de entrega, R$ 0,99 é destinado à plataforma ItaSuper para manter o app funcionando. O restante fica com a loja, responsável pela remuneração do entregador."
+                },
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ItaSuperPrimary)
+            ) {
+                Text("Ok", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
