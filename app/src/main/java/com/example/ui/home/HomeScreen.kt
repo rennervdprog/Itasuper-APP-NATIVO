@@ -684,15 +684,16 @@ private fun HomeExplorationCategoryItem(
 ) {
     val iconRes = when (category.iconName.lowercase()) {
         "layout_grid", "todas", "todos", "all" -> R.drawable.ic_lucide_layout_grid
-        "fastfood", "lanche", "hamburger", "hamburguer" -> R.drawable.ic_preview_burger
-        "local_pizza", "pizza" -> R.drawable.ic_preview_pizza
-        "restaurant", "marmita" -> R.drawable.ic_preview_marmita
-        "bakery_dining", "pastel" -> R.drawable.ic_home_category_pastel
-        "icecream", "acai", "açaí" -> R.drawable.ic_preview_acai
-        "local_bar", "bebidas" -> R.drawable.ic_preview_drink
-        "shopping_cart", "mercado", "market" -> R.drawable.ic_preview_basket
-        "pharmacy", "farmacia", "farmácia", "farmacias" -> R.drawable.ic_preview_pharmacy
-        else -> R.drawable.ic_lucide_hamburger
+        "fastfood", "lanche", "lanches", "hamburger", "hamburguer" -> R.drawable.ic_cat_lanches_3d
+        "local_pizza", "pizza", "pizzaria" -> R.drawable.ic_cat_pizzaria_3d
+        "restaurant", "marmita" -> R.drawable.ic_cat_marmita_3d
+        "bakery_dining", "pastel", "pasteis" -> R.drawable.ic_cat_pastel_3d
+        "icecream", "acai", "açaí" -> R.drawable.ic_cat_acai_3d
+        "local_bar", "bebidas", "bebida" -> R.drawable.ic_cat_bebidas_3d
+        "shopping_cart", "mercado", "mercados", "market" -> R.drawable.ic_cat_mercado_3d
+        "pharmacy", "farmacia", "farmácia", "farmacias" -> R.drawable.ic_cat_farmacia_3d
+        "churrasco" -> R.drawable.ic_cat_churrasco_3d
+        else -> R.drawable.ic_cat_lanches_3d
     }
     val label = category.name.ifBlank { category.id.replaceFirstChar { it.uppercase() } }
 
