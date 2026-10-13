@@ -106,7 +106,10 @@ data class OrdersUiState(
     val pixDirectPayment: PixDirectPaymentUiState? = null,
     val isRefreshingOrders: Boolean = false,
     val confirmingDeliveryOrderId: String? = null,
-    val cancellingOrderId: String? = null
+    val cancellingOrderId: String? = null,
+    /** Pedido anterior pendente de confirmação de troca de loja (estilo iFood). */
+    val pendingRepeatOrder: Order? = null,
+    val pendingRepeatStoreName: String = ""
 )
 
 class OrdersViewModel : ViewModel() {
@@ -1422,6 +1425,17 @@ class OrdersViewModel : ViewModel() {
     }
 
     fun repeatOrder(order: Order) {
+        if (order.items.isEmpty()) return
+        // Estilo iFood: se a sacola tem itens de outra loja, pede confirmação antes.
+        val current = CartRepository.cartState.value
+        val firstStoreId = order.items.first().product.storeId
+        if (current.storeId != null && current.storeId != firstStoreId && current.items.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                pendingRepeatOrder = order,
+                pendingRepeatStoreName = current.storeName
+            )
+            return
+        }
         for (item in order.items) {
             CartRepository.addProduct(
                 product = item.product,
@@ -1430,5 +1444,25 @@ class OrdersViewModel : ViewModel() {
                 notes = item.notes
             )
         }
+    }
+
+    /** Usuário confirmou: esvazia a sacola e repete o pedido. */
+    fun confirmRepeatOrder() {
+        val order = _uiState.value.pendingRepeatOrder ?: return
+        CartRepository.clearCart()
+        for (item in order.items) {
+            CartRepository.addProduct(
+                product = item.product,
+                storeName = order.storeName,
+                quantity = item.quantity,
+                notes = item.notes
+            )
+        }
+        _uiState.value = _uiState.value.copy(pendingRepeatOrder = null, pendingRepeatStoreName = "")
+    }
+
+    /** Usuário cancelou a repetição do pedido. */
+    fun dismissRepeatOrder() {
+        _uiState.value = _uiState.value.copy(pendingRepeatOrder = null, pendingRepeatStoreName = "")
     }
 }

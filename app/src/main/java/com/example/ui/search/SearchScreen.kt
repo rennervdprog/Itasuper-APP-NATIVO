@@ -1,5 +1,7 @@
 package com.example.ui.search
 
+import com.example.ui.common.StoreSwitchBottomSheet
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -216,6 +218,15 @@ fun SearchScreen(
                 )
             }
         }
+    }
+
+    // Bottom sheet estilo iFood: confirma esvaziar a sacola ao trocar de loja.
+    uiState.pendingStoreSwitch?.let { switch ->
+        StoreSwitchBottomSheet(
+            currentStoreName = switch.currentStoreName,
+            onConfirm = { viewModel.confirmStoreSwitch() },
+            onDismiss = { viewModel.dismissStoreSwitch() }
+        )
     }
 }
 
