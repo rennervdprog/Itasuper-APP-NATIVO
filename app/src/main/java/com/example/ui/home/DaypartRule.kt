@@ -54,7 +54,7 @@ object DaypartRule {
 
     private val NOITE = Daypart(
         id = "noite",
-        titulo = "Hora do jantar",
+        titulo = "Boa noite",
         subtitulo = "O que pedir hoje à noite",
         categorias = listOf("pizzaria", "lanches", "bebidas")
     )
