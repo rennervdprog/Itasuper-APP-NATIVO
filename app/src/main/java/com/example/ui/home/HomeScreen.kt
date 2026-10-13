@@ -1886,6 +1886,91 @@ private fun HomeStoresWithCouponsSection(
     }
 }
 
+
+/**
+ * Banner promocional estilo iFood: gradiente, badge, valor em destaque,
+ * elemento visual e título + subtítulo abaixo.
+ */
+@Composable
+private fun PromoBannerCard(
+    badge: String,
+    title: String,
+    subtitle: String,
+    captionTitle: String,
+    captionSubtitle: String,
+    emoji: String,
+    gradientColors: List<Color>,
+    onClick: () -> Unit
+) {
+    Column(modifier = Modifier.width(280.dp).clickable { onClick() }) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Brush.linearGradient(colors = gradientColors))
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 20.dp, end = 100.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.25f))
+                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 10.sp,
+                        letterSpacing = 0.8.sp,
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 26.sp,
+                    lineHeight = 28.sp,
+                    color = Color.White
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = Color.White
+                )
+            }
+            Text(
+                text = emoji,
+                fontSize = 72.sp,
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+            )
+        }
+        Column(modifier = Modifier.padding(start = 4.dp, top = 8.dp)) {
+            Text(
+                text = captionTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = Color(0xFF1F1F1F)
+            )
+            Text(
+                text = captionSubtitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
+                color = Color(0xFF6D6D6D)
+            )
+        }
+    }
+}
+
 /** Card estilo "ticket" de cupom: logo + loja + código à esquerda, desconto em destaque à direita. */
 @Composable
 private fun CouponTicketCard(
