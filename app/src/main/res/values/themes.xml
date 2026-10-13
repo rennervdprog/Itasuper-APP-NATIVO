@@ -13,7 +13,7 @@
       assim que a Activity comeca a desenhar.
     -->
     <style name="Theme.ItaSuper.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/ita_primary</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_brand_mark</item>
         <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
     </style>

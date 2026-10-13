@@ -150,7 +150,7 @@ fun VideoSplashScreen(onFinished: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ItaSuperPrimary),
+            .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
@@ -193,7 +193,7 @@ fun SessionRestoreScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ItaSuperPrimary),
+            .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
