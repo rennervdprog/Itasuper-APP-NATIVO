@@ -1877,8 +1877,14 @@ private fun HomeStoresWithCouponsSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(storesWithCoupons, key = { it.storeId }) { item ->
-                CouponTicketCard(
-                    item = item,
+                PromoBannerCard(
+                    badge = "CUPOM",
+                    title = "-R$${item.discountValue}",
+                    subtitle = item.storeName,
+                    captionTitle = "R$${item.discountValue} OFF em ${item.storeName}",
+                    captionSubtitle = "Use o cupom ${item.couponCode}",
+                    emoji = "\uD83C\uDF9F",
+                    gradientColors = listOf(ItaSuperPrimary, Color(0xFFFFB37A)),
                     onClick = { onStoreClick(item.storeId, item.couponCode) }
                 )
             }
