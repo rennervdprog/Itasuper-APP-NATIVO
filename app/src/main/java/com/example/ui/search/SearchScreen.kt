@@ -41,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -529,7 +530,7 @@ private fun DiscoverCategoryGrid(
         rows = GridCells.Fixed(2),
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp),
+            .height(176.dp),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -544,7 +545,7 @@ private fun DiscoverCategoryGrid(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(48.dp)
                         .graphicsLayer {
                             scaleX = if (isSelected) 1.05f else 1f
                             scaleY = if (isSelected) 1.05f else 1f
@@ -563,7 +564,7 @@ private fun DiscoverCategoryGrid(
                         androidx.compose.foundation.Image(
                             painter = painterResource(iconRes),
                             contentDescription = category.name,
-                            modifier = Modifier.size(56.dp),
+                            modifier = Modifier.size(48.dp),
                             contentScale = ContentScale.Crop
                         )
                     } else {
@@ -578,17 +579,17 @@ private fun DiscoverCategoryGrid(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(5.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = category.name,
                     style = TextStyle(
                         fontFamily = ManropeFontFamily,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.5.sp,
+                        fontSize = 11.sp,
                         color = if (isSelected) ItaSuperPrimary else DscInk
                     ),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Visible
                 )
             }
         }
@@ -845,12 +846,7 @@ private fun NearYouSection(
                 { expanded = !expanded }
             } else null
         )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             visible.forEach { store ->
                 RestCard(
                     store = store,
@@ -862,238 +858,199 @@ private fun NearYouSection(
     }
 }
 
-/** Card de restaurante vertical do protótipo (.rest-card). */
+/** Card de loja compacto estilo iFood: logo pequeno + nome + meta. Sem banner gigante. */
 @Composable
 private fun RestCard(
     store: Store,
     hasCoupon: Boolean,
     onClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("discover_rest_${store.id}")
-    ) {
-        Box(
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(DscChipBg)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+                .testTag("discover_rest_${store.id}"),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val imageUrl = store.bannerUrl.ifBlank { store.logoUrl }
-            if (imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = store.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_ita_store),
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp)
+            // Logo pequeno (56dp). Nunca estica logo como banner.
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DscChipBg),
+                contentAlignment = Alignment.Center
+            ) {
+                if (store.logoUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = store.logoUrl,
+                        contentDescription = store.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                }
-            }
-            if (hasCoupon) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(10.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ItaSuperPrimary)
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
-                ) {
+                } else {
                     Text(
-                        text = "Cupom",
+                        text = store.name.take(1).uppercase(Locale("pt", "BR")),
                         style = TextStyle(
                             fontFamily = ManropeFontFamily,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 11.5.sp,
-                            color = Color.White
+                            fontSize = 20.sp,
+                            color = ItaSuperPrimary
                         )
                     )
                 }
             }
-            if (!store.isOpen) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center
-                ) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Fechado",
+                        text = store.name,
                         style = TextStyle(
                             fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = Color.White
-                        )
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
+                            color = if (store.isOpen) DscInk else DscInk2
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (hasCoupon && store.isOpen) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(ItaSuperPrimary)
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "Cupom",
+                                style = TextStyle(
+                                    fontFamily = ManropeFontFamily,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.5.sp,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        Spacer(modifier = Modifier.height(9.dp))
-        Text(
-            text = store.name,
-            style = TextStyle(
-                fontFamily = ManropeFontFamily,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 15.5.sp,
-                color = DscInk
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "★ ${dscRating(store.rating)}",
-                style = TextStyle(
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 12.5.sp,
-                    color = DscAmber
-                )
-            )
-            if (store.deliveryTime.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = " · ${store.deliveryTime}",
+                    text = buildString {
+                        append("\u2605 ${dscRating(store.rating)}")
+                        if (!store.isOpen) {
+                            append(" \u00b7 Fechado")
+                        } else {
+                            if (store.deliveryTime.isNotBlank()) append(" \u00b7 ${store.deliveryTime}")
+                            if (store.isFreeDelivery) append(" \u00b7 Entrega gr\u00e1tis")
+                            else if (store.deliveryFee.isNotBlank()) append(" \u00b7 Entrega ${store.deliveryFee}")
+                        }
+                    },
                     style = TextStyle(
                         fontFamily = ManropeFontFamily,
-                        fontSize = 12.5.sp,
-                        color = DscInk2
-                    )
-                )
-            }
-            if (store.isFreeDelivery) {
-                Text(
-                    text = " · ",
-                    style = TextStyle(fontFamily = ManropeFontFamily, fontSize = 12.5.sp, color = DscInk2)
-                )
-                Text(
-                    text = "Entrega grátis",
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp,
-                        color = DscGreen
-                    )
-                )
-            } else if (store.deliveryFee.isNotBlank()) {
-                Text(
-                    text = " · Entrega ${store.deliveryFee}",
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontSize = 12.5.sp,
+                        fontSize = 12.sp,
                         color = DscInk2
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = DscInk2.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
+            )
         }
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .height(1.dp)
+                .background(DscLine)
+        )
     }
 }
 
-/** Card de coleção do protótipo (.col-card): foto + gradiente + Salvar. */
+/** Card de coleção compacto: fundo sólido + inicial, sem foto esticada. */
 @Composable
 private fun ProtoCollectionCard(
     collection: DiscoverCollection,
     onToggleSave: () -> Unit,
     onClick: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = Modifier
-            .width(218.dp)
-            .heightIn(min = 138.dp)
+            .width(148.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(DscChipBg)
+            .background(Color(collection.backgroundColor))
             .clickable(onClick = onClick)
-            .testTag("discover_collection_${collection.id}")
+            .padding(12.dp)
+            .testTag("discover_collection_${collection.id}"),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        val bgUrl = collection.stores.firstOrNull()
-            ?.let { it.bannerUrl.ifBlank { it.logoUrl } }
-            .orEmpty()
-        if (bgUrl.isNotBlank()) {
-            AsyncImage(
-                model = bgUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xD20F0804),
-                            Color(0x400F0804),
-                            Color(0x000F0804)
-                        )
-                    )
-                )
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.Bottom
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.75f)),
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = collection.title,
+                text = collection.stores.firstOrNull()?.name?.take(1)
+                    ?.uppercase(Locale("pt", "BR")) ?: "\u2605",
                 style = TextStyle(
                     fontFamily = ManropeFontFamily,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
-                    lineHeight = 19.sp,
-                    color = Color.White
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                    fontSize = 18.sp,
+                    color = ItaSuperPrimary
+                )
             )
-            Spacer(modifier = Modifier.height(2.dp))
+        }
+        Text(
+            text = collection.title,
+            style = TextStyle(
+                fontFamily = ManropeFontFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                lineHeight = 17.sp,
+                color = DscInk
+            ),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = collection.subtitle,
+            style = TextStyle(
+                fontFamily = ManropeFontFamily,
+                fontSize = 11.sp,
+                color = DscInk2
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(
+                    if (collection.saved) ItaSuperPrimary
+                    else Color.White.copy(alpha = 0.9f)
+                )
+                .clickable(onClick = onToggleSave)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
             Text(
-                text = collection.subtitle,
+                text = if (collection.saved) "Salva" else "Salvar",
                 style = TextStyle(
                     fontFamily = ManropeFontFamily,
-                    fontSize = 11.5.sp,
-                    color = Color.White.copy(alpha = 0.9f)
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (collection.saved) ItaSuperPrimary
-                        else Color.White.copy(alpha = 0.94f)
-                    )
-                    .clickable(onClick = onToggleSave)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = if (collection.saved) "Salva" else "Salvar",
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 12.sp,
-                        color = if (collection.saved) Color.White else DscInk
-                    )
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 12.sp,
+                    color = if (collection.saved) Color.White else DscInk
                 )
-            }
+            )
         }
     }
 }
@@ -1452,17 +1409,19 @@ private fun DiscoverShimmerLoading() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             repeat(5) {
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .shimmer()
                 )
@@ -1471,45 +1430,47 @@ private fun DiscoverShimmerLoading() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .shimmer()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.55f)
-                .height(13.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .shimmer()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
+                .padding(horizontal = 18.dp)
+                .height(96.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .shimmer()
         )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(13.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .shimmer()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.55f)
-                .height(13.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .shimmer()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .shimmer()
-        )
+        // Linhas de loja (logo + textos), iguais ao RestCard compacto
+        repeat(3) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .shimmer()
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.6f)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .shimmer()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(11.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .shimmer()
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1633,14 +1594,11 @@ private fun DiscoverResults(
                 PSecHeader(title = "Lojas")
             }
             items(stores, key = { it.id }) { store ->
-                Column(modifier = Modifier.padding(horizontal = 18.dp)) {
-                    RestCard(
-                        store = store,
-                        hasCoupon = false,
-                        onClick = { onNavigateToStore(store.id) }
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
+                RestCard(
+                    store = store,
+                    hasCoupon = false,
+                    onClick = { onNavigateToStore(store.id) }
+                )
             }
         }
         if (products.isNotEmpty()) {
