@@ -379,7 +379,7 @@ fun ProfileScreen(
                     SectionCaption("Minha conta")
                     MenuCard {
                     AccountSectionCard(
-                        iconRes = R.drawable.ic_ita_profile,
+                        iconRes = R.drawable.ic_perfil_dados_3d,
                         title = "Dados pessoais",
                         subtitle = "Nome, CPF e e-mail",
                         complete = hasPersonalData,
@@ -441,7 +441,7 @@ fun ProfileScreen(
                     ProfileDivider()
 
                     AccountSectionCard(
-                        iconRes = R.drawable.ic_ita_pin,
+                        iconRes = R.drawable.ic_perfil_endereco_3d,
                         title = "Endereço de entrega",
                         subtitle = "Rua, número e localização",
                         complete = hasAddress,
@@ -598,14 +598,14 @@ fun ProfileScreen(
                     SectionCaption("Ajuda e suporte")
                     MenuCard {
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_support,
+                            iconRes = R.drawable.ic_perfil_suporte_3d,
                             title = "Falar com o suporte",
                             subtitle = "WhatsApp — resposta em minutos",
                             onClick = { openWhatsApp("Olá! Sou $displayName (${session.email}) e preciso de ajuda no ItaSuper.") }
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_info,
+                            iconRes = R.drawable.ic_perfil_reportar_3d,
                             title = "Reportar um problema",
                             subtitle = "Envie um relato ao suporte",
                             onClick = {
@@ -617,21 +617,21 @@ fun ProfileScreen(
                     SectionCaption("Sobre o ItaSuper")
                     MenuCard {
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_info,
+                            iconRes = R.drawable.ic_perfil_termos_3d,
                             title = "Termos de Uso",
                             subtitle = "Leia os termos oficiais do ItaSuper",
                             onClick = { openLegalDocument(LegalDocumentLinks.TERMS_URL) }
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_info,
+                            iconRes = R.drawable.ic_perfil_privacidade_3d,
                             title = "Política de Privacidade",
                             subtitle = "Veja como seus dados são tratados",
                             onClick = { openLegalDocument(LegalDocumentLinks.PRIVACY_URL) }
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_share,
+                            iconRes = R.drawable.ic_perfil_compartilhar_3d,
                             title = "Compartilhar o app",
                             subtitle = "Convide amigos para usar o ItaSuper",
                             onClick = {
@@ -648,7 +648,7 @@ fun ProfileScreen(
                     SectionCaption("Conta")
                     MenuCard {
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_logout,
+                            iconRes = R.drawable.ic_perfil_sair_3d,
                             title = "Sair da conta",
                             subtitle = "Encerrar esta sessão neste aparelho",
                             onClick = { showLogoutConfirmation = true },
@@ -656,7 +656,7 @@ fun ProfileScreen(
                         )
                         ProfileDivider()
                         ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_trash,
+                            iconRes = R.drawable.ic_perfil_excluir_3d,
                             title = "Excluir minha conta",
                             subtitle = "Remover sua conta do ItaSuper",
                             onClick = { showDeleteConfirmation = true },
@@ -789,8 +789,8 @@ private fun SectionCaption(title: String) {
 @Composable
 private fun QuickActionGrid(onOrders: () -> Unit, onSupport: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        QuickAction(Modifier.weight(1f), R.drawable.ic_ita_bag, "Meus pedidos", "", onOrders)
-        QuickAction(Modifier.weight(1f), R.drawable.ic_ita_support, "Suporte", "", onSupport)
+        QuickAction(Modifier.weight(1f), R.drawable.ic_perfil_pedidos_3d, "Meus pedidos", "", onOrders)
+        QuickAction(Modifier.weight(1f), R.drawable.ic_perfil_suporte_3d, "Suporte", "", onSupport)
     }
 }
 
@@ -807,7 +807,7 @@ private fun QuickAction(modifier: Modifier, iconRes: Int, title: String, subtitl
             modifier = Modifier.padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -837,7 +837,7 @@ private fun AccountSectionCard(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+            Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
@@ -894,7 +894,7 @@ private fun PinCard(hasPin: Boolean, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(painter = painterResource(R.drawable.ic_ita_key), contentDescription = null, tint = Color(0xFF2F2F2F), modifier = Modifier.size(25.dp))
+        Icon(painter = painterResource(R.drawable.ic_perfil_pin_3d), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(32.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text("PIN de entrega", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyLarge)
@@ -936,7 +936,7 @@ private fun ProfileMenuRow(
             .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(painter = painterResource(iconRes), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Icon(painter = painterResource(iconRes), contentDescription = null, tint = Color.Unspecified, modifier = Modifier.size(32.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
