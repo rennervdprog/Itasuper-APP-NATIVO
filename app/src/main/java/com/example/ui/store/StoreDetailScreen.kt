@@ -38,6 +38,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.append
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1154,14 +1158,20 @@ private fun StoreShowcaseHeader(
                         modifier = Modifier.size(26.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(5.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onInfoClick() }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = store?.category?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Alimentação",
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
-                        color = Color(0xFF686868)
+                        color = Color(0xFF686868),
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Surface(
                         color = if (isOpen) Color(0xFFF1FAF3) else Color(0xFFFFF3F3),
                         shape = RoundedCornerShape(14.dp)
@@ -1186,40 +1196,66 @@ private fun StoreShowcaseHeader(
                             )
                         }
                     }
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = Color(0xFFBDBDBD),
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val infoParts = mutableListOf<String>()
-                    // Avaliação
+                HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 1.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onInfoClick() }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     val rating = store?.rating ?: 0.0
-                    if (rating > 0) {
-                        infoParts.add("★ ${String.format("%.1f", rating).replace(".", ",")}")
-                    }
-                    // Tempo de entrega
-                    infoParts.add(timeText)
-                    // Distância
-                    store?.distanceKm?.let { dist ->
-                        if (dist > 0) {
-                            val distText = if (dist < 1) "${(dist * 1000).toInt()} m" else "${String.format("%.1f", dist).replace(".", ",")} km"
-                            infoParts.add(distText)
-                        }
-                    }
-                    // Taxa de entrega
-                    infoParts.add("Taxa $feeText")
-                    // Pedido mínimo
-                    val minOrder = store?.minOrder ?: 0.0
-                    if (minOrder > 0) {
-                        infoParts.add("Mín. R$ ${String.format("%.2f", minOrder).replace(".", ",")}")
-                    }
                     Text(
-                        text = infoParts.joinToString("  •  "),
+                        text = if (rating > 0) "★ ${String.format("%.1f", rating).replace(".", ",")}" else "★ Novo",
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         ),
-                        color = Color(0xFF666666),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        color = Color(0xFF1F1F1F),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = Color(0xFFBDBDBD),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 1.dp)
+                Column(modifier = Modifier.padding(vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = buildAnnotatedString {
+                                append("Padrão • $timeText • ")
+                                withStyle(style = SpanStyle(color = ItaSuperPrimary, fontWeight = FontWeight.Bold)) {
+                                    append(feeText)
+                                }
+                            },
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            ),
+                            color = Color(0xFF1F1F1F)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = buildString {
+                            append("Entrega pela loja")
+                            val minOrder = store?.minOrder ?: 0.0
+                            if (minOrder > 0) {
+                                append(" • Pedido mín. R$ ${String.format("%.2f", minOrder).replace(".", ",")}")
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                        color = Color(0xFF888888)
                     )
                 }
 
