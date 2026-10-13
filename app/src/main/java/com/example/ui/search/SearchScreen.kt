@@ -90,7 +90,7 @@ import java.util.Locale
 
 // ===== Tokens visuais do protótipo (ideias-para-aba-descobrir.html) =====
 // O protótipo usa --brand:#d92b1f; aqui o brand é o token real do produto (ItaSuperPrimary).
-private val DscBg = Color(0xFFFFFCF9)      // --phone-bg
+private val DscBg = Color(0xFFFFFFFF)      // branco puro
 private val DscInk = Color(0xFF221812)     // --phone-ink
 private val DscInk2 = Color(0xFF6F6154)    // --phone-ink-2
 private val DscLine = Color(0xFFEEE3D6)     // --phone-line
