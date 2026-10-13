@@ -9,6 +9,7 @@ import com.example.data.model.Product
 import com.example.data.model.SelectedAddonItem
 import com.example.data.model.Store
 import com.example.data.remote.SupabaseClient
+import com.example.data.repository.AddProductResult
 import com.example.data.repository.CartRepository
 import com.example.data.repository.CartState
 import com.example.data.repository.StoreRepository
@@ -78,7 +79,9 @@ data class StoreDetailUiState(
     val pizzaWizardQuantity: Int = 1,
     val pizzaWizardNotes: String = "",
     val pizzaWizardErrorMessage: String? = null,
-    val snackbarMessage: String? = null
+    val snackbarMessage: String? = null,
+    /** Troca de loja pendente de confirmação (estilo iFood). */
+    val pendingStoreSwitch: AddProductResult.NeedsStoreSwitch? = null
 ) {
     val hasRequiredModalAddons: Boolean
         get() = modalAddonGroups.any { it.minSelect > 0 }
@@ -536,14 +539,15 @@ class StoreDetailViewModel : ViewModel() {
             }
         }
 
-        CartRepository.addProduct(
-            product = product,
-            storeName = storeName,
-            quantity = state.modalQuantity,
-            notes = state.modalNotes,
-            selectedAddons = selectedAddonsList
-        )
-        closeProductModal()
+        handleAddProductResult(
+            CartRepository.addProduct(
+                product = product,
+                storeName = storeName,
+                quantity = state.modalQuantity,
+                notes = state.modalNotes,
+                selectedAddons = selectedAddonsList
+            )
+        ) { closeProductModal() }
     }
 
     fun addDirectProductToCart(product: Product) {
@@ -736,15 +740,15 @@ class StoreDetailViewModel : ViewModel() {
             category = "Pastéis"
         )
 
-        CartRepository.addProduct(
-            product = customProduct,
-            storeName = store.name,
-            quantity = state.wizardQuantity,
-            notes = state.wizardNotes.trim(),
-            selectedAddons = selectedAddons
-        )
-
-        closeBuilderModal()
+        handleAddProductResult(
+            CartRepository.addProduct(
+                product = customProduct,
+                storeName = store.name,
+                quantity = state.wizardQuantity,
+                notes = state.wizardNotes.trim(),
+                selectedAddons = selectedAddons
+            )
+        ) { closeBuilderModal() }
     }
 
     private fun pizzaBordersDefault(): PastelBorder? {
@@ -942,12 +946,42 @@ class StoreDetailViewModel : ViewModel() {
             description = "Sabores: $flavorsText",
             price = basePrice.coerceAtLeast(0.0)
         )
-        CartRepository.addProduct(product, store.name, state.pizzaWizardQuantity, state.pizzaWizardNotes.trim(), selectedAddons)
-        closeBuilderModal()
+        handleAddProductResult(
+            CartRepository.addProduct(product, store.name, state.pizzaWizardQuantity, state.pizzaWizardNotes.trim(), selectedAddons)
+        ) { closeBuilderModal() }
     }
 
     fun closeBuilderModal() {
         _uiState.value = _uiState.value.copy(showBuilderModal = false)
+    }
+
+    /** Trata o resultado de addProduct: mostra o bottom sheet se precisar trocar de loja. */
+    private fun handleAddProductResult(result: AddProductResult, onAdded: () -> Unit) {
+        when (result) {
+            is AddProductResult.Added -> onAdded()
+            is AddProductResult.Blocked -> {
+                _uiState.value = _uiState.value.copy(
+                    snackbarMessage = "Este item não pode ser adicionado à sacola."
+                )
+            }
+            is AddProductResult.NeedsStoreSwitch -> {
+                _uiState.value = _uiState.value.copy(pendingStoreSwitch = result)
+            }
+        }
+    }
+
+    /** Usuário confirmou: esvazia a sacola e adiciona o item pendente. */
+    fun confirmStoreSwitch() {
+        val switch = _uiState.value.pendingStoreSwitch ?: return
+        CartRepository.confirmStoreSwitchAdd(switch.pending)
+        _uiState.value = _uiState.value.copy(pendingStoreSwitch = null)
+        closeProductModal()
+        closeBuilderModal()
+    }
+
+    /** Usuário cancelou a troca de loja. */
+    fun dismissStoreSwitch() {
+        _uiState.value = _uiState.value.copy(pendingStoreSwitch = null)
     }
 
     fun clearSnackbar() {
@@ -1077,14 +1111,14 @@ class StoreDetailViewModel : ViewModel() {
 
         val fullNotes = (sizeText + state.builderNotes).trim()
 
-        CartRepository.addProduct(
-            product = customProduct,
-            storeName = store.name,
-            quantity = state.builderQuantity,
-            notes = fullNotes,
-            selectedAddons = selectedAddons
-        )
-
-        closeBuilderModal()
+        handleAddProductResult(
+            CartRepository.addProduct(
+                product = customProduct,
+                storeName = store.name,
+                quantity = state.builderQuantity,
+                notes = fullNotes,
+                selectedAddons = selectedAddons
+            )
+        ) { closeBuilderModal() }
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.automirrored.filled.Chat
 import com.example.data.model.MenuSection
+import com.example.ui.common.StoreSwitchBottomSheet
 import com.example.ui.theme.ItaSuperHighlightBg
 import com.example.ui.theme.ItaSuperHighlightText
 import com.example.ui.theme.ItaSuperTextPrimary
@@ -764,6 +765,15 @@ fun StoreDetailScreen(
                 }
             }
         }
+    }
+
+    // Bottom sheet estilo iFood: confirma esvaziar a sacola ao trocar de loja.
+    uiState.pendingStoreSwitch?.let { switch ->
+        StoreSwitchBottomSheet(
+            currentStoreName = switch.currentStoreName,
+            onConfirm = { viewModel.confirmStoreSwitch() },
+            onDismiss = { viewModel.dismissStoreSwitch() }
+        )
     }
 }
 

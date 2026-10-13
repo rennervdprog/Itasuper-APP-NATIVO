@@ -9,6 +9,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * Resultado de uma tentativa de adicionar produto à sacola.
+ * Estilo iFood: se a sacola tem itens de outra loja, pede confirmação antes de esvaziar.
+ */
+sealed interface AddProductResult {
+    data object Added : AddProductResult
+    data object Blocked : AddProductResult
+    data class NeedsStoreSwitch(
+        val currentStoreName: String,
+        val pending: PendingProductAdd
+    ) : AddProductResult
+}
+
+/** Parâmetros de uma adição pendente de confirmação de troca de loja. */
+data class PendingProductAdd(
+    val product: Product,
+    val storeName: String,
+    val quantity: Int = 1,
+    val notes: String = "",
+    val selectedAddons: List<SelectedAddonItem> = emptyList(),
+    val storeDeliveryFeeType: String = "",
+    val storeOfficialDeliveryFee: Double? = null
+)
+
 data class CartState(
     val storeId: String? = null,
     val storeName: String = "",
@@ -173,27 +197,28 @@ object CartRepository {
         selectedAddons: List<SelectedAddonItem> = emptyList(),
         storeDeliveryFeeType: String = "",
         storeOfficialDeliveryFee: Double? = null
-    ): Boolean {
+    ): AddProductResult {
         if (product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout") {
-            return false
+            return AddProductResult.Blocked
         }
         val current = _cartState.value
         val rememberedProfile = deliveryProfiles[product.storeId]
         val effectiveFeeType = storeDeliveryFeeType.ifBlank { rememberedProfile?.feeType.orEmpty() }
         val effectiveOfficialFee = storeOfficialDeliveryFee ?: rememberedProfile?.officialFee
         if (current.storeId != null && current.storeId != product.storeId && current.items.isNotEmpty()) {
-            publish(
-                CartState(
-                    storeId = product.storeId,
+            // Estilo iFood: não esvazia silenciosamente — pede confirmação na UI.
+            return AddProductResult.NeedsStoreSwitch(
+                currentStoreName = current.storeName,
+                pending = PendingProductAdd(
+                    product = product,
                     storeName = storeName,
-                    items = listOf(CartItem(product = product, quantity = quantity, notes = notes, selectedAddons = selectedAddons)),
-                    storeDeliveryFeeType = effectiveFeeType,
-                    storeOfficialDeliveryFee = effectiveOfficialFee,
-                    officialDeliveryFee = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) },
-                    officialDeliveryQuoteKey = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) }?.let { "fixed:${product.storeId}" }
+                    quantity = quantity,
+                    notes = notes,
+                    selectedAddons = selectedAddons,
+                    storeDeliveryFeeType = storeDeliveryFeeType,
+                    storeOfficialDeliveryFee = storeOfficialDeliveryFee
                 )
             )
-            return true
         }
 
         val existingIndex = current.items.indexOfFirst {
@@ -220,6 +245,32 @@ object CartRepository {
                 (effectiveOfficialFee ?: current.storeOfficialDeliveryFee)?.let { "fixed:${product.storeId}" }
             } else null
         ))
+        return AddProductResult.Added
+    }
+
+    /**
+     * Esvazia a sacola e adiciona o item pendente (chamado após confirmação do usuário).
+     * Retorna false se o produto for bloqueado (ex.: farmácia com restrição).
+     */
+    fun confirmStoreSwitchAdd(pending: PendingProductAdd): Boolean {
+        val product = pending.product
+        if (product.requiresPrescription || product.isControlled || product.pharmacySaleMode != "platform_checkout") {
+            return false
+        }
+        val rememberedProfile = deliveryProfiles[product.storeId]
+        val effectiveFeeType = pending.storeDeliveryFeeType.ifBlank { rememberedProfile?.feeType.orEmpty() }
+        val effectiveOfficialFee = pending.storeOfficialDeliveryFee ?: rememberedProfile?.officialFee
+        publish(
+            CartState(
+                storeId = product.storeId,
+                storeName = pending.storeName,
+                items = listOf(CartItem(product = product, quantity = pending.quantity, notes = pending.notes, selectedAddons = pending.selectedAddons)),
+                storeDeliveryFeeType = effectiveFeeType,
+                storeOfficialDeliveryFee = effectiveOfficialFee,
+                officialDeliveryFee = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) },
+                officialDeliveryQuoteKey = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) }?.let { "fixed:${product.storeId}" }
+            )
+        )
         return true
     }
 

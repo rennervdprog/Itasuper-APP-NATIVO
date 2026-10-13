@@ -10,6 +10,7 @@ import com.example.data.model.DiscoverProduct
 import com.example.data.model.Product
 import com.example.data.model.Store
 import com.example.data.remote.SupabaseClient
+import com.example.data.repository.AddProductResult
 import com.example.data.repository.CartRepository
 import com.example.data.repository.OrderRepository
 import com.example.data.repository.SearchCategory
@@ -202,7 +203,9 @@ data class SearchUiState(
     val userLocation: Pair<Double, Double>? = null,
     val isLocationPermissionGranted: Boolean = false,
     val isFetchingGps: Boolean = false,
-    val isLoadingDiscovery: Boolean = false
+    val isLoadingDiscovery: Boolean = false,
+    /** Troca de loja pendente de confirmação (estilo iFood). */
+    val pendingStoreSwitch: AddProductResult.NeedsStoreSwitch? = null
 )
 
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
@@ -494,11 +497,28 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun reorderItem(item: OrderAgainItem) {
         viewModelScope.launch {
             try {
-                CartRepository.addProduct(item.product, item.storeName, quantity = 1)
+                when (val result = CartRepository.addProduct(item.product, item.storeName, quantity = 1)) {
+                    is AddProductResult.NeedsStoreSwitch -> {
+                        _uiState.value = _uiState.value.copy(pendingStoreSwitch = result)
+                    }
+                    else -> { /* Added ou Blocked: sem ação extra */ }
+                }
             } catch (_: Exception) {
                 // carrinho indisponível no momento; sem crash
             }
         }
+    }
+
+    /** Usuário confirmou: esvazia a sacola e adiciona o item pendente. */
+    fun confirmStoreSwitch() {
+        val switch = _uiState.value.pendingStoreSwitch ?: return
+        CartRepository.confirmStoreSwitchAdd(switch.pending)
+        _uiState.value = _uiState.value.copy(pendingStoreSwitch = null)
+    }
+
+    /** Usuário cancelou a troca de loja. */
+    fun dismissStoreSwitch() {
+        _uiState.value = _uiState.value.copy(pendingStoreSwitch = null)
     }
 
     private val _dailyDeals = MutableStateFlow<List<DailyDeal>>(emptyList())

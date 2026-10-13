@@ -1,5 +1,7 @@
 package com.example.ui.orders
 
+import com.example.ui.common.StoreSwitchBottomSheet
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -529,6 +531,15 @@ private fun EmptyOrdersState(innerPadding: androidx.compose.foundation.layout.Pa
             ) { Text("Explorar lojas", fontWeight = FontWeight.Bold) }
         }
     }
+
+    // Bottom sheet estilo iFood: confirma esvaziar a sacola ao repetir pedido de outra loja.
+    if (uiState.pendingRepeatOrder != null) {
+        StoreSwitchBottomSheet(
+            currentStoreName = uiState.pendingRepeatStoreName,
+            onConfirm = { viewModel.confirmRepeatOrder() },
+            onDismiss = { viewModel.dismissRepeatOrder() }
+        )
+    }
 }
 
 @Composable
@@ -827,15 +838,6 @@ private fun OrderFinancialSummary(order: Order) {
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        // Data do pedido
-        if (order.createdAt.isNotBlank()) {
-            SummaryLine("Data do pedido", order.createdLabel())
-        }
-        // Forma de pagamento
-        if (order.paymentMethod.isNotBlank()) {
-            SummaryLine("Pagamento", paymentLabel(order.paymentMethod))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         order.items.forEach { item ->
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${item.quantity}x ${item.product.name}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
