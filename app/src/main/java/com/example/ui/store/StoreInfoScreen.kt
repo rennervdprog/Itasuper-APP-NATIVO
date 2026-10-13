@@ -72,7 +72,7 @@ fun StoreInfoScreen(
     val context = LocalContext.current
 
     Scaffold(
-        containerColor = StoreInfoBackground,
+        containerColor = Color.White,
         topBar = {
             Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
                 Row(
