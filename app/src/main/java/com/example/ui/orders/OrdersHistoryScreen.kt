@@ -858,6 +858,9 @@ private fun OrderFinancialSummary(order: Order) {
             Text("Total", fontWeight = FontWeight.ExtraBold)
             Text(money(order.total), fontWeight = FontWeight.ExtraBold, color = ItaSuperPrimary)
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        SummaryLine("Data do pedido", order.createdLabel())
+        SummaryLine("Pagamento", paymentLabel(order.paymentMethod))
     }
 }
 
