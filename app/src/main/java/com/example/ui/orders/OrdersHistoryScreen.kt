@@ -452,6 +452,15 @@ fun OrdersHistoryScreen(
                 item { Spacer(Modifier.height(16.dp)) }
             }
         }
+
+        // Bottom sheet estilo iFood: confirma esvaziar a sacola ao repetir pedido de outra loja.
+        if (uiState.pendingRepeatOrder != null) {
+            StoreSwitchBottomSheet(
+                currentStoreName = uiState.pendingRepeatStoreName,
+                onConfirm = { viewModel.confirmRepeatOrder() },
+                onDismiss = { viewModel.dismissRepeatOrder() }
+            )
+        }
     }
 }
 
@@ -532,14 +541,6 @@ private fun EmptyOrdersState(innerPadding: androidx.compose.foundation.layout.Pa
         }
     }
 
-    // Bottom sheet estilo iFood: confirma esvaziar a sacola ao repetir pedido de outra loja.
-    if (uiState.pendingRepeatOrder != null) {
-        StoreSwitchBottomSheet(
-            currentStoreName = uiState.pendingRepeatStoreName,
-            onConfirm = { viewModel.confirmRepeatOrder() },
-            onDismiss = { viewModel.dismissRepeatOrder() }
-        )
-    }
 }
 
 @Composable
