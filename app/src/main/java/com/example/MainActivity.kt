@@ -173,9 +173,9 @@ fun VideoSplashScreen(onFinished: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
     }
-    // Fallback: se o video falhar, avanca apos 12s (video tem 10s)
+    // Fallback: se o video falhar, avanca apos 5s (video tem 3s)
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(12000)
+        kotlinx.coroutines.delay(5000)
         if (!finished) {
             finished = true
             onFinished()
