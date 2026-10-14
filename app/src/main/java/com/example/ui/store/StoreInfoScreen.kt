@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Store
 import com.example.data.model.StoreOpeningHour
+import com.example.data.repository.FavoriteStoresStorage
+import androidx.compose.material.icons.filled.Favorite
 import com.example.ui.theme.ItaSuperPrimary
 import com.example.ui.theme.ItaSuperTextPrimary
 import java.util.Locale
@@ -63,6 +65,8 @@ fun StoreInfoScreen(
     LaunchedEffect(storeId) { viewModel.loadStore(storeId) }
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val favoriteStorage = remember(context) { FavoriteStoresStorage(context) }
+    val favoriteIds by favoriteStorage.favoriteIds.collectAsState(initial = emptySet())
 
     Scaffold(containerColor = Color.White) { paddingValues ->
         if (uiState.isLoading) {
@@ -110,17 +114,18 @@ fun StoreInfoScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
                         )
-                        Text(
-                            text = "⤴",
-                            fontSize = 22.sp,
-                            color = ItaSuperPrimary,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
-                        )
+                        val isFav = favoriteIds.contains(storeId)
                         Icon(
-                            imageVector = Icons.Filled.FavoriteBorder,
+                            imageVector = if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                             contentDescription = "Favoritar",
                             tint = ItaSuperPrimary,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable {
+                                    if (isFav) favoriteStorage.removeFavorite(storeId)
+                                    else favoriteStorage.addFavorite(storeId)
+                                }
+                                .padding(8.dp)
                         )
                     }
                 }
