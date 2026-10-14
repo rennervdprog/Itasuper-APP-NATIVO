@@ -790,6 +790,11 @@ class OrdersViewModel : ViewModel() {
         }
     }
 
+    // Fase 6 (C8): limpa a mensagem de erro (usado ao abrir o dialog de avaliação)
+    fun clearErrorMessage() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
     fun submitOrderRating(
         order: Order,
         rating: Int,
