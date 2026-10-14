@@ -1090,7 +1090,7 @@ object SupabaseClient {
                     val id = item.optString("id", "")
                     val name = item.optString("name", "Loja ItaSuper")
                     val category = item.optString("category", "Geral")
-                    val rating = item.optDouble("rating", 5.0).let { if (it.isNaN()) 5.0 else it }
+                    val rating = if (item.isNull("rating")) null else item.optDouble("rating").let { if (it.isNaN()) null else it }
                     val imageUrl = item.optString("logo_url", item.optString("image_url", item.optString("banner_url", "")))
                     val bannerUrl = item.optString("banner_url", imageUrl)
                     val isForceClosed = item.optBoolean("force_closed", false)
