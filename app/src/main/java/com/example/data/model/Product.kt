@@ -76,6 +76,7 @@ data class Product(
     val isCombo: Boolean = false,
     val isPastelFlavor: Boolean = false,
     val modalOnly: Boolean = false,
+    val customFlavorIds: List<String> = emptyList(),
     val isBeverage: Boolean = false,
     val requiresPrescription: Boolean = false,
     val isControlled: Boolean = false,
