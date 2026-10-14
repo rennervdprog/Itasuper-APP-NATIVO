@@ -3225,6 +3225,8 @@ object SupabaseClient {
         needsChange: Boolean,
         changeFor: Double?
     ): OrderSubmissionResponse = withContext(Dispatchers.IO) {
+        // Fase 3 (C1): rastreia o pedido criado para apagar o órfão se os itens falharem
+        var createdOrderId: String? = null
         try {
             val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
             val orderJson = JSONObject().apply {
@@ -3277,6 +3279,7 @@ object SupabaseClient {
             if (orderId.isBlank()) {
                 return@withContext OrderSubmissionResponse(false, errorMessage = "O servidor não devolveu o identificador do pedido.")
             }
+            createdOrderId = orderId
 
             val itemsJson = JSONArray()
             order.items.forEach { cartItem ->
@@ -3336,6 +3339,8 @@ object SupabaseClient {
             val itemsResponseText = itemsResponse.body?.string().orEmpty()
             if (!itemsResponse.isSuccessful) {
                 Log.e(TAG, "Order $orderId was created but order_items insertion failed: $itemsResponseText")
+                // Fase 3 (C1): apaga o pedido órfão (a policy só permite apagar pedido próprio sem itens)
+                deleteOrphanOrder(orderId, bearer)
                 return@withContext OrderSubmissionResponse(
                     isSuccess = false,
                     errorMessage = parseErrorMessage(itemsResponseText, "O pedido foi criado, mas não foi possível registrar os itens.")
@@ -3348,8 +3353,39 @@ object SupabaseClient {
                 createdAt = createdOrder.optString("created_at", "").ifBlank { null }
             )
         } catch (e: Exception) {
+            // Fase 3 (C1): se o pedido chegou a ser criado, verifica e apaga o órfão
+            val oid = createdOrderId
+            if (!oid.isNullOrBlank()) {
+                val bearer = if (accessToken.isNotBlank()) accessToken else SUPABASE_ANON_KEY
+                deleteOrphanOrder(oid, bearer)
+            }
             Log.e(TAG, "Error submitting order", e)
             OrderSubmissionResponse(isSuccess = false, errorMessage = "Falha de conexão ao enviar o pedido.")
+        }
+    }
+
+    /**
+     * Fase 3 (C1): apaga um pedido órfão (criado mas sem itens).
+     * A policy "Users can delete own empty orders" garante que só apaga
+     * pedido próprio E sem itens — nunca apaga histórico válido.
+     */
+    private suspend fun deleteOrphanOrder(orderId: String, bearer: String) {
+        try {
+            val deleteRequest = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/orders?id=eq.$orderId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $bearer")
+                .delete()
+                .build()
+            httpClient.newCall(deleteRequest).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    Log.i(TAG, "Deleted orphan order $orderId")
+                } else {
+                    Log.w(TAG, "Could not delete orphan order $orderId: ${resp.code}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete orphan order $orderId", e)
         }
     }
 
