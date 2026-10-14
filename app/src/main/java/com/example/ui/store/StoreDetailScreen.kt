@@ -180,6 +180,11 @@ fun StoreDetailScreen(
     val favoriteStorage = remember(context) { FavoriteStoresStorage(context) }
     val favoriteIds by favoriteStorage.favorites.collectAsState()
     val isFavorite = favoriteIds.contains(storeId)
+    // Agregado de avaliações (fonte da verdade p/ nota + contagem na página da loja)
+    var ratingAgg by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    LaunchedEffect(storeId) {
+        ratingAgg = com.example.data.remote.SupabaseClient.getStoreRatingAggregate(storeId)
+    }
     LaunchedEffect(storeId, isOnline) {
         if (!isOnline) {
             retryAfterReconnect = true
@@ -1219,9 +1224,22 @@ private fun StoreShowcaseHeader(
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val rating = store?.rating ?: 0.0
+                    val aggCount = ratingAgg?.optInt("review_count", -1) ?: -1
+                    val ratingText = when {
+                        aggCount > 0 -> {
+                            val aggAvg = ratingAgg?.optDouble("avg_rating", 0.0) ?: 0.0
+                            val avgStr = String.format("%.1f", aggAvg).replace(".", ",")
+                            val plural = if (aggCount == 1) "avaliação" else "avaliações"
+                            "★ $avgStr ($aggCount $plural)"
+                        }
+                        aggCount == 0 -> "★ Novo"
+                        else -> {
+                            val rating = store?.rating ?: 0.0
+                            if (rating > 0) "★ ${String.format("%.1f", rating).replace(".", ",")}" else "★ Novo"
+                        }
+                    }
                     Text(
-                        text = if (rating > 0) "★ ${String.format("%.1f", rating).replace(".", ",")}" else "★ Novo",
+                        text = ratingText,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
@@ -3322,3 +3340,4 @@ private fun PizzaWizardSafeFooter(
             }
     }
 }
+
