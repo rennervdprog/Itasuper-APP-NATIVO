@@ -528,7 +528,8 @@ fun OrdersHistoryScreen(
                                 onNavigateToCart()
                             },
                             onRateOrder = { orderPendingRating.value = order },
-                            onRefundOrder = { orderPendingRefund.value = order }
+                            onRefundOrder = { orderPendingRefund.value = order },
+                            isRated = uiState.ratedOrderIds.contains(order.id)
                         )
                     }
                 }
@@ -975,7 +976,8 @@ private fun PreviousOrderCard(
     order: Order,
     onRepeatOrder: () -> Unit,
     onRateOrder: () -> Unit,
-    onRefundOrder: () -> Unit
+    onRefundOrder: () -> Unit,
+    isRated: Boolean = false // Fase 7 (C10)
 ) {
     val presentation = order.presentation()
     Card(
@@ -1011,7 +1013,7 @@ private fun PreviousOrderCard(
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     // Fase 7 (C10): esconde se já avaliado
-                    if (!uiState.ratedOrderIds.contains(order.id)) {
+                    if (!isRated) {
                         TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
                     }
                     if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status, order.refundRequestExpiresAt)) {
