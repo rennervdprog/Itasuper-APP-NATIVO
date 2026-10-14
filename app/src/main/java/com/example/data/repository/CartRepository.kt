@@ -260,11 +260,14 @@ object CartRepository {
         val rememberedProfile = deliveryProfiles[product.storeId]
         val effectiveFeeType = pending.storeDeliveryFeeType.ifBlank { rememberedProfile?.feeType.orEmpty() }
         val effectiveOfficialFee = pending.storeOfficialDeliveryFee ?: rememberedProfile?.officialFee
+        // Fase 7 (C9): preserva o modo de entrega atual (não reseta para DELIVERY)
+        val currentType = _cartState.value.deliveryType
         publish(
             CartState(
                 storeId = product.storeId,
                 storeName = pending.storeName,
                 items = listOf(CartItem(product = product, quantity = pending.quantity, notes = pending.notes, selectedAddons = pending.selectedAddons)),
+                deliveryType = currentType,
                 storeDeliveryFeeType = effectiveFeeType,
                 storeOfficialDeliveryFee = effectiveOfficialFee,
                 officialDeliveryFee = effectiveOfficialFee?.takeIf { effectiveFeeType.equals("fixed", ignoreCase = true) },

@@ -3446,7 +3446,8 @@ object SupabaseClient {
                 val storeIds = openStores.map { it.id }
                 val idFilter = storeIds.joinToString(",")
                 val ordering = if (orderByPrice) "&price=gt.0&order=price.asc" else ""
-                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
+                // Fase 7 (C12): filtra modal_only (consistente com PR #61)
+                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&modal_only=eq.false&store_id=in.($idFilter)$ordering&limit=$limit"
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
