@@ -354,9 +354,11 @@ fun OrdersHistoryScreen(
                         onComplete = { success ->
                             if (success) {
                                 orderPendingRating.value = null
+                                ratingValue.value = 5 // Fase 7 (C11): reseta para 5 estrelas
                                 ratingComment.value = ""
                                 ratingTags.value = emptySet()
                                 ratingPublic.value = true
+                                viewModel.markOrderAsRated(order.id) // Fase 7 (C10)
                             }
                         },
                         isPublic = ratingPublic.value,
@@ -1008,7 +1010,10 @@ private fun PreviousOrderCard(
                     Text("Pedir novamente", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
+                    // Fase 7 (C10): esconde se já avaliado
+                    if (!uiState.ratedOrderIds.contains(order.id)) {
+                        TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
+                    }
                     if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status, order.refundRequestExpiresAt)) {
                         TextButton(onClick = onRefundOrder) { Text("Analisar reembolso") }
                     }
