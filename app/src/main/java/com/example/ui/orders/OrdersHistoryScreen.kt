@@ -498,6 +498,7 @@ fun OrdersHistoryScreen(
                             onPixDirect = { viewModel.openPixDirectPayment(order) },
                             onConfirmDelivery = { viewModel.confirmDelivery(order) },
                             onCancelOrder = { orderPendingCancellation.value = order },
+                            onTrackDelivery = { onNavigateToRoute("acompanhar_entrega/${order.id}") },
                             isConfirmingDelivery = uiState.confirmingDeliveryOrderId == order.id,
                             isCancelling = uiState.cancellingOrderId == order.id,
                             isHighlighted = order.id == initialOrderId
@@ -618,6 +619,7 @@ private fun ActiveOrderCard(
     onPixDirect: () -> Unit,
     onConfirmDelivery: () -> Unit,
     onCancelOrder: () -> Unit,
+    onTrackDelivery: () -> Unit,
     isConfirmingDelivery: Boolean,
     isCancelling: Boolean,
     isHighlighted: Boolean = false
@@ -703,6 +705,20 @@ private fun ActiveOrderCard(
                         Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (isConfirmingDelivery) "Confirmando..." else "Sim, recebi meu pedido!", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Fase 4 (C3): botão para a tela de rastreio (antes inacessível)
+                val canTrack = order.status.lowercase() in setOf("saiu_entrega", "em_transito", "pronto_para_entrega")
+                if (canTrack) {
+                    OutlinedButton(
+                        onClick = onTrackDelivery,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.LocalShipping, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Acompanhar entrega", fontWeight = FontWeight.Bold)
                     }
                 }
 

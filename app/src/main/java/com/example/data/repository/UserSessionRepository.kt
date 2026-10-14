@@ -97,6 +97,32 @@ object UserSessionRepository {
      * Renova a sessão sem interromper o cliente quando ele está temporariamente sem rede.
      * Sempre que há token válido, sincroniza também o perfil real da conta.
      */
+    /**
+     * Fase 4 (C2): renova o access token de forma suspensa e retorna o novo token.
+     * Usado pelo SupabaseClient quando a API retorna 401. Retorna null se falhar.
+     */
+    suspend fun refreshAccessToken(): String? {
+        val current = _userSession.value
+        if (current.refreshToken.isBlank()) return null
+        return try {
+            val result = SupabaseClient.refreshSession(current.refreshToken)
+            if (result.isSuccess && !result.accessToken.isNullOrBlank()) {
+                val updated = current.copy(
+                    accessToken = result.accessToken,
+                    refreshToken = result.refreshToken?.takeIf { it.isNotBlank() } ?: current.refreshToken,
+                    accessTokenExpiresAt = result.expiresAt?.times(1000L) ?: current.accessTokenExpiresAt
+                )
+                _userSession.value = updated
+                persistCurrentSession()
+                result.accessToken
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun refreshSession() {
         val current = _userSession.value
         if (!current.isLoggedIn) return

@@ -111,6 +111,37 @@ data class DriverLocation(
 
 object SupabaseClient {
 
+    // Fase 4 (C2): chamado quando a API retorna 401 (token expirado).
+    // Deve renovar a sessão e retornar o novo access token, ou null se falhar.
+    // Configurado pela camada de UI no início do app. Executado no máximo 1x por request.
+    var onUnauthorized: (suspend () -> String?)? = null
+
+    /**
+     * Fase 4 (C2): executa a request; se retornar 401, tenta renovar o token
+     * uma única vez e repete a chamada com o novo token.
+     */
+    private suspend fun executeWithTokenRefresh(
+        buildRequest: (String) -> Request,
+        accessToken: String
+    ): Response {
+        var token = accessToken
+        var response = httpClient.newCall(buildRequest(token)).execute()
+        if (response.code == 401) {
+            response.close()
+            val newToken = try {
+                onUnauthorized?.invoke()
+            } catch (e: Exception) {
+                Log.e(TAG, "Token refresh failed", e)
+                null
+            }
+            if (!newToken.isNullOrBlank()) {
+                Log.i(TAG, "Token refreshed, retrying request")
+                response = httpClient.newCall(buildRequest(newToken)).execute()
+            }
+        }
+        return response
+    }
+
     private const val TAG = "SupabaseClient"
 
     /** Público-alvo do app cliente no RPC legal da v6.6. */
@@ -2734,14 +2765,19 @@ object SupabaseClient {
                     put("cep", address.normalizedCep())
                 })
             }
-            val request = Request.Builder()
-                .url("$SUPABASE_URL/functions/v1/quote-delivery")
-                .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody(jsonMediaType))
-                .build()
-            val response = httpClient.newCall(request).execute()
+            // Fase 4 (C2): com retry automático em 401
+            val response = executeWithTokenRefresh(
+                buildRequest = { token ->
+                    Request.Builder()
+                        .url("$SUPABASE_URL/functions/v1/quote-delivery")
+                        .addHeader("apikey", SUPABASE_ANON_KEY)
+                        .addHeader("Authorization", "Bearer $token")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                },
+                accessToken = accessToken
+            )
             val text = response.body?.string().orEmpty()
             val payload = runCatching { JSONObject(text) }.getOrNull()
             if (!response.isSuccessful || payload == null || !payload.optBoolean("ok", false)) {
@@ -3256,15 +3292,20 @@ object SupabaseClient {
                 put("release_at", order.releaseAt.ifBlank { JSONObject.NULL })
                 put("status", order.status)
             }
-            val orderRequest = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/orders")
-                .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $bearer")
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=representation")
-                .post(orderJson.toString().toRequestBody(jsonMediaType))
-                .build()
-            val orderResponse = httpClient.newCall(orderRequest).execute()
+            // Fase 4 (C2): com retry automático em 401
+            val orderResponse = executeWithTokenRefresh(
+                buildRequest = { token ->
+                    Request.Builder()
+                        .url("$SUPABASE_URL/rest/v1/orders")
+                        .addHeader("apikey", SUPABASE_ANON_KEY)
+                        .addHeader("Authorization", "Bearer $token")
+                        .addHeader("Content-Type", "application/json")
+                        .addHeader("Prefer", "return=representation")
+                        .post(orderJson.toString().toRequestBody(jsonMediaType))
+                        .build()
+                },
+                accessToken = bearer
+            )
             val orderResponseText = orderResponse.body?.string().orEmpty()
             if (!orderResponse.isSuccessful || orderResponseText.isBlank()) {
                 return@withContext OrderSubmissionResponse(
@@ -3327,15 +3368,20 @@ object SupabaseClient {
                     if (itemMetadata != null) put("metadata", itemMetadata)
                 })
             }
-            val itemsRequest = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/order_items")
-                .addHeader("apikey", SUPABASE_ANON_KEY)
-                .addHeader("Authorization", "Bearer $bearer")
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=minimal")
-                .post(itemsJson.toString().toRequestBody(jsonMediaType))
-                .build()
-            val itemsResponse = httpClient.newCall(itemsRequest).execute()
+            // Fase 4 (C2): com retry automático em 401
+            val itemsResponse = executeWithTokenRefresh(
+                buildRequest = { token ->
+                    Request.Builder()
+                        .url("$SUPABASE_URL/rest/v1/order_items")
+                        .addHeader("apikey", SUPABASE_ANON_KEY)
+                        .addHeader("Authorization", "Bearer $token")
+                        .addHeader("Content-Type", "application/json")
+                        .addHeader("Prefer", "return=minimal")
+                        .post(itemsJson.toString().toRequestBody(jsonMediaType))
+                        .build()
+                },
+                accessToken = bearer
+            )
             val itemsResponseText = itemsResponse.body?.string().orEmpty()
             if (!itemsResponse.isSuccessful) {
                 Log.e(TAG, "Order $orderId was created but order_items insertion failed: $itemsResponseText")
