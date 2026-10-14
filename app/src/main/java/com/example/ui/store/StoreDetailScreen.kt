@@ -1171,6 +1171,15 @@ private fun StoreShowcaseHeader(
                         color = Color(0xFF686868),
                         modifier = Modifier.weight(1f)
                     )
+                    val todayCloseTime = remember(store?.openingHours) {
+                        val hours = store?.openingHours.orEmpty()
+                        if (hours.isEmpty()) null
+                        else {
+                            val cal = java.util.Calendar.getInstance()
+                            val todayDow = cal.get(java.util.Calendar.DAY_OF_WEEK) - 1
+                            hours.firstOrNull { it.dayOfWeek == todayDow && !it.isClosedAllDay }?.closeTime?.takeIf { it.isNotBlank() }
+                        }
+                    }
                     Surface(
                         color = if (isOpen) Color(0xFFF1FAF3) else Color(0xFFFFF3F3),
                         shape = RoundedCornerShape(14.dp)
@@ -1186,7 +1195,7 @@ private fun StoreShowcaseHeader(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (isOpen) "Aberta" else "Fechada",
+                                text = if (isOpen) "Aberta" + (todayCloseTime?.let { " · até ${it.take(5)}" } ?: "") else "Fechada",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
@@ -1232,7 +1241,7 @@ private fun StoreShowcaseHeader(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = buildAnnotatedString {
-                                append("Padrão • $timeText • ")
+                                append("Padrão • $timeText • Taxa - ")
                                 withStyle(style = SpanStyle(color = ItaSuperPrimary, fontWeight = FontWeight.Bold)) {
                                     append(feeText)
                                 }
