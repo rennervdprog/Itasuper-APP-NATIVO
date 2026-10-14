@@ -31,7 +31,7 @@ data class Store(
     val name: String,
     val category: String,
     val secondaryCategories: List<String> = emptyList(),
-    val rating: Double,
+    val rating: Double?, // Fase 6 (C6): null = sem avaliações (antes caía em 5.0)
     val deliveryTime: String = "",
     val deliveryFee: String = "",
     /** Taxa-base ao cliente já calculada pela regra VIP da loja, antes da validação por endereço. */
