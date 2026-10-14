@@ -106,8 +106,8 @@ private val DscBrown = Color(0xFF8A4B0F)    // banner-3
 private fun dscMoney(value: Double): String =
     String.format(Locale("pt", "BR"), "R$ %.2f", value).replace('.', ',')
 
-private fun dscRating(rating: Double): String =
-    String.format(Locale("pt", "BR"), "%.1f", rating).replace('.', ',')
+private fun dscRating(rating: Double?): String =
+    rating?.let { String.format(Locale("pt", "BR"), "%.1f", it).replace('.', ',') } ?: "—"
 
 @Composable
 fun SearchScreen(
