@@ -204,7 +204,7 @@ private fun Order.historyDeliveryMeta(): String? {
 
 private fun Order.confirmedDeliveryFee(): Double = deliveryQuoteSnapshot?.deliveryFee ?: deliveryFee
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun OrdersHistoryScreen(
     viewModel: OrdersViewModel,
