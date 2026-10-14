@@ -687,50 +687,80 @@ private fun PromoCarousel(
             pageSpacing = 10.dp
         ) { page ->
             val banner = banners[page]
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(140.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color(banner.backgroundColor))
-                    .clickable { onBannerClick(banner) }
-                    .padding(18.dp)
-                    .heightIn(min = 118.dp),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = banner.tag.uppercase(Locale("pt", "BR")),
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp,
-                        letterSpacing = 0.08.em,
-                        color = Color.White.copy(alpha = 0.85f)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFFF26522), Color(0xFFFFB37A))
+                        )
                     )
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = banner.title,
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 21.sp,
-                        lineHeight = 24.sp,
-                        color = Color.White
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = banner.subtitle,
-                    style = TextStyle(
-                        fontFamily = ManropeFontFamily,
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.92f)
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    .clickable { onBannerClick(banner) }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 20.dp, end = 96.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.25f))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = banner.tag.uppercase(Locale("pt", "BR")),
+                            style = TextStyle(
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 10.sp,
+                                letterSpacing = 0.08.em,
+                                color = Color.White
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = banner.title,
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 26.sp,
+                            lineHeight = 28.sp,
+                            color = Color.White
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = banner.subtitle,
+                        style = TextStyle(
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.92f)
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (banner.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = banner.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 16.dp)
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
