@@ -265,6 +265,9 @@ fun OrdersHistoryScreen(
 
     orderPendingRating.value?.let { order ->
         val rating = ratingValue.value
+        LaunchedEffect(order.id) {
+            viewModel.clearErrorMessage()
+        }
         AlertDialog(
             onDismissRequest = {
                 orderPendingRating.value = null
@@ -274,6 +277,15 @@ fun OrdersHistoryScreen(
             title = { Text("Como foi seu pedido?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Fase 6 (C8): mostra o erro se o envio falhar (antes era silencioso)
+                    uiState.errorMessage?.let { errMsg ->
+                        Text(
+                            errMsg,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..5).forEach { star ->
                             TextButton(onClick = { ratingValue.value = star }) {
