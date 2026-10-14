@@ -3291,14 +3291,37 @@ object SupabaseClient {
                         put("priceReplacesBase", addon.priceReplacesBase)
                     })
                 }
+                // Produto customizado do montador (pizza/pastel meio a meio): o ID sintético
+                // não é UUID. Usa o UUID do primeiro sabor como product_id (FK) e grava os
+                // detalhes no metadata para o KDS/painel exibirem o nome correto.
+                val isCustomBuilder = cartItem.product.id.startsWith("custom_")
+                val effectiveProductId = if (isCustomBuilder) {
+                    cartItem.product.customFlavorIds.firstOrNull()?.takeIf { it.isNotBlank() }
+                        ?: return@withContext OrderSubmissionResponse(
+                            isSuccess = false,
+                            errorMessage = "Não foi possível identificar o produto personalizado. Tente novamente."
+                        )
+                } else {
+                    cartItem.product.id
+                }
+                val itemMetadata = if (isCustomBuilder) {
+                    JSONObject().apply {
+                        put("custom_builder", true)
+                        put("builder_type", if (cartItem.product.id.startsWith("custom_pizza")) "pizza" else "pastel")
+                        put("custom_name", cartItem.product.name)
+                        put("custom_description", cartItem.product.description)
+                        put("flavor_ids", JSONArray(cartItem.product.customFlavorIds))
+                    }
+                } else null
                 itemsJson.put(JSONObject().apply {
                     put("order_id", orderId)
-                    put("product_id", cartItem.product.id)
+                    put("product_id", effectiveProductId)
                     put("quantity", cartItem.quantity)
                     put("unit_price", cartItem.unitPrice)
                     // O Capacitor grava a representação JSON dos adicionais neste campo JSONB.
                     put("addons", if (addons.length() > 0) addons.toString() else JSONObject.NULL)
                     put("observations", cartItem.notes.ifBlank { JSONObject.NULL })
+                    if (itemMetadata != null) put("metadata", itemMetadata)
                 })
             }
             val itemsRequest = Request.Builder()
