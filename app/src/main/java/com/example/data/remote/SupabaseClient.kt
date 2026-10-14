@@ -1546,6 +1546,19 @@ object SupabaseClient {
             }
         }
 
+        // Fase 7 (L18): verifica se o horário de ONTEM (overnight) ainda vale hoje
+        val yesterdayDay = (dayOfWeek + 6) % 7
+        val yesterdayHour = storeHours.firstOrNull { it.dayOfWeek == yesterdayDay }
+        if (yesterdayHour != null && !yesterdayHour.isClosedAllDay) {
+            fun parseMin(t: String): Int {
+                val p = t.split(":")
+                return if (p.size >= 2) (p[0].toIntOrNull() ?: 0) * 60 + (p[1].toIntOrNull() ?: 0) else 0
+            }
+            val yOpen = parseMin(yesterdayHour.openTime)
+            val yClose = parseMin(yesterdayHour.closeTime)
+            if (yClose <= yOpen && currentMinutes < yClose) return true
+        }
+
         if (todayHour == null) return defaultIsOpen
         if (todayHour.isClosedAllDay) return false
 
