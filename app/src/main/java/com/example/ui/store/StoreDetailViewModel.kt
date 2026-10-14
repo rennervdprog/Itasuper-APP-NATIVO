@@ -741,7 +741,8 @@ class StoreDetailViewModel : ViewModel() {
             name = productName,
             description = "Sabores: $flavorsText",
             price = state.wizardUnitPrice,
-            category = "Pastéis"
+            category = "Pastéis",
+            customFlavorIds = selectedFlavors.filterNotNull().map { it.id }
         )
 
         handleAddProductResult(
@@ -1110,7 +1111,8 @@ class StoreDetailViewModel : ViewModel() {
             name = productName,
             description = "Sabores: $flavorsText",
             price = state.builderUnitPrice,
-            category = if (type == "pizza") "Pizzas" else "Pastéis"
+            category = if (type == "pizza") "Pizzas" else "Pastéis",
+            customFlavorIds = state.builderSelectedFlavors.map { it.id }
         )
 
         val fullNotes = (sizeText + state.builderNotes).trim()

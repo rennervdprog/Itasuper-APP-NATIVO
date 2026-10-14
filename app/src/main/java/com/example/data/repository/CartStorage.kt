@@ -116,6 +116,9 @@ class CartStorage(context: Context) {
         isCombo = optBoolean("is_combo", false),
         isPastelFlavor = optBoolean("is_pastel_flavor", false),
         modalOnly = optBoolean("modal_only", false),
+        customFlavorIds = optJSONArray("custom_flavor_ids")?.let { arr ->
+            List(arr.length()) { idx -> arr.optString(idx) }.filter { it.isNotBlank() }
+        } ?: emptyList(),
         isBeverage = optBoolean("is_beverage", false),
         requiresPrescription = optBoolean("requires_prescription", false),
         isControlled = optBoolean("controlled", false),
@@ -145,6 +148,7 @@ class CartStorage(context: Context) {
         put("is_combo", isCombo)
         put("is_pastel_flavor", isPastelFlavor)
         put("modal_only", modalOnly)
+        put("custom_flavor_ids", JSONArray(customFlavorIds))
         put("is_beverage", isBeverage)
         put("requires_prescription", requiresPrescription)
         put("controlled", isControlled)
