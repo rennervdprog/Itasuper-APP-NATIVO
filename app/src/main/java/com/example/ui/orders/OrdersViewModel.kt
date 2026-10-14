@@ -102,6 +102,7 @@ data class OrdersUiState(
     val isPlacingOrder: Boolean = false,
     val placedOrderSuccess: Order? = null,
     val errorMessage: String? = null,
+    val ratedOrderIds: Set<String> = emptySet(), // Fase 7 (C10)
     val pixPayment: PixPaymentUiState? = null,
     val pixDirectPayment: PixDirectPaymentUiState? = null,
     val isRefreshingOrders: Boolean = false,
@@ -791,6 +792,11 @@ class OrdersViewModel : ViewModel() {
     }
 
     // Fase 6 (C8): limpa a mensagem de erro (usado ao abrir o dialog de avaliação)
+    // Fase 7 (C10): marca pedido como avaliado para esconder o botão
+    fun markOrderAsRated(orderId: String) {
+        _uiState.value = _uiState.value.copy(ratedOrderIds = _uiState.value.ratedOrderIds + orderId)
+    }
+
     fun clearErrorMessage() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }
