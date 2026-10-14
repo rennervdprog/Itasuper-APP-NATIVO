@@ -102,6 +102,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Le a sessao local antes de compor, para a tela de restauracao durar o minimo.
         UserSessionRepository.initialize(applicationContext)
+        // Fase 4 (C2): quando a API retornar 401, renova o token automaticamente e repete 1x
+        com.example.data.remote.SupabaseClient.onUnauthorized = {
+            UserSessionRepository.refreshAccessToken()
+        }
         PushNotificationManager.createOrderNotificationChannel(applicationContext)
         PushNotificationManager.captureLaunchIntent(applicationContext, intent)
         try {
