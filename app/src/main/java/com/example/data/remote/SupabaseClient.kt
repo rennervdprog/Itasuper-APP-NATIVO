@@ -1695,6 +1695,7 @@ object SupabaseClient {
                     var hasStuffedCrust = item.optBoolean("has_stuffed_crust", false)
                     var isCombo = item.optBoolean("is_combo", false)
                     var isPastelFlavor = item.optBoolean("is_pastel_flavor", false)
+                    var modalOnly = false
                     var isBeverage = item.optBoolean("is_beverage", false)
                     var requiresPrescription = false
                     var isControlled = false
@@ -1723,6 +1724,7 @@ object SupabaseClient {
                         if (metadataObj.has("has_stuffed_crust")) hasStuffedCrust = metadataObj.optBoolean("has_stuffed_crust", false)
                         if (metadataObj.has("is_combo")) isCombo = metadataObj.optBoolean("is_combo", false)
                         if (metadataObj.has("is_pastel_flavor")) isPastelFlavor = metadataObj.optBoolean("is_pastel_flavor", false)
+ modalOnly = metadataObj.optBoolean("modal_only", false)
                         if (metadataObj.has("is_beverage")) isBeverage = metadataObj.optBoolean("is_beverage", false)
                         requiresPrescription = metadataObj.optBoolean("requires_prescription", false)
                         isControlled = metadataObj.optBoolean("controlled", false)
@@ -1787,6 +1789,8 @@ object SupabaseClient {
                             hasStuffedCrust = hasStuffedCrust,
                             isCombo = isCombo,
                             isPastelFlavor = isPastelFlavor,
+
+                            modalOnly = modalOnly,
                             isBeverage = isBeverage,
                             requiresPrescription = requiresPrescription,
                             isControlled = isControlled,

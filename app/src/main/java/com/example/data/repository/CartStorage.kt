@@ -115,6 +115,7 @@ class CartStorage(context: Context) {
         hasStuffedCrust = optBoolean("has_stuffed_crust", false),
         isCombo = optBoolean("is_combo", false),
         isPastelFlavor = optBoolean("is_pastel_flavor", false),
+        modalOnly = optBoolean("modal_only", false),
         isBeverage = optBoolean("is_beverage", false),
         requiresPrescription = optBoolean("requires_prescription", false),
         isControlled = optBoolean("controlled", false),
@@ -143,6 +144,7 @@ class CartStorage(context: Context) {
         put("has_stuffed_crust", hasStuffedCrust)
         put("is_combo", isCombo)
         put("is_pastel_flavor", isPastelFlavor)
+        put("modal_only", modalOnly)
         put("is_beverage", isBeverage)
         put("requires_prescription", requiresPrescription)
         put("controlled", isControlled)
