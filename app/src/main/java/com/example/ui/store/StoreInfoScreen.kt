@@ -97,7 +97,8 @@ fun StoreInfoScreen(
             val hours = store?.openingHours.orEmpty().sortedWith(
                 compareBy<StoreOpeningHour> { it.brasiliaDayOrder() }.thenBy { it.openTime }
             )
-            val rating = store?.rating ?: 0.0
+            val aggAvgTop = ratingAgg?.optDouble("avg_rating", 0.0) ?: 0.0
+            val aggCountTop = ratingAgg?.optInt("review_count", 0) ?: 0
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(paddingValues)
@@ -207,7 +208,7 @@ fun StoreInfoScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (rating > 0) String.format("%.1f", rating).replace(".", ",") else "–",
+                                text = if (aggCountTop > 0) String.format("%.1f", aggAvgTop).replace(".", ",") else "–",
                                 fontSize = 15.sp,
                                 color = Color(0xFF1A1A1A)
                             )
@@ -217,13 +218,13 @@ fun StoreInfoScreen(
                                     Text(
                                         text = "★",
                                         fontSize = 15.sp,
-                                        color = if (rating > i) Color(0xFF1A1A1A) else Color(0xFFE0E0E0)
+                                        color = if (aggAvgTop > i) Color(0xFF1A1A1A) else Color(0xFFE0E0E0)
                                     )
                                 }
                             }
                         }
                         Text(
-                            text = "avaliações",
+                            text = if (aggCountTop == 1) "1 avaliação" else "$aggCountTop avaliações",
                             fontSize = 14.sp,
                             color = Color(0xFF777777)
                         )
@@ -729,9 +730,20 @@ private fun formatReviewDate(iso: String): String {
 
 private fun formatRelativeTime(iso: String): String {
     return try {
+        // O banco guarda timestamptz; o PostgREST devolve com offset (ex.: "+00:00").
+        // Convertemos para o instante UTC correto antes de comparar com "agora".
+        var s = iso.trim()
+        if (s.endsWith("Z", ignoreCase = true)) s = s.dropLast(1) + "+00:00"
+        var offsetMs = 0L
+        Regex("([+-])(\\d{2}):?(\\d{2})$").find(s)?.let { m ->
+            val sign = if (m.groupValues[1] == "+") 1 else -1
+            offsetMs = sign * (m.groupValues[2].toLong() * 3600000L + m.groupValues[3].toLong() * 60000L)
+            s = s.substring(0, m.range.first)
+        }
         val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-        val date = parser.parse(iso.substringBefore("+").substringBefore(".")) ?: return ""
-        val diffMs = System.currentTimeMillis() - date.time
+        parser.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val date = parser.parse(s.substringBefore(".")) ?: return ""
+        val diffMs = System.currentTimeMillis() - (date.time - offsetMs)
         if (diffMs < 0) return ""
         val minutes = diffMs / 60000
         val hours = minutes / 60
