@@ -128,14 +128,14 @@ fun StoreInfoScreen(
                 // Nome + logo + categoria • distância
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Top
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = store?.name ?: "",
-                                fontSize = 22.sp,
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF1A1A1A),
                                 letterSpacing = (-0.3).sp
@@ -152,7 +152,7 @@ fun StoreInfoScreen(
                                         append(formatDistance(d))
                                     }
                                 },
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 color = Color(0xFF777777)
                             )
                         }
@@ -161,12 +161,12 @@ fun StoreInfoScreen(
                             AsyncImage(
                                 model = logoUrl,
                                 contentDescription = null,
-                                modifier = Modifier.size(64.dp).clip(CircleShape),
+                                modifier = Modifier.size(52.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
                             Box(
-                                modifier = Modifier.size(64.dp).clip(CircleShape).background(Color(0xFFF5F5F5)),
+                                modifier = Modifier.size(52.dp).clip(CircleShape).background(Color(0xFFF5F5F5)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -190,7 +190,7 @@ fun StoreInfoScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = if (rating > 0) String.format("%.1f", rating).replace(".", ",") else "–",
-                                fontSize = 17.sp,
+                                fontSize = 15.sp,
                                 color = Color(0xFF1A1A1A)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -198,7 +198,7 @@ fun StoreInfoScreen(
                                 repeat(5) { i ->
                                     Text(
                                         text = "★",
-                                        fontSize = 18.sp,
+                                        fontSize = 15.sp,
                                         color = if (rating > i) Color(0xFF1A1A1A) else Color(0xFFE0E0E0)
                                     )
                                 }
