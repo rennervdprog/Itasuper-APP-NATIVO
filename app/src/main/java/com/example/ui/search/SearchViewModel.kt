@@ -92,7 +92,7 @@ fun matchesDiscoverQuickFilter(
 ): Boolean = when (filter) {
     null -> true
     DiscoverQuickFilter.FREE -> store.isFreeDelivery
-    DiscoverQuickFilter.TOP -> store.rating >= 4.5
+    DiscoverQuickFilter.TOP -> (store.rating ?: 0.0) >= 4.5
     DiscoverQuickFilter.FAST -> (maxDeliveryMinutes(store.deliveryTime) ?: Int.MAX_VALUE) <= 30
     DiscoverQuickFilter.COUPON -> store.id in couponStoreIds
     DiscoverQuickFilter.CHEAP -> store.id in cheapStoreIds
@@ -429,7 +429,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     saved = "em_oferta" in savedIds
                 )
             )
-            val topRated = stores.filter { it.rating >= 4.5 }
+            val topRated = stores.filter { (it.rating ?: 0.0) >= 4.5 }
             if (topRated.isNotEmpty()) add(
                 DiscoverCollection(
                     id = "bem_avaliados",
