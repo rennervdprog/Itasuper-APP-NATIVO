@@ -47,6 +47,7 @@ class CartStorage(context: Context) {
                     deliveryType = root.optString("delivery_type", "DELIVERY"),
                     deliveryLatitude = root.takeIf { it.has("delivery_latitude") && !it.isNull("delivery_latitude") }?.optDouble("delivery_latitude"),
                     deliveryLongitude = root.takeIf { it.has("delivery_longitude") && !it.isNull("delivery_longitude") }?.optDouble("delivery_longitude"),
+                    officialDeliveryDistanceKm = root.takeIf { it.has("delivery_distance_km") && !it.isNull("delivery_distance_km") }?.optDouble("delivery_distance_km"),
                     storeDeliveryFeeType = root.optString("store_delivery_fee_type", ""),
                     storeOfficialDeliveryFee = root.takeIf { it.has("store_official_delivery_fee") && !it.isNull("store_official_delivery_fee") }?.optDouble("store_official_delivery_fee"),
                     officialDeliveryFee = root.takeIf { it.optString("store_delivery_fee_type", "").equals("fixed", ignoreCase = true) && it.has("store_official_delivery_fee") }?.optDouble("store_official_delivery_fee"),
@@ -73,6 +74,8 @@ class CartStorage(context: Context) {
             put("delivery_type", state.deliveryType)
             state.deliveryLatitude?.let { put("delivery_latitude", it) }
             state.deliveryLongitude?.let { put("delivery_longitude", it) }
+            // Fase 7 (C13): persiste a distância da entrega
+            state.officialDeliveryDistanceKm?.let { put("delivery_distance_km", it) }
             put("store_delivery_fee_type", state.storeDeliveryFeeType)
             state.storeOfficialDeliveryFee?.let { put("store_official_delivery_fee", it) }
             put("discount_amount", state.discountAmount)
