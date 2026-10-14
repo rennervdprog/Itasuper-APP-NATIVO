@@ -790,10 +790,22 @@ class OrdersViewModel : ViewModel() {
         }
     }
 
-    fun submitOrderRating(order: Order, rating: Int, comment: String, onComplete: (Boolean) -> Unit) {
+    fun submitOrderRating(
+        order: Order,
+        rating: Int,
+        comment: String,
+        onComplete: (Boolean) -> Unit,
+        isPublic: Boolean = true,
+        tags: List<Pair<String, String>> = emptyList()
+    ) {
         val session = UserSessionRepository.userSession.value
         if (session.accessToken.isBlank() || rating !in 1..5) {
             _uiState.value = _uiState.value.copy(errorMessage = "Informe uma avaliação de 1 a 5 estrelas.")
+            onComplete(false)
+            return
+        }
+        if (rating <= 3 && comment.trim().length < 12) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Conte um pouco mais (mín. 12 caracteres) para notas até 3 estrelas.")
             onComplete(false)
             return
         }
@@ -804,7 +816,9 @@ class OrdersViewModel : ViewModel() {
                 userId = session.userId,
                 rating = rating,
                 comment = comment,
-                accessToken = session.accessToken
+                accessToken = session.accessToken,
+                isPublic = isPublic,
+                tags = tags
             )
             if (!success) _uiState.value = _uiState.value.copy(errorMessage = "Não foi possível enviar sua avaliação.")
             onComplete(success)

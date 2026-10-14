@@ -67,6 +67,21 @@ fun StoreInfoScreen(
     val context = LocalContext.current
     val favoriteStorage = remember(context) { FavoriteStoresStorage(context) }
     val favoriteIds by favoriteStorage.favorites.collectAsState()
+    var selectedTab by remember { mutableStateOf(1) } // 0 = Avaliações, 1 = Informações
+    var ratingAgg by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var reviewsList by remember { mutableStateOf<org.json.JSONArray>(org.json.JSONArray()) }
+    var reviewsLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(storeId, selectedTab) {
+        if (selectedTab == 0 && storeId.isNotBlank()) {
+            reviewsLoading = true
+            try {
+                ratingAgg = com.example.data.remote.SupabaseClient.getStoreRatingAggregate(storeId)
+                reviewsList = com.example.data.remote.SupabaseClient.getStoreReviews(storeId)
+            } catch (e: Exception) { /* mantém vazio */ }
+            reviewsLoading = false
+        }
+    }
 
     Scaffold(containerColor = Color.White) { paddingValues ->
         if (uiState.isLoading) {
@@ -217,13 +232,27 @@ fun StoreInfoScreen(
                 // Abas: Avaliações | Informações
                 item {
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier.weight(1f).padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.weight(1f).clickable { selectedTab = 0 }
                         ) {
-                            Text(text = "Avaliações", fontSize = 15.sp, color = Color(0xFF999999))
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Avaliações",
+                                    fontSize = 15.sp,
+                                    fontWeight = if (selectedTab == 0) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selectedTab == 0) ItaSuperPrimary else Color(0xFF999999)
+                                )
+                            }
+                            if (selectedTab == 0) {
+                                Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(ItaSuperPrimary))
+                            }
                         }
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier.weight(1f).clickable { selectedTab = 1 }
+                        ) {
                             Box(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 contentAlignment = Alignment.Center
@@ -231,15 +260,31 @@ fun StoreInfoScreen(
                                 Text(
                                     text = "Informações",
                                     fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = ItaSuperPrimary
+                                    fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selectedTab == 1) ItaSuperPrimary else Color(0xFF999999)
                                 )
                             }
-                            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(ItaSuperPrimary))
+                            if (selectedTab == 1) {
+                                Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(ItaSuperPrimary))
+                            }
                         }
                     }
                     HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
                 }
+
+                // Conteúdo da aba Avaliações
+                if (selectedTab == 0) {
+                    item {
+                        StoreReviewsContent(
+                            ratingAgg = ratingAgg,
+                            reviewsList = reviewsList,
+                            isLoading = reviewsLoading
+                        )
+                    }
+                }
+
+                // Conteúdo da aba Informações
+                if (selectedTab == 1) {
 
 
                 // Aberto agora (expansível)
@@ -409,6 +454,7 @@ fun StoreInfoScreen(
                     }
                     Spacer(modifier = Modifier.height(28.dp))
                 }
+                } // fim if (selectedTab == 1)
             }
         }
     }
@@ -485,6 +531,188 @@ fun Store.paymentMethods(): List<String> = buildList {
     if (settings.acceptPixMachine) add("PIX na maquininha")
     if (settings.acceptCard) add("Cartão")
     if (settings.acceptCash) add("Dinheiro")
+}
+
+
+@Composable
+private fun StoreReviewsContent(
+    ratingAgg: org.json.JSONObject?,
+    reviewsList: org.json.JSONArray,
+    isLoading: Boolean
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = ItaSuperPrimary)
+            }
+            return
+        }
+
+        val avgRating = ratingAgg?.optDouble("avg_rating", 0.0) ?: 0.0
+        val reviewCount = ratingAgg?.optInt("review_count", 0) ?: 0
+
+        if (reviewCount == 0) {
+            // Estado vazio
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "★", fontSize = 40.sp, color = Color(0xFFDDDDDD))
+                Text(
+                    text = "Nenhuma avaliação ainda",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1A1A1A)
+                )
+                Text(
+                    text = "Seja o primeiro a avaliar esta loja!",
+                    fontSize = 13.sp,
+                    color = Color(0xFF999999)
+                )
+            }
+            return
+        }
+
+        // Resumo: nota + histograma
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = String.format(java.util.Locale.US, "%.1f", avgRating),
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1A1A1A)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    (1..5).forEach { star ->
+                        Text(
+                            text = if (star <= avgRating.toInt()) "★" else "☆",
+                            fontSize = 14.sp,
+                            color = Color(0xFFFFA000)
+                        )
+                    }
+                }
+                Text(
+                    text = "$reviewCount avaliações",
+                    fontSize = 12.sp,
+                    color = Color(0xFF999999)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val dists = listOf(
+                    5 to ratingAgg?.optInt("dist_5", 0),
+                    4 to ratingAgg?.optInt("dist_4", 0),
+                    3 to ratingAgg?.optInt("dist_3", 0),
+                    2 to ratingAgg?.optInt("dist_2", 0),
+                    1 to ratingAgg?.optInt("dist_1", 0)
+                )
+                val maxDist = dists.maxOf { it.second ?: 0 }.coerceAtLeast(1)
+                dists.forEach { (star, count) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(text = "$star", fontSize = 11.sp, color = Color(0xFF999999))
+                        Box(
+                            modifier = Modifier.weight(1f).height(6.dp)
+                                .background(Color(0xFFEEEEEE), RoundedCornerShape(3.dp))
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxHeight()
+                                    .fillMaxWidth((count ?: 0).toFloat() / maxDist)
+                                    .background(
+                                        if (star >= 4) Color(0xFFFFA000) else Color(0xFFCCCCCC),
+                                        RoundedCornerShape(3.dp)
+                                    )
+                            )
+                        }
+                        Text(text = "${count ?: 0}", fontSize = 11.sp, color = Color(0xFF999999))
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+
+        // Lista de avaliações
+        for (i in 0 until reviewsList.length()) {
+            val review = reviewsList.optJSONObject(i) ?: continue
+            val rating = review.optInt("rating", 5)
+            val comment = review.optString("comment", "")
+            val createdAt = review.optString("created_at", "")
+            val responses = review.optJSONArray("review_responses")
+            val hasResponse = responses != null && responses.length() > 0
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    (1..5).forEach { star ->
+                        Text(
+                            text = if (star <= rating) "★" else "☆",
+                            fontSize = 13.sp,
+                            color = Color(0xFFFFA000)
+                        )
+                    }
+                }
+                if (comment.isNotBlank() && comment != "null") {
+                    Text(text = comment, fontSize = 14.sp, color = Color(0xFF1A1A1A))
+                }
+                if (hasResponse) {
+                    val responseMsg = responses!!.optJSONObject(0)?.optString("message", "") ?: ""
+                    if (responseMsg.isNotBlank()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(Color(0xFFF8F8F8), RoundedCornerShape(8.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "Resposta da loja",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ItaSuperPrimary
+                            )
+                            Text(text = responseMsg, fontSize = 13.sp, color = Color(0xFF444444))
+                        }
+                    }
+                }
+                if (createdAt.isNotBlank()) {
+                    Text(
+                        text = formatReviewDate(createdAt),
+                        fontSize = 11.sp,
+                        color = Color(0xFFBBBBBB)
+                    )
+                }
+            }
+            if (i < reviewsList.length() - 1) {
+                HorizontalDivider(color = Color(0xFFF5F5F5), thickness = 1.dp)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+private fun formatReviewDate(iso: String): String {
+    return try {
+        val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        val formatter = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale("pt", "BR"))
+        val date = parser.parse(iso.substringBefore("+").substringBefore(".")) ?: return ""
+        formatter.format(date)
+    } catch (e: Exception) {
+        ""
+    }
 }
 
 fun Store.displayAddress(): String {
