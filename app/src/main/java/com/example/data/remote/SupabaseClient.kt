@@ -1695,6 +1695,7 @@ object SupabaseClient {
                     var hasStuffedCrust = item.optBoolean("has_stuffed_crust", false)
                     var isCombo = item.optBoolean("is_combo", false)
                     var isPastelFlavor = item.optBoolean("is_pastel_flavor", false)
+                    var modalOnly = false
                     var isBeverage = item.optBoolean("is_beverage", false)
                     var requiresPrescription = false
                     var isControlled = false
