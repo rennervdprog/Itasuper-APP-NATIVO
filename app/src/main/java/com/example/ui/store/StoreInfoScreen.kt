@@ -66,7 +66,7 @@ fun StoreInfoScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val favoriteStorage = remember(context) { FavoriteStoresStorage(context) }
-    val favoriteIds by favoriteStorage.favoriteIds.collectAsState(initial = emptySet())
+    val favoriteIds by favoriteStorage.favorites.collectAsState()
 
     Scaffold(containerColor = Color.White) { paddingValues ->
         if (uiState.isLoading) {
@@ -121,10 +121,7 @@ fun StoreInfoScreen(
                             tint = ItaSuperPrimary,
                             modifier = Modifier
                                 .size(40.dp)
-                                .clickable {
-                                    if (isFav) favoriteStorage.removeFavorite(storeId)
-                                    else favoriteStorage.addFavorite(storeId)
-                                }
+                                .clickable { favoriteStorage.toggleFavorite(storeId) }
                                 .padding(8.dp)
                         )
                     }
