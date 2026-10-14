@@ -441,7 +441,8 @@ fun StoreDetailScreen(
                         },
                         onInfoClick = onNavigateToInfo,
                         isFavorite = isFavorite,
-                        onFavoriteClick = { favoriteStorage.toggleFavorite(storeId) }
+                        onFavoriteClick = { favoriteStorage.toggleFavorite(storeId) },
+                        ratingAgg = ratingAgg
                     )
                 }
 
@@ -1068,7 +1069,8 @@ private fun StoreShowcaseHeader(
     onOpenMaps: () -> Unit,
     onInfoClick: () -> Unit,
     isFavorite: Boolean = false,
-    onFavoriteClick: () -> Unit = {}
+    onFavoriteClick: () -> Unit = {},
+    ratingAgg: org.json.JSONObject? = null
 ) {
     val isOpen = store?.isOpen == true
     val feeText = store?.deliveryFee?.takeUnless { it.isBlank() || it.equals("null", true) } ?: "—"
