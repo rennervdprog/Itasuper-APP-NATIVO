@@ -14,6 +14,7 @@ import com.example.data.repository.CartRepository
 import com.example.data.repository.CartState
 import com.example.data.repository.StoreRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -214,7 +215,10 @@ class StoreDetailViewModel : ViewModel() {
     private var deliveryAvailabilityJob: Job? = null
 
     val cartState: StateFlow<CartState> = CartRepository.cartState
-    val allProducts: StateFlow<List<Product>> = _rawProducts.asStateFlow()
+    // Catálogo visível (oculta "apenas no modal", igual ao web). O builder usa _rawProducts direto.
+    val allProducts: StateFlow<List<Product>> = _rawProducts
+        .map { list -> list.filterNot { it.modalOnly && it.isPastelFlavor } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         // O detalhe mantém seus dados completos, mas recebe apenas os campos de
