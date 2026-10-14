@@ -312,10 +312,9 @@ class StoreDetailViewModel : ViewModel() {
                     return@withTimeout
                 }
 
-                // Uma resposta vazia durante instabilidade não apaga o cardápio já visível.
-                if (remoteProducts.isNotEmpty() || _rawProducts.value.isEmpty()) {
-                    _rawProducts.value = remoteProducts
-                }
+                // Fase 7 (L17): se o fetch não lançou exceção, a lista vazia é legítima
+                // (lojista desativou tudo) — não mantém a lista antiga.
+                _rawProducts.value = remoteProducts
                 if (addonGroups.isNotEmpty()) allAddonGroups = addonGroups
                 if (productGroups.isNotEmpty()) productAddonGroupsMap = productGroups
                 if (addonItems.isNotEmpty()) allAddonItems = addonItems
