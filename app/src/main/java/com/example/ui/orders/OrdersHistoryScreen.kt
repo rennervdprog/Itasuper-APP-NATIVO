@@ -529,7 +529,7 @@ fun OrdersHistoryScreen(
                             },
                             onRateOrder = { orderPendingRating.value = order },
                             onRefundOrder = { orderPendingRefund.value = order },
-                            isRated = uiState.ratedOrderIds.contains(order.id)
+                            isRated = uiState.ratedOrderIds.contains(order.id) || !isWithinRatingWindow(order.createdAt)
                         )
                     }
                 }
@@ -972,6 +972,19 @@ private fun SummaryLine(label: String, value: String) {
 }
 
 @Composable
+// Verifica se o pedido está na janela de 7 dias para avaliação
+private fun isWithinRatingWindow(createdAt: String): Boolean {
+    return try {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val date = fmt.parse(createdAt.substring(0, 19))
+        val sevenDaysAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+        date != null && date.time >= sevenDaysAgo
+    } catch (e: Exception) {
+        true // em caso de erro no parse, mostra o botão (backend valida)
+    }
+}
+
 private fun PreviousOrderCard(
     order: Order,
     onRepeatOrder: () -> Unit,
