@@ -971,7 +971,6 @@ private fun SummaryLine(label: String, value: String) {
     }
 }
 
-@Composable
 // Verifica se o pedido está na janela de 7 dias para avaliação
 private fun isWithinRatingWindow(createdAt: String): Boolean {
     return try {
@@ -985,6 +984,7 @@ private fun isWithinRatingWindow(createdAt: String): Boolean {
     }
 }
 
+@Composable
 private fun PreviousOrderCard(
     order: Order,
     onRepeatOrder: () -> Unit,
