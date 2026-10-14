@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,8 +47,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -221,6 +224,8 @@ fun OrdersHistoryScreen(
     val orderPendingRating = remember { mutableStateOf<Order?>(null) }
     val ratingValue = remember { mutableStateOf(5) }
     val ratingComment = remember { mutableStateOf("") }
+    val ratingTags = remember { mutableStateOf(setOf<String>()) }
+    val ratingPublic = remember { mutableStateOf(true) }
     val orderPendingRefund = remember { mutableStateOf<Order?>(null) }
     val refundDescription = remember { mutableStateOf("") }
 
@@ -258,37 +263,99 @@ fun OrdersHistoryScreen(
     }
 
     orderPendingRating.value?.let { order ->
+        val rating = ratingValue.value
         AlertDialog(
-            onDismissRequest = { orderPendingRating.value = null },
+            onDismissRequest = {
+                orderPendingRating.value = null
+                ratingTags.value = emptySet()
+                ratingPublic.value = true
+            },
             title = { Text("Como foi seu pedido?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..5).forEach { star ->
                             TextButton(onClick = { ratingValue.value = star }) {
-                                Text(if (star <= ratingValue.value) "★" else "☆", color = ItaSuperPrimary, fontSize = 24.sp)
+                                Text(if (star <= rating) "★" else "☆", color = ItaSuperPrimary, fontSize = 24.sp)
+                            }
+                        }
+                    }
+                    // Tags: o que pode melhorar (nota <= 4) ou o que amou (nota 5)
+                    if (rating <= 4) {
+                        Text("O que pode melhorar?", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        val negativeTags = listOf(
+                            "tasty" to "Sabor", "good_packaging" to "Embalagem",
+                            "generous_portion" to "Porção", "on_time" to "Prazo",
+                            "cold" to "Veio fria", "late" to "Atrasou"
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            negativeTags.forEach { (key, label) ->
+                                val selected = key in ratingTags.value
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        ratingTags.value = if (selected) ratingTags.value - key
+                                        else ratingTags.value + key
+                                    },
+                                    label = { Text(label, fontSize = 12.sp) }
+                                )
                             }
                         }
                     }
                     OutlinedTextField(
                         value = ratingComment.value,
                         onValueChange = { ratingComment.value = it },
-                        label = { Text("Comentário (opcional)") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text(if (rating <= 3) "Comentário (obrigatório, mín. 12 caracteres)" else "Comentário (opcional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = rating <= 3 && ratingComment.value.trim().length < 12
+                    )
+                    // Visibilidade: pública ou privada
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = ratingPublic.value,
+                            onCheckedChange = { ratingPublic.value = it }
+                        )
+                        Text("Tornar avaliação pública", fontSize = 13.sp)
+                    }
+                    Text(
+                        "Avaliações privadas não aparecem na nota da loja.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.submitOrderRating(order, ratingValue.value, ratingComment.value) { success ->
-                        if (success) {
-                            orderPendingRating.value = null
-                            ratingComment.value = ""
-                        }
+                    val tags = ratingTags.value.map { tag ->
+                        val positive = tag in setOf("tasty", "good_packaging", "generous_portion", "on_time")
+                        tag to if (positive) "positive" else "negative"
                     }
+                    viewModel.submitOrderRating(
+                        order, rating, ratingComment.value,
+                        onComplete = { success ->
+                            if (success) {
+                                orderPendingRating.value = null
+                                ratingComment.value = ""
+                                ratingTags.value = emptySet()
+                                ratingPublic.value = true
+                            }
+                        },
+                        isPublic = ratingPublic.value,
+                        tags = tags
+                    )
                 }) { Text("Enviar avaliação") }
             },
-            dismissButton = { TextButton(onClick = { orderPendingRating.value = null }) { Text("Agora não") } }
+            dismissButton = { TextButton(onClick = {
+                orderPendingRating.value = null
+                ratingTags.value = emptySet()
+                ratingPublic.value = true
+            }) { Text("Agora não") } }
         )
     }
 

@@ -2373,28 +2373,121 @@ object SupabaseClient {
         }
     }
 
-    suspend fun submitOrderRating(orderId: String, storeId: String, userId: String, rating: Int, comment: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Envia avaliação do pedido para o novo sistema de reviews (fase 1).
+     * Tabela `reviews` com target_type='store'; tags vão para `review_tags`.
+     */
+    suspend fun submitOrderRating(
+        orderId: String,
+        storeId: String,
+        userId: String,
+        rating: Int,
+        comment: String,
+        accessToken: String,
+        isPublic: Boolean = true,
+        tags: List<Pair<String, String>> = emptyList(),
+        source: String = "post_delivery"
+    ): Boolean = withContext(Dispatchers.IO) {
         if (orderId.isBlank() || storeId.isBlank() || userId.isBlank() || accessToken.isBlank() || rating !in 1..5) return@withContext false
+        // Comentário obrigatório (mín. 12 chars) em notas 1–3 — espelha o CHECK do banco
+        if (rating <= 3 && comment.trim().length < 12) return@withContext false
         try {
             val body = JSONObject().apply {
                 put("order_id", orderId)
-                put("store_id", storeId)
-                put("user_id", userId)
+                put("author_id", userId)
+                put("target_type", "store")
+                put("target_id", storeId)
                 put("rating", rating)
                 put("comment", comment.trim().ifBlank { JSONObject.NULL })
+                put("visibility", if (isPublic) "public" else "private")
+                put("source", source)
             }
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/order_ratings")
+                .url("$SUPABASE_URL/rest/v1/reviews")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=minimal")
+                .addHeader("Prefer", "return=representation")
                 .post(body.toString().toRequestBody(jsonMediaType))
                 .build()
-            httpClient.newCall(request).execute().use { it.isSuccessful }
+            val reviewId: String? = httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                try {
+                    val arr = JSONArray(resp.body?.string() ?: "[]")
+                    if (arr.length() > 0) arr.getJSONObject(0).optString("id", null) else null
+                } catch (e: Exception) { null }
+            }
+            if (reviewId.isNullOrBlank()) return@withContext false
+            // Insere as tags (se houver)
+            if (tags.isNotEmpty()) {
+                val tagsArray = JSONArray()
+                tags.forEach { (tag, sentiment) ->
+                    tagsArray.put(JSONObject().apply {
+                        put("review_id", reviewId)
+                        put("tag", tag)
+                        put("sentiment", sentiment)
+                    })
+                }
+                val tagsRequest = Request.Builder()
+                    .url("$SUPABASE_URL/rest/v1/review_tags")
+                    .addHeader("apikey", SUPABASE_ANON_KEY)
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Prefer", "return=minimal")
+                    .post(tagsArray.toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(tagsRequest).execute().use { /* tags são opcionais; ignora falha */ }
+            }
+            true
         } catch (error: Exception) {
             Log.e(TAG, "Erro ao enviar avaliação", error)
             false
+        }
+    }
+
+    /**
+     * Busca o agregado de avaliações da loja (nota média 90d + histograma).
+     */
+    suspend fun getStoreRatingAggregate(storeId: String): JSONObject? = withContext(Dispatchers.IO) {
+        if (storeId.isBlank()) return@withContext null
+        try {
+            val url = "$SUPABASE_URL/rest/v1/store_rating_aggregates?store_id=eq.$storeId&period=eq.90d&select=*"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .build()
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                val arr = JSONArray(resp.body?.string() ?: "[]")
+                if (arr.length() > 0) arr.getJSONObject(0) else null
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao buscar agregado de avaliações", error)
+            null
+        }
+    }
+
+    /**
+     * Lista avaliações públicas aprovadas da loja (com tags e respostas).
+     */
+    suspend fun getStoreReviews(storeId: String, limit: Int = 20): JSONArray = withContext(Dispatchers.IO) {
+        try {
+            val url = "$SUPABASE_URL/rest/v1/reviews?target_type=eq.store&target_id=eq.$storeId" +
+                "&status=eq.approved&visibility=eq.public&order=created_at.desc&limit=$limit" +
+                "&select=id,rating,comment,created_at,review_tags(tag,sentiment),review_responses(message,created_at)"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                .build()
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@use JSONArray()
+                JSONArray(resp.body?.string() ?: "[]")
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Erro ao buscar avaliações da loja", error)
+            JSONArray()
         }
     }
 
