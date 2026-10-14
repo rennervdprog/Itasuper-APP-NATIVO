@@ -1066,7 +1066,7 @@ private fun HomeHighlightsBentoSection(
     stores: List<Store>,
     onStoreClick: (String) -> Unit
 ) {
-    val topStores = stores.sortedByDescending { it.rating }.take(3)
+    val topStores = stores.sortedByDescending { it.rating ?: -1.0 }.take(3)
     if (topStores.isEmpty()) return
 
     Column(
@@ -1186,7 +1186,7 @@ private fun HomeHighlightsBentoSection(
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             Text(
-                                text = "${mainStore.rating}",
+                                text = mainStore.rating?.toString() ?: "—",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = ItaSuperWarning,
@@ -1264,7 +1264,7 @@ private fun HomeHighlightsBentoSection(
                                     )
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text(
-                                        text = "${store.rating}",
+                                        text = store.rating?.toString() ?: "—",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
                                             color = ItaSuperWarning,
