@@ -974,7 +974,7 @@ private fun SummaryLine(label: String, value: String) {
 // Verifica se o pedido está na janela de 7 dias para avaliação
 private fun isWithinRatingWindow(createdAt: String): Boolean {
     return try {
-        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
         fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
         val date = fmt.parse(createdAt.substring(0, 19))
         val sevenDaysAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
