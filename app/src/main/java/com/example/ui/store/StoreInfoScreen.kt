@@ -651,6 +651,7 @@ private fun StoreReviewsContent(
             val rating = review.optInt("rating", 5)
             val comment = review.optString("comment", "")
             val createdAt = review.optString("created_at", "")
+            val authorName = review.optString("author_name", "").ifBlank { "Cliente" }
             val responses = review.optJSONArray("review_responses")
             val hasResponse = responses != null && responses.length() > 0
 
@@ -658,6 +659,23 @@ private fun StoreReviewsContent(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = authorName,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1A1A1A)
+                    )
+                    Text(
+                        text = formatRelativeTime(createdAt),
+                        fontSize = 11.sp,
+                        color = Color(0xFFAAAAAA)
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     (1..5).forEach { star ->
                         Text(
@@ -689,13 +707,6 @@ private fun StoreReviewsContent(
                         }
                     }
                 }
-                if (createdAt.isNotBlank()) {
-                    Text(
-                        text = formatReviewDate(createdAt),
-                        fontSize = 11.sp,
-                        color = Color(0xFFBBBBBB)
-                    )
-                }
             }
             if (i < reviewsList.length() - 1) {
                 HorizontalDivider(color = Color(0xFFF5F5F5), thickness = 1.dp)
@@ -711,6 +722,29 @@ private fun formatReviewDate(iso: String): String {
         val formatter = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale("pt", "BR"))
         val date = parser.parse(iso.substringBefore("+").substringBefore(".")) ?: return ""
         formatter.format(date)
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+private fun formatRelativeTime(iso: String): String {
+    return try {
+        val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        val date = parser.parse(iso.substringBefore("+").substringBefore(".")) ?: return ""
+        val diffMs = System.currentTimeMillis() - date.time
+        if (diffMs < 0) return ""
+        val minutes = diffMs / 60000
+        val hours = minutes / 60
+        val days = hours / 24
+        when {
+            minutes < 1 -> "agora mesmo"
+            minutes < 60 -> "há $minutes min"
+            hours < 24 -> "há $hours h"
+            days < 7 -> if (days == 1L) "há 1 dia" else "há $days dias"
+            days < 30 -> { val w = days / 7; if (w == 1L) "há 1 semana" else "há $w semanas" }
+            days < 365 -> { val m = days / 30; if (m == 1L) "há 1 mês" else "há $m meses" }
+            else -> { val y = days / 365; if (y == 1L) "há 1 ano" else "há $y anos" }
+        }
     } catch (e: Exception) {
         ""
     }
@@ -757,3 +791,4 @@ fun StoreOpeningHour.brasiliaDayLabel(): String {
         else -> dayOfWeekStr.takeIf { it.isNotBlank() } ?: ""
     }
 }
+
