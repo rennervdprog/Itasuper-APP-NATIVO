@@ -2475,16 +2475,49 @@ object SupabaseClient {
         try {
             val url = "$SUPABASE_URL/rest/v1/reviews?target_type=eq.store&target_id=eq.$storeId" +
                 "&status=eq.approved&visibility=eq.public&order=created_at.desc&limit=$limit" +
-                "&select=id,rating,comment,created_at,review_tags(tag,sentiment),review_responses(message,created_at)"
+                "&select=id,author_id,rating,comment,created_at,review_tags(tag,sentiment),review_responses(message,created_at)"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
                 .build()
-            httpClient.newCall(request).execute().use { resp ->
+            val reviews = httpClient.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) return@use JSONArray()
                 JSONArray(resp.body?.string() ?: "[]")
             }
+            // Nome público do avaliador (view review_author_names; fallback "Cliente")
+            try {
+                val authorIds = (0 until reviews.length())
+                    .map { reviews.getJSONObject(it).optString("author_id") }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                if (authorIds.isNotEmpty()) {
+                    val namesUrl = "$SUPABASE_URL/rest/v1/review_author_names" +
+                        "?user_id=in.(${authorIds.joinToString(",")})&select=user_id,display_name"
+                    val namesRequest = Request.Builder()
+                        .url(namesUrl)
+                        .addHeader("apikey", SUPABASE_ANON_KEY)
+                        .addHeader("Authorization", "Bearer $SUPABASE_ANON_KEY")
+                        .build()
+                    val nameMap = mutableMapOf<String, String>()
+                    httpClient.newCall(namesRequest).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val arr = JSONArray(resp.body?.string() ?: "[]")
+                            for (i in 0 until arr.length()) {
+                                val o = arr.getJSONObject(i)
+                                nameMap[o.optString("user_id")] = o.optString("display_name", "Cliente")
+                            }
+                        }
+                    }
+                    for (i in 0 until reviews.length()) {
+                        val r = reviews.getJSONObject(i)
+                        r.put("author_name", nameMap[r.optString("author_id")] ?: "Cliente")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Nomes de avaliadores indisponíveis", e)
+            }
+            reviews
         } catch (error: Exception) {
             Log.e(TAG, "Erro ao buscar avaliações da loja", error)
             JSONArray()
@@ -3443,3 +3476,4 @@ private fun JSONObject.optNullableString(key: String): String? {
         return null
     }
 }
+
