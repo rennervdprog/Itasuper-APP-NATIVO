@@ -662,14 +662,6 @@ fun ProfileScreen(
                             onClick = { showDeleteConfirmation = true },
                             destructive = true
                         )
-                        // TODO(DEBUG): REMOVER ANTES DE PUBLICAR
-                        ProfileDivider()
-                        ProfileMenuRow(
-                            iconRes = R.drawable.ic_ita_info,
-                            title = "Debug Mapa (temporário)",
-                            subtitle = "Diagnosticar mapa em branco",
-                            onClick = { com.example.ui.debug.MapDebugActivity.open(context) }
-                        )
                     }
                 }
             }
