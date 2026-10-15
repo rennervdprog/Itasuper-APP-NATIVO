@@ -21,7 +21,8 @@ data class SearchCategory(
 /** Separa falha de comunicação de uma resposta válida sem lojas elegíveis. */
 data class StoreRefreshResult(
     val isSuccess: Boolean,
-    val stores: List<Store>
+    val stores: List<Store>,
+    val debugMessage: String? = null
 )
 
 object StoreRepository {
@@ -83,7 +84,8 @@ object StoreRepository {
             _stores.value = catalog.stores
             return StoreRefreshResult(isSuccess = true, stores = catalog.stores)
         }
-        return StoreRefreshResult(isSuccess = false, stores = _stores.value)
+        // TODO(DEBUG): REMOVER ANTES DE PUBLICAR
+        return StoreRefreshResult(isSuccess = false, stores = _stores.value, debugMessage = catalog.debugMessage)
     }
 
     /**
