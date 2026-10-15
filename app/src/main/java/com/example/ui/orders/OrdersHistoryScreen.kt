@@ -798,7 +798,7 @@ private fun OrderTimeline(activeStage: Int) {
                 val reached = index <= activeStage
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(if (reached) ItaSuperPrimary else Color(0xFFF0F0F0)),
                     contentAlignment = Alignment.Center
@@ -807,15 +807,15 @@ private fun OrderTimeline(activeStage: Int) {
                         imageVector = if (index == 3) Icons.Default.LocalShipping else Icons.Default.CheckCircle,
                         contentDescription = null,
                         tint = if (reached) Color.White else Color(0xFF8D8D8D),
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
                 if (index < labels.lastIndex) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(1.dp)
-                            .background(if (index < activeStage) ItaSuperPrimary.copy(alpha = 0.42f) else Color(0xFFE2E2E2))
+                            .height(2.dp)
+                            .background(if (index < activeStage) ItaSuperPrimary else Color(0xFFE2E2E2))
                     )
                 }
             }
@@ -827,7 +827,7 @@ private fun OrderTimeline(activeStage: Int) {
                     text = label,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = if (index <= activeStage) ItaSuperPrimary else Color(0xFF777777),
                     maxLines = 1
                 )
@@ -853,7 +853,7 @@ private fun DeliveryPinCard(pin: String) {
         }
         Spacer(Modifier.height(9.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(pin.chunked(1).joinToString(" "), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
+            Text(pin.chunked(1).joinToString(" "), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 6.sp)
             OutlinedButton(
                 onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
