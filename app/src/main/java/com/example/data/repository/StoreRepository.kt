@@ -84,8 +84,7 @@ object StoreRepository {
             _stores.value = catalog.stores
             return StoreRefreshResult(isSuccess = true, stores = catalog.stores)
         }
-        // TODO(DEBUG): REMOVER ANTES DE PUBLICAR
-        return StoreRefreshResult(isSuccess = false, stores = _stores.value, debugMessage = catalog.debugMessage)
+        return StoreRefreshResult(isSuccess = false, stores = _stores.value)
     }
 
     /**
