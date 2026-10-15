@@ -84,7 +84,7 @@ fun StoreInfoScreen(
         }
     }
 
-    Scaffold(containerColor = Color.White) { paddingValues ->
+    Scaffold(containerColor = Color(0xFFF7F7F8)) { paddingValues ->
         if (uiState.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
@@ -285,151 +285,22 @@ fun StoreInfoScreen(
                     }
                 }
 
-                // Conteúdo da aba Informações
+                // Conteúdo da aba Informações — Opção A2 (Mapa Destaque)
                 if (selectedTab == 1) {
+                    val isOpen = store?.isOpen == true
 
-
-                // Aberto agora (expansível)
-                item {
-                    var showHours by remember { mutableStateOf(false) }
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable { showHours = !showHours },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (store?.isOpen == true) "Aberto agora" else "Fechado",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF1A1A1A)
-                            )
-                            Text(
-                                text = "⌄",
-                                fontSize = 20.sp,
-                                color = Color(0xFFAAAAAA)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        if (showHours && hours.isNotEmpty()) {
-                            hours.forEach { h ->
-                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                                    Text(
-                                        text = h.brasiliaDayLabel(),
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF777777),
-                                        modifier = Modifier.width(110.dp)
-                                    )
-                                    Text(
-                                        text = if (h.isClosedAllDay) "Fechado" else "${h.openTime} às ${h.closeTime}",
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF777777)
-                                    )
-                                }
-                            }
-                        } else if (hours.isNotEmpty()) {
-                            val todayHour = hours.firstOrNull { isToday(it) }
-                            if (todayHour != null) {
-                                Row(modifier = Modifier.fillMaxWidth()) {
-                                    Text(
-                                        text = todayHour.brasiliaDayLabel(),
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF777777),
-                                        modifier = Modifier.width(110.dp)
-                                    )
-                                    Text(
-                                        text = if (todayHour.isClosedAllDay) "Fechado" else "${todayHour.openTime} às ${todayHour.closeTime}",
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF777777)
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Horários não informados pela loja.",
-                                fontSize = 15.sp,
-                                color = Color(0xFF999999)
-                            )
-                        }
-                    }
-                }
-
-                // Formas de pagamento
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Formas de pagamento",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF1A1A1A)
-                            )
-                            Text(text = "Ver mais", fontSize = 15.sp, color = ItaSuperPrimary)
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        if (payments.isEmpty()) {
-                            Text(
-                                text = "Formas de pagamento não informadas pela loja.",
-                                fontSize = 15.sp,
-                                color = Color(0xFF999999)
-                            )
-                        } else {
-                            val online = payments.filter { isOnlinePayment(it) }
-                            val onDelivery = payments.filter { !isOnlinePayment(it) }
-                            if (online.isNotEmpty()) {
-                                PaymentBrandRow(label = "Online pelo ItaSuper", methods = online)
-                                Spacer(modifier = Modifier.height(10.dp))
-                            }
-                            if (onDelivery.isNotEmpty()) {
-                                PaymentBrandRow(label = "Na entrega", methods = onDelivery)
-                            }
-                            if (online.isEmpty() && onDelivery.isEmpty()) {
-                                payments.forEach { m ->
-                                    PaymentBrandRow(label = m, methods = listOf(m))
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Endereço
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text(
-                            text = "Endereço",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1A1A1A)
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row {
-                            Icon(
-                                imageVector = Icons.Filled.LocationOn,
-                                contentDescription = null,
-                                tint = Color(0xFF888888),
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = address.ifBlank { "Endereço não informado pela loja." },
-                                fontSize = 15.sp,
-                                color = Color(0xFF555555),
-                                lineHeight = 23.sp
-                            )
-                        }
-                        if (address.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFF5F5F5),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
+                    // Mapa hero com chip da loja
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 12.dp)
+                                .height(190.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xFFDCEFE0))
+                                .clickable {
+                                    if (address.isNotBlank()) {
                                         runCatching {
                                             context.startActivity(
                                                 Intent(
@@ -439,23 +310,222 @@ fun StoreInfoScreen(
                                             )
                                         }
                                     }
+                                }
+                        ) {
+                            // Pin central
+                            Text(
+                                text = "📍",
+                                fontSize = 40.sp,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                            // Chip da loja
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(14.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color.White)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val logoUrl = store?.logoUrl
+                                if (!logoUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = logoUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFF1A1A1A)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = store?.name?.firstOrNull()?.uppercase() ?: "",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ItaSuperPrimary
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = store?.name ?: "",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF1A1A1A)
+                                    )
+                                    Text(
+                                        text = buildString {
+                                            val cat = store?.category?.takeIf { it.isNotBlank() }
+                                                ?.replaceFirstChar { it.uppercase() } ?: ""
+                                            append(cat)
+                                            val d = store?.distanceKm ?: 0.0
+                                            if (d > 0) {
+                                                if (isNotEmpty()) append(" · ")
+                                                append(formatDistance(d))
+                                            }
+                                        },
+                                        fontSize = 11.5.sp,
+                                        color = Color(0xFF777777)
+                                    )
+                                }
+                            }
+                            // Botão traçar rota
+                            if (address.isNotBlank()) {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth().height(120.dp),
-                                    contentAlignment = Alignment.Center
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(14.dp)
+                                        .clip(RoundedCornerShape(100.dp))
+                                        .background(Color(0xFF1A1A1A))
+                                        .padding(horizontal = 18.dp, vertical = 10.dp)
                                 ) {
                                     Text(
-                                        text = "Ver no mapa",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = ItaSuperPrimary
+                                        text = "Traçar rota →",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
                                     )
                                 }
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(28.dp))
-                }
+
+                    // Card Funcionamento
+                    item {
+                        InfoCard(title = "🕐", titleText = "Funcionamento") {
+                            // Status pill
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(13.dp))
+                                    .background(
+                                        if (isOpen) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(9.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isOpen) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(9.dp))
+                                Text(
+                                    text = if (isOpen) "Aberto agora" else "Fechado agora",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOpen) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                val nextInfo = nextOpeningInfo(hours, isOpen)
+                                if (nextInfo.isNotBlank()) {
+                                    Text(
+                                        text = nextInfo,
+                                        fontSize = 12.5.sp,
+                                        color = Color(0xFF777777)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            // Horários agrupados
+                            val grouped = groupHoursByRange(hours)
+                            if (grouped.isEmpty()) {
+                                Text(
+                                    text = "Horários não informados pela loja.",
+                                    fontSize = 13.5.sp,
+                                    color = Color(0xFF999999)
+                                )
+                            } else {
+                                grouped.forEach { (label, range) ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 13.5.sp,
+                                            color = Color(0xFF777777)
+                                        )
+                                        Text(
+                                            text = range,
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1A1A1A)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Card Pagamento
+                    item {
+                        InfoCard(title = "💳", titleText = "Pagamento") {
+                            if (payments.isEmpty()) {
+                                Text(
+                                    text = "Formas de pagamento não informadas pela loja.",
+                                    fontSize = 13.5.sp,
+                                    color = Color(0xFF999999)
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    payments.chunked(2).forEach { rowMethods ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            rowMethods.forEach { m ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clip(RoundedCornerShape(13.dp))
+                                                        .background(Color(0xFFF9FAFB))
+                                                        .padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    PaymentBadge(method = m)
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = paymentDisplayName(m),
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF374151)
+                                                    )
+                                                }
+                                            }
+                                            // Preenche a grade se ímpar
+                                            if (rowMethods.size == 1) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Card Endereço
+                    item {
+                        InfoCard(title = "📍", titleText = "Endereço") {
+                            Text(
+                                text = address.ifBlank { "Endereço não informado pela loja." },
+                                fontSize = 14.sp,
+                                color = Color(0xFF374151),
+                                lineHeight = 22.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
                 } // fim if (selectedTab == 1)
             }
         }
@@ -535,6 +605,140 @@ fun Store.paymentMethods(): List<String> = buildList {
     if (settings.acceptCash) add("Dinheiro")
 }
 
+
+@Composable
+private fun InfoCard(
+    title: String,
+    titleText: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(top = 14.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White)
+            .padding(18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = title, fontSize = 17.sp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = titleText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF1A1A1A),
+                letterSpacing = (-0.2).sp
+            )
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        content()
+    }
+}
+
+@Composable
+private fun PaymentBadge(method: String) {
+    val m = method.lowercase(java.util.Locale.ROOT)
+    val (bg, label) = when {
+        m.contains("visa") -> Color(0xFF1A1F71) to "VISA"
+        m.contains("master") -> Color(0xFFEB001B) to "MC"
+        m.contains("elo") -> Color(0xFF0066B3) to "ELO"
+        m.contains("hiper") -> Color(0xFFED1C24) to "HP"
+        m.contains("amex") || m.contains("american") -> Color(0xFF2E77BC) to "AMEX"
+        m.contains("pix") -> Color(0xFF32BCAD) to "PIX"
+        m.contains("dinheiro") -> Color(0xFF4CAF50) to "R$"
+        m.contains("debito") || m.contains("débito") -> Color(0xFF5C6BC0) to "DÉB"
+        m.contains("credito") || m.contains("crédito") -> Color(0xFF7B1FA2) to "CRÉD"
+        else -> Color(0xFF9E9E9E) to method.take(2).uppercase(java.util.Locale.ROOT)
+    }
+    Box(
+        modifier = Modifier
+            .size(width = 36.dp, height = 26.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White
+        )
+    }
+}
+
+private fun paymentDisplayName(method: String): String {
+    val m = method.lowercase(java.util.Locale.ROOT)
+    return when {
+        m.contains("pix") && m.contains("online") -> "Pix online"
+        m.contains("pix") && (m.contains("maquininha") || m.contains("machine")) -> "Pix na maquininha"
+        m.contains("pix") -> "Pix"
+        m.contains("visa") -> "Visa"
+        m.contains("master") -> "Mastercard"
+        m.contains("elo") -> "Elo"
+        m.contains("hiper") -> "Hipercard"
+        m.contains("amex") || m.contains("american") -> "Amex"
+        m.contains("dinheiro") -> "Dinheiro"
+        m.contains("debito") || m.contains("débito") -> "Débito"
+        m.contains("credito") || m.contains("crédito") -> "Crédito"
+        else -> method.replaceFirstChar { it.uppercase() }
+    }
+}
+
+private fun formatTimeShort(time: String): String {
+    // "08:00:00" -> "08:00"
+    return time.trim().split(":").take(2).joinToString(":")
+}
+
+private fun nextOpeningInfo(hours: List<StoreOpeningHour>, isOpen: Boolean): String {
+    if (isOpen || hours.isEmpty()) return ""
+    // Simplificado: informa o próximo horário de hoje ou amanhã
+    val today = hours.firstOrNull { isToday(it) }
+    return if (today != null && !today.isClosedAllDay) {
+        "Abre hoje às ${formatTimeShort(today.openTime)}"
+    } else {
+        "Abre amanhã às 08:00"
+    }
+}
+
+private fun groupHoursByRange(hours: List<StoreOpeningHour>): List<Pair<String, String>> {
+    if (hours.isEmpty()) return emptyList()
+    // Agrupa dias consecutivos com o mesmo horário
+    val sorted = hours.sortedBy { it.brasiliaDayOrder() }
+    val result = mutableListOf<Pair<String, String>>()
+    var groupStart = sorted[0]
+    var groupEnd = sorted[0]
+    fun rangeLabel(start: StoreOpeningHour, end: StoreOpeningHour): String {
+        val s = start.brasiliaDayLabel()
+        val e = end.brasiliaDayLabel()
+        return if (s == e) s else "$s – $e"
+    }
+    fun timeRange(h: StoreOpeningHour): String {
+        return if (h.isClosedAllDay) "Fechado"
+        else "${formatTimeShort(h.openTime)} – ${formatTimeShort(h.closeTime)}"
+    }
+    for (i in 1 until sorted.size) {
+        val h = sorted[i]
+        if (h.brasiliaDayOrder() == groupEnd.brasiliaDayOrder() + 1 && timeRange(h) == timeRange(groupEnd)) {
+            groupEnd = h
+        } else {
+            result.add(rangeLabel(groupStart, groupEnd) to timeRange(groupEnd))
+            groupStart = h
+            groupEnd = h
+        }
+    }
+    result.add(rangeLabel(groupStart, groupEnd) to timeRange(groupEnd))
+    // Expande abreviações para nomes completos curtos
+    return result.map { (label, range) ->
+        val full = label
+            .replace("Seg", "Segunda").replace("Ter", "Terça")
+            .replace("Qua", "Quarta").replace("Qui", "Quinta")
+            .replace("Sex", "Sexta").replace("Sáb", "Sábado")
+            .replace("Dom", "Domingo")
+        full to range
+    }
+}
 
 @Composable
 private fun StoreReviewsContent(
