@@ -223,6 +223,7 @@ fun OrdersHistoryScreen(
     val previousOrders = filteredOrders.filter { it.isFinished() }
     val orderPendingCancellation = remember { mutableStateOf<Order?>(null) }
     val orderPendingRating = remember { mutableStateOf<Order?>(null) }
+    val orderPendingUpdateConfirm = remember { mutableStateOf<Order?>(null) } // Modal "já avaliou" 
     val ratingValue = remember { mutableStateOf(5) }
     val ratingComment = remember { mutableStateOf("") }
     val ratingTags = remember { mutableStateOf(setOf<String>()) }
@@ -259,6 +260,24 @@ fun OrdersHistoryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { orderPendingCancellation.value = null }) { Text("Manter pedido") }
+            }
+        )
+    }
+
+    // Modal: "Você já avaliou esta loja, deseja atualizar?"
+    orderPendingUpdateConfirm.value?.let { order ->
+        AlertDialog(
+            onDismissRequest = { orderPendingUpdateConfirm.value = null },
+            title = { Text("Atualizar avaliação") },
+            text = { Text("Você já avaliou esta loja. Deseja atualizar sua avaliação?") },
+            confirmButton = {
+                Button(onClick = {
+                    orderPendingUpdateConfirm.value = null
+                    orderPendingRating.value = order
+                }) { Text("Sim, atualizar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { orderPendingUpdateConfirm.value = null }) { Text("Cancelar") }
             }
         )
     }
@@ -529,7 +548,9 @@ fun OrdersHistoryScreen(
                             },
                             onRateOrder = { orderPendingRating.value = order },
                             onRefundOrder = { orderPendingRefund.value = order },
-                            isRated = uiState.ratedOrderIds.contains(order.storeId) || !isWithinRatingWindow(order.createdAt)
+                            onEditRating = { orderPendingUpdateConfirm.value = order },
+                            alreadyRated = uiState.ratedOrderIds.contains(order.storeId),
+                            withinWindow = isWithinRatingWindow(order.createdAt)
                         )
                     }
                 }
@@ -990,7 +1011,9 @@ private fun PreviousOrderCard(
     onRepeatOrder: () -> Unit,
     onRateOrder: () -> Unit,
     onRefundOrder: () -> Unit,
-    isRated: Boolean = false // Fase 7 (C10)
+    onEditRating: () -> Unit = {},
+    alreadyRated: Boolean = false,
+    withinWindow: Boolean = true
 ) {
     val presentation = order.presentation()
     Card(
@@ -1025,10 +1048,13 @@ private fun PreviousOrderCard(
                     Text("Pedir novamente", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    // Opção 1: 1 avaliação por loja — mostra "Editar" se já avaliou
-                    // (isRated=true também esconde se fora da janela de 7 dias)
-                    if (!isRated) {
-                        TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
+                    // Opção 1: 1 avaliação por loja
+                    if (withinWindow) {
+                        if (alreadyRated) {
+                            TextButton(onClick = onEditRating) { Text("Editar avaliação") }
+                        } else {
+                            TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
+                        }
                     }
                     if (RefundEligibility.canOpenPixDiretoCase(order.paymentMethod, order.status, order.refundRequestExpiresAt)) {
                         TextButton(onClick = onRefundOrder) { Text("Analisar reembolso") }
