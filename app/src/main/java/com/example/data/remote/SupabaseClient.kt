@@ -3235,7 +3235,7 @@ object SupabaseClient {
         return try {
             val ids = orderIds.joinToString(",")
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/order_items?select=order_id,product_id,quantity,unit_price,addons,observations,products(id,store_id,name,description,price,category,image_url)&order_id=in.($ids)")
+                .url("$SUPABASE_URL/rest/v1/order_items?select=order_id,product_id,quantity,unit_price,addons,observations,products(id,store_id,name,description,price,image_url)&order_id=in.($ids)")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", bearer)
                 .get()
@@ -3497,7 +3497,7 @@ object SupabaseClient {
                 val idFilter = storeIds.joinToString(",")
                 val ordering = if (orderByPrice) "&price=gt.0&order=price.asc" else ""
                 // Fase 7 (C12): filtra modal_only (consistente com PR #61)
-                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&modal_only=eq.false&store_id=in.($idFilter)$ordering&limit=$limit"
+                val url = "$SUPABASE_URL/rest/v1/products?select=*&is_available=eq.true&store_id=in.($idFilter)$ordering&limit=$limit"
                 val request = Request.Builder()
                     .url(url)
                     .addHeader("apikey", SUPABASE_ANON_KEY)
