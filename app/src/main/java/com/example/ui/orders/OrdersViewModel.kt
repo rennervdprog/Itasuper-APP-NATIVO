@@ -750,6 +750,11 @@ class OrdersViewModel : ViewModel() {
                 if (remoteOrders.isNotEmpty() || OrderRepository.orders.value.isEmpty()) {
                     OrderRepository.replaceOrders(remoteOrders)
                 }
+                // Busca pedidos já avaliados para esconder o botão
+                val ratedIds = SupabaseClient.fetchRatedOrderIds(session.userId, session.accessToken)
+                if (ratedIds.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(ratedOrderIds = _uiState.value.ratedOrderIds + ratedIds)
+                }
             } finally {
                 ordersRefreshInFlight = false
                 _uiState.value = _uiState.value.copy(isRefreshingOrders = false)
