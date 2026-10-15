@@ -3019,6 +3019,29 @@ object SupabaseClient {
     }
 
     /** Carrega os pedidos e os itens do cliente autenticado, sem dados demonstrativos. */
+    // Busca os IDs dos pedidos já avaliados pelo usuário (para esconder o botão)
+    suspend fun fetchRatedOrderIds(userId: String, accessToken: String): Set<String> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/rest/v1/reviews?select=order_id&author_id=eq.$userId")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext emptySet<String>()
+                val arr = JSONArray(resp.body?.string() ?: "[]")
+                val ids = mutableSetOf<String>()
+                for (i in 0 until arr.length()) {
+                    arr.getJSONObject(i).optString("order_id", "").takeIf { it.isNotBlank() }?.let { ids.add(it) }
+                }
+                ids
+            }
+        } catch (e: Exception) {
+            emptySet<String>()
+        }
+    }
+
     suspend fun fetchOrdersForClient(clientId: String, accessToken: String): List<com.example.data.model.Order> = withContext(Dispatchers.IO) {
         if (clientId.isBlank() || accessToken.isBlank()) return@withContext emptyList()
         try {
