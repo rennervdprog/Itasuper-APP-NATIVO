@@ -2834,7 +2834,9 @@ private fun nextStoreOpeningLabel(store: Store): String {
             1 -> "Abre amanhã às"
             else -> "Abre"
         }
-        return "$prefix ${nextHour.openTime}"
+        // Remove os segundos (08:00:00 -> 08:00)
+        val timeShort = nextHour.openTime.take(5)
+        return "$prefix $timeShort"
     }
     return ""
 }
