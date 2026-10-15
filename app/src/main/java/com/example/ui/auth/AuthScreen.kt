@@ -128,23 +128,26 @@ fun AuthScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ItaSuperBackground
+        containerColor = Color.White
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(ItaSuperBackground)
                 .padding(paddingValues)
                 .imePadding()
                 .verticalScroll(scrollState)
         ) {
-            AuthHeader()
+            // Header laranja (Opção C)
+            AuthHeaderOrange(mode = uiState.authMode)
 
+            // Card branco sobreposto
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(Color.White)
                     .padding(horizontal = 24.dp)
-                    .padding(top = 8.dp, bottom = 28.dp),
+                    .padding(top = 24.dp, bottom = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                     AuthTabRow(
@@ -153,8 +156,6 @@ fun AuthScreen(
                     )
 
                     Spacer(modifier = Modifier.height(22.dp))
-                    AuthModeIntro(mode = uiState.authMode)
-                    Spacer(modifier = Modifier.height(20.dp))
 
                     uiState.errorMessage?.let { error ->
                         ErrorBanner(message = error)
@@ -201,42 +202,57 @@ fun AuthScreen(
 }
 
 @Composable
-private fun AuthHeader() {
-    Column(
+private fun AuthHeaderOrange(mode: AuthMode) {
+    val isLogin = mode is AuthMode.Login
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 48.dp, bottom = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(ItaSuperPrimary, Color(0xFFD14E0E))
+                )
+            )
+            .padding(horizontal = 24.dp)
+            .padding(top = 32.dp, bottom = 44.dp)
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.itasuper_brand_icon),
-            contentDescription = "Ícone oficial ItaSuper",
-            modifier = Modifier.size(72.dp)
+        // Blob decorativo
+        Box(
+            modifier = Modifier
+                .size(220.dp)
+                .align(Alignment.TopEnd)
+                .background(Color.White.copy(alpha = 0.09f), CircleShape)
         )
+        Column {
+            Image(
+                painter = painterResource(id = R.drawable.itasuper_brand_icon),
+                contentDescription = "Ícone oficial ItaSuper",
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(Color.White)
+                    .padding(6.dp)
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Text(
+                text = if (isLogin) "Que bom ter\nvocê de volta." else "Sua próxima compra\ncomeça aqui.",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 25.sp,
+                    color = Color.White,
+                    lineHeight = 31.sp
+                )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = if (isLogin) "Entre para encontrar suas lojas favoritas e acompanhar seus pedidos."
+                       else "Crie sua conta para pedir com rapidez, segurança e praticidade.",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = Color.White.copy(alpha = 0.85f),
+                    lineHeight = 21.sp
+                )
+            )
+        }
     }
-}
-
-@Composable
-private fun AuthModeIntro(mode: AuthMode) {
-    val isLogin = mode is AuthMode.Login
-    Text(
-        text = if (isLogin) "Que bom ter você de volta" else "Sua próxima compra começa aqui",
-        style = MaterialTheme.typography.titleLarge.copy(
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 26.sp,
-            color = ItaSuperTextPrimary
-        ),
-        textAlign = TextAlign.Center
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Text(
-        text = if (isLogin) "Entre para encontrar suas lojas favoritas e acompanhar seus pedidos." else "Crie sua conta para pedir com rapidez, segurança e praticidade.",
-        style = MaterialTheme.typography.bodyMedium.copy(
-            color = ItaSuperTextSecondary,
-            lineHeight = 22.sp
-        ),
-        textAlign = TextAlign.Center
-    )
 }
 
 @Composable
