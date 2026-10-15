@@ -836,7 +836,12 @@ class OrdersViewModel : ViewModel() {
                 isPublic = isPublic,
                 tags = tags
             )
-            if (!success) _uiState.value = _uiState.value.copy(errorMessage = "Não foi possível enviar sua avaliação.")
+            if (!success) {
+                val detail = SupabaseClient.lastRatingError.takeIf { it.isNotBlank() }
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = if (detail != null) "Erro: $detail" else "Não foi possível enviar sua avaliação."
+                )
+            }
             onComplete(success)
         }
     }
