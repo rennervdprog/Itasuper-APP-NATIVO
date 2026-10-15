@@ -43,11 +43,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- TODO(DEBUG): REMOVER ANTES DE PUBLICAR -->
-        <activity
-            android:name=".ui.debug.MapDebugActivity"
-            android:exported="false"
-            android:label="Debug Mapa" />
     </application>
 
 </manifest>
