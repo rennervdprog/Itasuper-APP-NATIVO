@@ -131,6 +131,11 @@ fun ProfileScreen(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
 
+    // Sincroniza o perfil do servidor ao abrir a tela (corrige nome "Cliente ItaSuper" quando a sessão está desatualizada)
+    LaunchedEffect(Unit) {
+        UserSessionRepository.synchronizeProfileFromRemote()
+    }
+
     LaunchedEffect(session.name, session.cpfCnpj) {
         if (!personalDirty) {
             fullName = session.name
