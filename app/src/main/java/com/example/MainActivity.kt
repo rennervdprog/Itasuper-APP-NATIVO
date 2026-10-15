@@ -490,7 +490,7 @@ fun ItaSuperApp() {
                 }
             )
         ) { backStackEntry ->
-            val storeId = backStackEntry.arguments?.getString("storeId") ?: ""
+            val storeId = backStackEntry.arguments?.getString("storeId")?.takeIf { it != "null" } ?: ""
             val productId = backStackEntry.arguments?.getString("produto")
             val storeViewModel: StoreDetailViewModel = viewModel()
             StoreDetailScreen(
@@ -513,7 +513,7 @@ fun ItaSuperApp() {
             route = "loja-info/{storeId}",
             arguments = listOf(navArgument("storeId") { type = NavType.StringType })
         ) { backStackEntry ->
-            val storeId = backStackEntry.arguments?.getString("storeId") ?: ""
+            val storeId = backStackEntry.arguments?.getString("storeId")?.takeIf { it != "null" } ?: ""
             val storeInfoViewModel: StoreDetailViewModel = viewModel()
             StoreInfoScreen(
                 storeId = storeId,
