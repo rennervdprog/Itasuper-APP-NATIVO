@@ -158,6 +158,21 @@ object SupabaseClient {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            // Retry automático em caso de StreamResetException (HTTP/2 REFUSED_STREAM)
+            var lastException: Exception? = null
+            repeat(3) { attempt ->
+                try {
+                    return@addInterceptor chain.proceed(chain.request())
+                } catch (e: okhttp3.internal.http2.StreamResetException) {
+                    lastException = e
+                    Log.w(TAG, "StreamResetException (tentativa ${attempt + 1}/3), tentando novamente")
+                    // Pequena pausa antes de tentar de novo
+                    try { Thread.sleep(500L * (attempt + 1)) } catch (ie: InterruptedException) { /* ignora */ }
+                }
+            }
+            throw lastException ?: java.io.IOException("Falha após 3 tentativas (StreamResetException)")
+        }
         .build()
 
     // 1. SIGN IN
@@ -1351,13 +1366,11 @@ object SupabaseClient {
                 )
             } else {
                 Log.e(TAG, "Failed fetching stores_public: code=${response.code}, body=$responseText")
-                // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - mostra erro real na UI
-                StoreCatalogResult(isSuccess = false, stores = emptyList(), debugMessage = "HTTP ${response.code}: ${responseText.take(200)}")
+                StoreCatalogResult(isSuccess = false, stores = emptyList())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
-            // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - mostra erro real na UI
-            StoreCatalogResult(isSuccess = false, stores = emptyList(), debugMessage = "EX: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
+            StoreCatalogResult(isSuccess = false, stores = emptyList())
         }
     }
 
