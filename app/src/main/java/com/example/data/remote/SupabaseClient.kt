@@ -2426,6 +2426,10 @@ object SupabaseClient {
      * Envia avaliação do pedido para o novo sistema de reviews (fase 1).
      * Tabela `reviews` com target_type='store'; tags vão para `review_tags`.
      */
+    // Último erro detalhado do envio de avaliação (para diagnóstico)
+    var lastRatingError: String = ""
+        private set
+
     suspend fun submitOrderRating(
         orderId: String,
         storeId: String,
@@ -2460,13 +2464,22 @@ object SupabaseClient {
                 .post(body.toString().toRequestBody(jsonMediaType))
                 .build()
             val reviewId: String? = httpClient.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
+                if (!resp.isSuccessful) {
+                    val errBody = try { resp.body?.string() ?: "" } catch (e: Exception) { "" }
+                    Log.e(TAG, "Falha ao enviar avaliação: HTTP ${resp.code} - $errBody")
+                    // Guarda o erro para o ViewModel exibir
+                    lastRatingError = "HTTP ${resp.code}: ${errBody.take(200)}"
+                    return@use null
+                }
                 try {
                     val arr = JSONArray(resp.body?.string() ?: "[]")
                     if (arr.length() > 0) arr.getJSONObject(0).optString("id", null) else null
                 } catch (e: Exception) { null }
             }
-            if (reviewId.isNullOrBlank()) return@withContext false
+            if (reviewId.isNullOrBlank()) {
+                if (lastRatingError.isBlank()) lastRatingError = "Resposta vazia do servidor"
+                return@withContext false
+            }
             // Insere as tags (se houver)
             if (tags.isNotEmpty()) {
                 val tagsArray = JSONArray()
