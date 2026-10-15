@@ -65,7 +65,8 @@ data class StoreDeliveryAvailability(
 /** Resultado do catálogo: uma lista vazia pode ser uma resposta operacional válida. */
 data class StoreCatalogResult(
     val isSuccess: Boolean,
-    val stores: List<Store>
+    val stores: List<Store>,
+    val debugMessage: String? = null
 )
 
 data class RemoteCustomerProfile(
@@ -1350,11 +1351,13 @@ object SupabaseClient {
                 )
             } else {
                 Log.e(TAG, "Failed fetching stores_public: code=${response.code}, body=$responseText")
-                StoreCatalogResult(isSuccess = false, stores = emptyList())
+                // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - mostra erro real na UI
+                StoreCatalogResult(isSuccess = false, stores = emptyList(), debugMessage = "HTTP ${response.code}: ${responseText.take(200)}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stores_public", e)
-            StoreCatalogResult(isSuccess = false, stores = emptyList())
+            // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - mostra erro real na UI
+            StoreCatalogResult(isSuccess = false, stores = emptyList(), debugMessage = "EX: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
         }
     }
 

@@ -167,9 +167,11 @@ class HomeViewModel : ViewModel() {
             val currentStores = storesWithCalculatedDistance(refreshResult.stores)
 
             if (!refreshResult.isSuccess) {
+                // TODO(DEBUG): REMOVER ANTES DE PUBLICAR - mostra erro real
+                val debug = refreshResult.debugMessage?.let { "\n\n[DEBUG] $it" } ?: ""
                 _uiState.value = _uiState.value.copy(
                     isLoadingStores = false,
-                    errorMessage = "Não foi possível carregar as lojas. Verifique sua conexão e tente novamente."
+                    errorMessage = "Não foi possível carregar as lojas. Verifique sua conexão e tente novamente.$debug"
                 )
             } else {
                 _uiState.value = _uiState.value.copy(
