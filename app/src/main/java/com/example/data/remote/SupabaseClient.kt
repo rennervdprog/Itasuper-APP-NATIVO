@@ -2455,12 +2455,13 @@ object SupabaseClient {
                 put("visibility", if (isPublic) "public" else "private")
                 put("source", source)
             }
+            // Opção 1: 1 avaliação por pessoa por loja — usa UPSERT
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/reviews")
+                .url("$SUPABASE_URL/rest/v1/reviews?on_conflict=author_id,target_id")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Prefer", "return=representation")
+                .addHeader("Prefer", "return=representation,resolution=merge-duplicates")
                 .post(body.toString().toRequestBody(jsonMediaType))
                 .build()
             val reviewId: String? = httpClient.newCall(request).execute().use { resp ->
@@ -3032,11 +3033,11 @@ object SupabaseClient {
     }
 
     /** Carrega os pedidos e os itens do cliente autenticado, sem dados demonstrativos. */
-    // Busca os IDs dos pedidos já avaliados pelo usuário (para esconder o botão)
+    // Busca os IDs das lojas já avaliadas pelo usuário (Opção 1: 1 por loja)
     suspend fun fetchRatedOrderIds(userId: String, accessToken: String): Set<String> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url("$SUPABASE_URL/rest/v1/reviews?select=order_id&author_id=eq.$userId")
+                .url("$SUPABASE_URL/rest/v1/reviews?select=target_id&author_id=eq.$userId&target_type=eq.store")
                 .addHeader("apikey", SUPABASE_ANON_KEY)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .get()
@@ -3046,7 +3047,7 @@ object SupabaseClient {
                 val arr = JSONArray(resp.body?.string() ?: "[]")
                 val ids = mutableSetOf<String>()
                 for (i in 0 until arr.length()) {
-                    arr.getJSONObject(i).optString("order_id", "").takeIf { it.isNotBlank() }?.let { ids.add(it) }
+                    arr.getJSONObject(i).optString("target_id", "").takeIf { it.isNotBlank() }?.let { ids.add(it) }
                 }
                 ids
             }
@@ -3636,4 +3637,5 @@ private fun JSONObject.optNullableString(key: String): String? {
         return null
     }
 }
+
 
