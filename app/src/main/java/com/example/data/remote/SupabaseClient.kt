@@ -154,6 +154,9 @@ object SupabaseClient {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    /** Retorna true se o ID é nulo, vazio ou a string literal "null" (bug de interpolação). */
+    private fun String?.isNullId(): Boolean = this.isNullOrBlank() || this == "null"
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -2551,6 +2554,7 @@ object SupabaseClient {
      * Lista avaliações públicas aprovadas da loja (com tags e respostas).
      */
     suspend fun getStoreReviews(storeId: String, limit: Int = 20): JSONArray = withContext(Dispatchers.IO) {
+        if (storeId.isNullId()) return@withContext JSONArray()
         try {
             val url = "$SUPABASE_URL/rest/v1/reviews?target_type=eq.store&target_id=eq.$storeId" +
                 "&status=eq.approved&visibility=eq.public&order=created_at.desc&limit=$limit" +
