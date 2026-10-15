@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1166,7 +1167,8 @@ private fun ProtoDealCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(DscChipBg)
+            .background(Color.White)
+            .border(1.dp, DscChipBg, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .testTag("daily_deal_${deal.id}")
     ) {
@@ -1236,6 +1238,46 @@ private fun ProtoDealCard(
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // Picote do cupom
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+            ) {
+                val dashWidth = 8.dp.toPx()
+                val gapWidth = 6.dp.toPx()
+                var x = 0f
+                while (x < size.width) {
+                    drawLine(
+                        color = DscChipBg,
+                        start = androidx.compose.ui.geometry.Offset(x, size.height / 2),
+                        end = androidx.compose.ui.geometry.Offset(x + dashWidth, size.height / 2),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                    x += dashWidth + gapWidth
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ItaSuperPrimary.copy(alpha = 0.1f))
+                    .clickable(onClick = onClick)
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (storeName.isNotBlank()) "Pedir agora" else "Ver lojas",
+                    style = TextStyle(
+                        fontFamily = ManropeFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = ItaSuperPrimary
+                    )
                 )
             }
         }
