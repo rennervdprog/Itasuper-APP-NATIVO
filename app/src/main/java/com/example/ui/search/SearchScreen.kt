@@ -807,7 +807,8 @@ private fun DishCard(item: OrderAgainItem, onReorder: () -> Unit) {
                 androidx.compose.foundation.Image(
                     painter = painterResource(R.drawable.ic_ita_bag),
                     contentDescription = null,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(36.dp),
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(DscInk2.copy(alpha = 0.45f))
                 )
             }
         }
@@ -822,6 +823,7 @@ private fun DishCard(item: OrderAgainItem, onReorder: () -> Unit) {
                 color = DscInk
             ),
             maxLines = 2,
+            minLines = 2,
             overflow = TextOverflow.Ellipsis
         )
         Text(
@@ -838,7 +840,7 @@ private fun DishCard(item: OrderAgainItem, onReorder: () -> Unit) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.Start)
         ) {
             Text(
                 text = dscMoney(item.price),
