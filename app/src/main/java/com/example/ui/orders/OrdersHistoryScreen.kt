@@ -358,7 +358,7 @@ fun OrdersHistoryScreen(
                                 ratingComment.value = ""
                                 ratingTags.value = emptySet()
                                 ratingPublic.value = true
-                                viewModel.markOrderAsRated(order.id) // Fase 7 (C10)
+                                viewModel.markOrderAsRated(order.storeId) // Opção 1: 1 por loja
                             }
                         },
                         isPublic = ratingPublic.value,
@@ -529,7 +529,7 @@ fun OrdersHistoryScreen(
                             },
                             onRateOrder = { orderPendingRating.value = order },
                             onRefundOrder = { orderPendingRefund.value = order },
-                            isRated = uiState.ratedOrderIds.contains(order.id) || !isWithinRatingWindow(order.createdAt)
+                            isRated = uiState.ratedOrderIds.contains(order.storeId) || !isWithinRatingWindow(order.createdAt)
                         )
                     }
                 }
@@ -1025,7 +1025,8 @@ private fun PreviousOrderCard(
                     Text("Pedir novamente", fontWeight = FontWeight.Bold, color = ItaSuperPrimary)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    // Fase 7 (C10): esconde se já avaliado
+                    // Opção 1: 1 avaliação por loja — mostra "Editar" se já avaliou
+                    // (isRated=true também esconde se fora da janela de 7 dias)
                     if (!isRated) {
                         TextButton(onClick = onRateOrder) { Text("Avaliar pedido") }
                     }
@@ -1275,3 +1276,4 @@ private fun PixDirectPaymentDialog(
         shape = RoundedCornerShape(16.dp)
     )
 }
+
