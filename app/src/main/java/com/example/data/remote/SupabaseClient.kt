@@ -2288,7 +2288,7 @@ object SupabaseClient {
     /** Lista cupons ativos da view pública — fonte real da seção "Ofertas do dia". */
     suspend fun fetchActiveCoupons(limit: Int = 10): List<com.example.data.model.Coupon> = withContext(Dispatchers.IO) {
         try {
-            val url = "$SUPABASE_URL/rest/v1/coupons_public?select=*&is_active=eq.true&order=created_at.desc&limit=$limit"
+            val url = "$SUPABASE_URL/rest/v1/coupons_public?select=*&is_active=eq.true&order=expires_at.asc.nullslast&limit=$limit"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("apikey", SUPABASE_ANON_KEY)
