@@ -69,6 +69,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -137,32 +140,78 @@ fun AuthScreen(
                 .imePadding()
                 .verticalScroll(scrollState)
         ) {
-            // Header laranja (Opção C)
-            AuthHeaderOrange(mode = uiState.authMode)
+            val isLogin = uiState.authMode is AuthMode.Login
 
-            // Card branco sobreposto
+            // Layout estilo entregador: fundo branco, badge + título grande
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .background(Color.White)
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 24.dp, bottom = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(horizontal = 28.dp)
+                    .padding(top = 40.dp, bottom = 28.dp),
+                horizontalAlignment = Alignment.Start
             ) {
-                    AuthTabRow(
-                        selectedMode = uiState.authMode,
-                        onModeSelected = { viewModel.setAuthMode(it) }
+                    // Badge "PARA CLIENTES"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(100.dp))
+                            .background(Color(0xFFFFF3E4))
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF22C55E))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "PARA CLIENTES",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF6A00),
+                            letterSpacing = 0.3.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Título
+                    Text(
+                        text = buildAnnotatedString {
+                            if (isLogin) {
+                                append("Que bom ter\nvocê de volta")
+                            } else {
+                                append("Crie sua\nconta")
+                            }
+                            withStyle(SpanStyle(color = Color(0xFFFF6A00))) { append(".") }
+                        },
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF0F172A),
+                        lineHeight = 36.sp,
+                        letterSpacing = (-1).sp
                     )
 
-                    Spacer(modifier = Modifier.height(22.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = if (isLogin) "Entre para pedir das suas lojas favoritas."
+                               else "Peça com rapidez, segurança e praticidade.",
+                        fontSize = 14.sp,
+                        color = Color(0xFF64748B),
+                        lineHeight = 21.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(28.dp))
 
                     uiState.errorMessage?.let { error ->
                         ErrorBanner(message = error)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    if (uiState.authMode is AuthMode.Login) {
+                    if (isLogin) {
                         LoginForm(
                             uiState = uiState,
                             viewModel = viewModel,
@@ -171,6 +220,25 @@ fun AuthScreen(
                                 viewModel.handleLogin(onSuccess = onAuthSuccess)
                             }
                         )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Não tem conta? ",
+                                fontSize = 13.5.sp,
+                                color = Color(0xFF64748B)
+                            )
+                            Text(
+                                text = "Criar conta",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF6A00),
+                                modifier = Modifier.clickable { viewModel.setAuthMode(AuthMode.Register) }
+                            )
+                        }
                     } else {
                         RegisterForm(
                             uiState = uiState,
@@ -183,10 +251,27 @@ fun AuthScreen(
                                 viewModel.handleRegister(onSuccess = onAuthSuccess)
                             }
                         )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Já tem conta? ",
+                                fontSize = 13.5.sp,
+                                color = Color(0xFF64748B)
+                            )
+                            Text(
+                                text = "Entrar",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF6A00),
+                                modifier = Modifier.clickable { viewModel.setAuthMode(AuthMode.Login) }
+                            )
+                        }
                     }
             }
-        }
-    }
 
     // Forgot Password Dialog
     if (uiState.showForgotPasswordDialog) {
