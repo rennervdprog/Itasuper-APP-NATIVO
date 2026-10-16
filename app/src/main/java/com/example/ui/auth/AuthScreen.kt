@@ -287,6 +287,8 @@ fun AuthScreen(
 
 }
 
+}
+
 @Composable
 private fun AuthHeaderOrange(mode: AuthMode) {
     val isLogin = mode is AuthMode.Login
