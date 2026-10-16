@@ -272,6 +272,7 @@ fun AuthScreen(
                         }
                     }
             }
+        }
 
     // Forgot Password Dialog
     if (uiState.showForgotPasswordDialog) {
