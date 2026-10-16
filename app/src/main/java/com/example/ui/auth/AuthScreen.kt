@@ -151,6 +151,33 @@ fun AuthScreen(
                     .padding(top = 40.dp, bottom = 28.dp),
                 horizontalAlignment = Alignment.Start
             ) {
+                    // Logo ItaSuper
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 28.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.itasuper_brand_icon),
+                            contentDescription = "ItaSuper",
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = buildAnnotatedString {
+                                append("ita")
+                                withStyle(SpanStyle(color = Color(0xFFFF6A00), fontWeight = FontWeight.ExtraBold)) {
+                                    append("super")
+                                }
+                            },
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0F172A),
+                            letterSpacing = (-0.5).sp
+                        )
+                    }
+
                     // Badge "PARA CLIENTES"
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
