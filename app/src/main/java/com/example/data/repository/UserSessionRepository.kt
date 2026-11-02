@@ -186,6 +186,14 @@ object UserSessionRepository {
     }
 
     fun logout() {
+        // S5 (segurança): revoga a sessão no servidor antes de limpar o aparelho.
+        // Melhor esforço: sem rede, o logout local acontece do mesmo jeito.
+        val token = _userSession.value.accessToken
+        if (!token.isNullOrBlank()) {
+            repositoryScope.launch {
+                runCatching { SupabaseClient.logoutFromServer(token) }
+            }
+        }
         _userSession.value = UserSession(isSessionRestored = true)
         storage?.clear()
     }

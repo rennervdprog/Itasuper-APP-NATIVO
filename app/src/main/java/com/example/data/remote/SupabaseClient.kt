@@ -357,6 +357,23 @@ object SupabaseClient {
         }
     }
 
+    // 2c. LOGOUT NO SERVIDOR (revoga a sessão — item S5 da varredura de segurança)
+    suspend fun logoutFromServer(accessToken: String) {
+        if (accessToken.isBlank()) return
+        try {
+            val request = Request.Builder()
+                .url("$SUPABASE_URL/auth/v1/logout")
+                .addHeader("apikey", SUPABASE_ANON_KEY)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post("{}".toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(request).execute().close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error logging out on server", e)
+        }
+    }
+
     /** Lê o perfil do cliente autenticado — mesma fonte usada pelas telas do Capacitor. */
     suspend fun fetchCustomerProfile(userId: String, accessToken: String): RemoteCustomerProfile? = withContext(Dispatchers.IO) {
         if (userId.isBlank() || accessToken.isBlank()) return@withContext null
